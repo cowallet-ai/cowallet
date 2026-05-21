@@ -21,6 +21,8 @@ pub struct ChatMessageRow {
     pub content: Option<String>,
     pub tool_calls: Option<serde_json::Value>,
     pub tool_call_id: Option<String>,
+    pub widget_type: Option<String>,
+    pub widget_data: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -93,6 +95,32 @@ impl ChatStore {
         .await?;
 
         // Update session timestamp
+        sqlx::query("UPDATE chat_sessions SET updated_at = now() WHERE id = $1")
+            .bind(session_id)
+            .execute(db)
+            .await?;
+
+        Ok(row)
+    }
+
+    /// Save a tool result widget message
+    pub async fn save_widget_message(
+        db: &PgPool,
+        session_id: Uuid,
+        widget_type: &str,
+        widget_data: &serde_json::Value,
+        tool_call_id: Option<&str>,
+    ) -> Result<Uuid, sqlx::Error> {
+        let row = sqlx::query_scalar::<_, Uuid>(
+            "INSERT INTO chat_messages (session_id, role, widget_type, widget_data, tool_call_id) VALUES ($1, 'tool_result', $2, $3, $4) RETURNING id"
+        )
+        .bind(session_id)
+        .bind(widget_type)
+        .bind(widget_data)
+        .bind(tool_call_id)
+        .fetch_one(db)
+        .await?;
+
         sqlx::query("UPDATE chat_sessions SET updated_at = now() WHERE id = $1")
             .bind(session_id)
             .execute(db)

@@ -1065,6 +1065,9 @@ async fn chat_stream(
                     "result": tc.parameters,
                     "error": null,
                 }));
+                if let (Some(db), Some(w)) = (&state.db, &widget) {
+                    let _ = ChatStore::save_widget_message(db, db_session_id, w, &tc.parameters, Some(&tc.id)).await;
+                }
                 continue;
             }
 
@@ -1095,6 +1098,9 @@ async fn chat_stream(
                     "result": prepared,
                     "error": null,
                 }));
+                if let (Some(db), Some(w)) = (&state.db, &widget) {
+                    let _ = ChatStore::save_widget_message(db, db_session_id, w, &prepared, Some(&tc.id)).await;
+                }
                 tool_results.push(ToolExecutionResult {
                     tool_id: tc.id.clone(),
                     tool_name: tc.name.clone(),
@@ -1116,6 +1122,11 @@ async fn chat_stream(
                 "result": result.result,
                 "error": result.error,
             }));
+            if result.success {
+                if let (Some(db), Some(w)) = (&state.db, &widget) {
+                    let _ = ChatStore::save_widget_message(db, db_session_id, w, &result.result, Some(&result.tool_id)).await;
+                }
+            }
             tool_results.push(result);
         }
 
@@ -1278,6 +1289,9 @@ async fn chat_stream(
                             "result": params,
                             "error": null,
                         }));
+                        if let (Some(db), Some(w)) = (&state.db, &widget) {
+                            let _ = ChatStore::save_widget_message(db, db_session_id, w, &params, Some(&tc.id)).await;
+                        }
                     } else if kind == ToolKind::Write {
                         needs_confirmation.push(tc.id.clone());
                         let exec_result = tool_ctx.execute_tool(&tc.name, &tc.id, params.clone()).await;
@@ -1302,6 +1316,9 @@ async fn chat_stream(
                             "result": prepared,
                             "error": null,
                         }));
+                        if let (Some(db), Some(w)) = (&state.db, &widget) {
+                            let _ = ChatStore::save_widget_message(db, db_session_id, w, &prepared, Some(&tc.id)).await;
+                        }
                     } else {
                         // Read tools in second round
                         let result = tool_ctx.execute_tool(&tc.name, &tc.id, params.clone()).await;
@@ -1314,6 +1331,11 @@ async fn chat_stream(
                             "result": result.result,
                             "error": result.error,
                         }));
+                        if result.success {
+                            if let (Some(db), Some(w)) = (&state.db, &widget) {
+                                let _ = ChatStore::save_widget_message(db, db_session_id, w, &result.result, Some(&result.tool_id)).await;
+                            }
+                        }
                     }
                 }
 
@@ -1419,6 +1441,8 @@ async fn get_session_messages(
             "role": m.role,
             "content": m.content,
             "tool_calls": m.tool_calls,
+            "widget_type": m.widget_type,
+            "widget_data": m.widget_data,
             "created_at": m.created_at.to_rfc3339(),
         })
     }).collect();

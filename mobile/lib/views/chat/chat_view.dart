@@ -151,13 +151,51 @@ class ChatViewState extends State<ChatView> {
         for (final msg in result.data!) {
           final role = msg['role'] as String? ?? '';
           final content = msg['content'] as String? ?? '';
-          if (role == 'user') {
+          final widgetType = msg['widget_type'] as String?;
+          final widgetData = msg['widget_data'] as Map<String, dynamic>?;
+
+          if (role == 'tool_result' && widgetType != null && widgetData != null) {
+            final wt = _parseWidgetType(widgetType);
+            if (wt != null) {
+              _messages.add(ChatMsg(
+                kind: ChatMsgKind.widget,
+                widgetType: wt,
+                widgetData: widgetData,
+                confirmed: true,
+              ));
+            }
+          } else if (role == 'user') {
             _messages.add(ChatMsg(kind: ChatMsgKind.user, text: content));
           } else if (role == 'assistant' && content.isNotEmpty) {
             _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: content));
           }
         }
       });
+    }
+  }
+
+  WidgetType? _parseWidgetType(String type) {
+    switch (type) {
+      case 'balance':
+        return WidgetType.balance;
+      case 'receive':
+        return WidgetType.receive;
+      case 'history':
+        return WidgetType.history;
+      case 'audit':
+        return WidgetType.audit;
+      case 'token_info':
+        return WidgetType.tokenInfo;
+      case 'send_confirm':
+        return WidgetType.sendConfirm;
+      case 'swap_confirm':
+        return WidgetType.swapConfirm;
+      case 'add_contact':
+        return WidgetType.addContact;
+      case 'clarify':
+        return WidgetType.clarify;
+      default:
+        return null;
     }
   }
 
