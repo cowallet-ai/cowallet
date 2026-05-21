@@ -85,39 +85,22 @@ async fn main() {
         std::env::var("RPC_URL").unwrap_or_else(|_| "https://1rpc.io/eth".into());
 
     // Build per-chain RPC URL map
+    // Helper: treat empty env vars the same as unset (avoids reqwest builder errors)
+    let env_or = |key: &str, default: &str| -> String {
+        std::env::var(key)
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| default.into())
+    };
     let mut rpc_urls = std::collections::HashMap::new();
-    rpc_urls.insert(
-        1,
-        std::env::var("ETH_MAINNET_RPC_URL").unwrap_or_else(|_| "https://1rpc.io/eth".into()),
-    );
-    rpc_urls.insert(
-        8453,
-        std::env::var("BASE_MAINNET_RPC_URL").unwrap_or_else(|_| "https://mainnet.base.org".into()),
-    );
-    rpc_urls.insert(
-        42161,
-        std::env::var("ARB_MAINNET_RPC_URL").unwrap_or_else(|_| "https://arb1.arbitrum.io/rpc".into()),
-    );
-    rpc_urls.insert(
-        10,
-        std::env::var("OP_MAINNET_RPC_URL").unwrap_or_else(|_| "https://mainnet.optimism.io".into()),
-    );
-    rpc_urls.insert(
-        56,
-        std::env::var("BSC_MAINNET_RPC_URL").unwrap_or_else(|_| "https://bsc-dataseed.binance.org".into()),
-    );
-    rpc_urls.insert(
-        137,
-        std::env::var("POLYGON_MAINNET_RPC_URL").unwrap_or_else(|_| "https://polygon.drpc.org".into()),
-    );
-    rpc_urls.insert(
-        11155111,
-        std::env::var("ETH_SEPOLIA_RPC_URL").unwrap_or_else(|_| "https://rpc.sepolia.org".into()),
-    );
-    rpc_urls.insert(
-        84532,
-        std::env::var("BASE_SEPOLIA_RPC_URL").unwrap_or_else(|_| "https://sepolia.base.org".into()),
-    );
+    rpc_urls.insert(1, env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"));
+    rpc_urls.insert(8453, env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"));
+    rpc_urls.insert(42161, env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"));
+    rpc_urls.insert(10, env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"));
+    rpc_urls.insert(56, env_or("BSC_MAINNET_RPC_URL", "https://bsc-dataseed.binance.org"));
+    rpc_urls.insert(137, env_or("POLYGON_MAINNET_RPC_URL", "https://polygon.drpc.org"));
+    rpc_urls.insert(11155111, env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"));
+    rpc_urls.insert(84532, env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"));
 
     let app_state = AppState::new(&database_url, rpc_url, rpc_urls).await
         .expect("Database connection required — cannot start without PostgreSQL");
