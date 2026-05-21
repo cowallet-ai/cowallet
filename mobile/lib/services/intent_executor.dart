@@ -272,8 +272,9 @@ class IntentExecutor {
         Services.notifications.showTxFailed(txHash, S.insufficientBalance);
         return ActionResult.fail(S.insufficientBalance);
       }
-      Services.notifications.showTxFailed(txHash, msg);
-      return ActionResult.fail(S.transferFailed(msg));
+      final friendly = _friendlyTxError(msg);
+      Services.notifications.showTxFailed(txHash, friendly);
+      return ActionResult.fail(friendly);
     }
   }
 
@@ -538,5 +539,28 @@ class IntentExecutor {
         }
       }
     } catch (_) {}
+  }
+
+  String _friendlyTxError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('builder error') || lower.contains('502') || lower.contains('503') || lower.contains('rpc') && lower.contains('failed')) {
+      return S.txErrorRpcUnavailable;
+    }
+    if (lower.contains('nonce too low') || lower.contains('nonce is too low')) {
+      return S.txErrorNonceTooLow;
+    }
+    if (lower.contains('underpriced') || lower.contains('replacement transaction')) {
+      return S.txErrorUnderpricedGas;
+    }
+    if (lower.contains('rejected') || lower.contains('reverted')) {
+      return S.txErrorRejected;
+    }
+    if (lower.contains('timeout') || lower.contains('timed out')) {
+      return S.txErrorTimeout;
+    }
+    if (lower.contains('user cancel') || lower.contains('cancelled')) {
+      return S.transferCancelled;
+    }
+    return S.txErrorUnknown;
   }
 }

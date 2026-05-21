@@ -569,6 +569,12 @@ class S {
   // Chat view messages
   static String get requestFailed => _p('请求失败，请稍后重试', 'Request failed, please try again');
   static String get networkError => _p('网络错误，请稍后重试', 'Network error, please try again');
+  static String get txErrorRpcUnavailable => _p('链上节点暂时不可用，请稍后重试', 'Chain RPC node unavailable, please try again later');
+  static String get txErrorNonceTooLow => _p('交易序号冲突，请重新发起转账', 'Nonce conflict, please retry the transfer');
+  static String get txErrorUnderpricedGas => _p('Gas费过低，网络拥堵，请稍后重试', 'Gas too low, network congested, please try again');
+  static String get txErrorRejected => _p('交易被链上节点拒绝，请检查参数', 'Transaction rejected by the network');
+  static String get txErrorTimeout => _p('交易提交超时，请检查网络连接', 'Transaction submission timed out');
+  static String get txErrorUnknown => _p('交易提交失败，请稍后重试', 'Transaction submission failed, please try again');
   static String get insufficientGasWarning => _p('⚠ 余额不足以支付Gas费', '⚠ Insufficient balance for gas');
   static String tokenBalanceZeroWarning(String token) => _p('⚠ $token 余额为零', '⚠ $token balance is zero');
   static String get transferCancelled => _p('好的，已取消转账。', 'OK, transfer cancelled.');
