@@ -9,7 +9,6 @@ use std::time::Instant;
 
 use crate::middleware::audit::AuditResult;
 use crate::middleware::auth::Claims;
-use crate::retry::{is_retryable_error, retry_with_backoff, RetryConfig};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -54,15 +53,13 @@ async fn submit(
         .map_err(|_| rpc_error("invalid user id in token"))?;
     let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
 
-    let rpc_url = state.rpc_for_chain(chain_id);
-
     tracing::info!(
-        "[tx.submit] chain_id={} rpc_url={} from={:?} to={:?} value={:?} token={:?}",
-        chain_id, rpc_url,
+        "[tx.submit] chain_id={} from={:?} to={:?} value={:?} token={:?}",
+        chain_id,
         body.from_addr, body.to_addr, body.value, body.token
     );
 
-    // Query on-chain balance for diagnostics
+    // Query on-chain balance for diagnostics (best-effort, uses fallback)
     if let Some(from_addr) = &body.from_addr {
         let balance_body = serde_json::json!({
             "jsonrpc": "2.0",
@@ -70,11 +67,9 @@ async fn submit(
             "params": [from_addr, "latest"],
             "id": 1
         });
-        match state.http.post(rpc_url).json(&balance_body).send().await {
-            Ok(bal_resp) => {
-                if let Ok(bal_json) = bal_resp.json::<serde_json::Value>().await {
-                    tracing::info!("[tx.submit] eth_getBalance response: {:?}", bal_json);
-                }
+        match state.rpc_call(chain_id, &balance_body).await {
+            Ok(bal_json) => {
+                tracing::info!("[tx.submit] eth_getBalance response: {:?}", bal_json);
             }
             Err(e) => {
                 tracing::warn!("[tx.submit] eth_getBalance failed: {}", e);
@@ -91,26 +86,11 @@ async fn submit(
         "id": 1
     });
 
-    // Send raw transaction to RPC (no retry for tx broadcast — retrying can cause nonce issues)
-    let resp = state
-        .http
-        .post(rpc_url)
-        .json(&rpc_body)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("[tx.submit] RPC request failed: {}", e);
-            rpc_error(&format!("RPC request failed: {e}"))
-        })?;
-
-    let status = resp.status();
-    let rpc_resp: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| {
-            tracing::error!("[tx.submit] Failed to parse RPC response (HTTP {}): {}", status, e);
-            rpc_error(&format!("Invalid RPC response (HTTP {}): {e}", status))
-        })?;
+    // Send raw transaction with multi-RPC fallback
+    let rpc_resp = state.rpc_call(chain_id, &rpc_body).await.map_err(|e| {
+        tracing::error!("[tx.submit] RPC request failed: {}", e);
+        rpc_error(&format!("RPC request failed: {e}"))
+    })?;
 
     tracing::info!("[tx.submit] eth_sendRawTransaction response: {:?}", rpc_resp);
 
@@ -256,10 +236,20 @@ async fn tx_status(
 
     // Calculate confirmations if confirmed
     let confirmations = if let Some(block_num) = block_number {
-        // Get current block number from chain
-        let rpc_url = state.rpc_for_chain(chain_id as u64);
-        match get_current_block(&state.http, rpc_url).await {
-            Ok(current_block) => Some(current_block - block_num),
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_blockNumber",
+            "params": [],
+            "id": 1
+        });
+        match state.rpc_call(chain_id as u64, &body).await {
+            Ok(resp) => {
+                let block_hex = resp.get("result").and_then(|r| r.as_str()).unwrap_or("0x0");
+                let current = i64::from_str_radix(
+                    block_hex.strip_prefix("0x").unwrap_or(block_hex), 16
+                ).unwrap_or(0);
+                Some(current - block_num)
+            }
             Err(_) => Some(0),
         }
     } else {
@@ -276,38 +266,6 @@ async fn tx_status(
     }))
 }
 
-/// Helper to get the current block number from an RPC endpoint.
-async fn get_current_block(http: &reqwest::Client, rpc_url: &str) -> Result<i64, String> {
-    let body = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "eth_blockNumber",
-        "params": [],
-        "id": 1
-    });
-
-    let resp = http
-        .post(rpc_url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("RPC request failed: {}", e))?;
-
-    let rpc_resp: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Invalid RPC response: {}", e))?;
-
-    let block_hex = rpc_resp
-        .get("result")
-        .and_then(|r| r.as_str())
-        .unwrap_or("0x0");
-
-    i64::from_str_radix(
-        block_hex.strip_prefix("0x").unwrap_or(block_hex),
-        16,
-    )
-    .map_err(|e| format!("Invalid block number: {}", e))
-}
 
 #[derive(Deserialize)]
 struct SummaryQuery {
@@ -403,7 +361,6 @@ async fn simulate(
     Json(body): Json<SimulateRequest>,
 ) -> Result<Json<SimulateResponse>, (StatusCode, Json<ErrorResponse>)> {
     let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
-    let rpc_url = state.rpc_for_chain(chain_id);
 
     let mut call_obj = serde_json::json!({
         "to": body.to,
@@ -425,18 +382,8 @@ async fn simulate(
         "id": 1
     });
 
-    let resp = state
-        .http
-        .post(rpc_url)
-        .json(&rpc_body)
-        .send()
-        .await
+    let rpc_resp = state.rpc_call(chain_id, &rpc_body).await
         .map_err(|e| rpc_error(&format!("RPC request failed: {e}")))?;
-
-    let rpc_resp: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| rpc_error(&format!("Invalid RPC response: {e}")))?;
 
     if let Some(err) = rpc_resp.get("error") {
         let msg = err
@@ -491,7 +438,6 @@ async fn estimate_gas(
     Json(body): Json<EstimateGasRequest>,
 ) -> Result<Json<EstimateGasResponse>, (StatusCode, Json<ErrorResponse>)> {
     let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
-    let rpc_url = state.rpc_for_chain(chain_id);
 
     // Build the transaction object for eth_estimateGas
     let mut tx_obj = serde_json::json!({
@@ -501,15 +447,12 @@ async fn estimate_gas(
 
     // For native ETH transfer, set value; for ERC-20 tokens, we'd need contract call data
     if let Some(ref value) = body.value {
-        // Value should be in wei (hex-encoded)
         let value_hex = if value.starts_with("0x") {
             value.clone()
         } else {
-            // Parse as decimal wei and convert to hex
             match value.parse::<u128>() {
                 Ok(v) => format!("0x{:x}", v),
                 Err(_) => {
-                    // Try parsing as a float ETH amount and convert to wei
                     match value.parse::<f64>() {
                         Ok(eth_amount) => {
                             let wei = (eth_amount * 1e18) as u128;
@@ -523,7 +466,6 @@ async fn estimate_gas(
         tx_obj["value"] = serde_json::Value::String(value_hex);
     }
 
-    // Call eth_estimateGas
     let estimate_body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "eth_estimateGas",
@@ -531,7 +473,6 @@ async fn estimate_gas(
         "id": 1
     });
 
-    // Call eth_gasPrice
     let gas_price_body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "eth_gasPrice",
@@ -539,25 +480,16 @@ async fn estimate_gas(
         "id": 2
     });
 
-    // Execute both RPC calls concurrently
-    let (estimate_resp, price_resp) = tokio::join!(
-        state.http.post(rpc_url).json(&estimate_body).send(),
-        state.http.post(rpc_url).json(&gas_price_body).send(),
+    // Execute both RPC calls concurrently with fallback
+    let (estimate_result, price_result) = tokio::join!(
+        state.rpc_call(chain_id, &estimate_body),
+        state.rpc_call(chain_id, &gas_price_body),
     );
 
-    let estimate_resp = estimate_resp
-        .map_err(|e| rpc_error(&format!("eth_estimateGas request failed: {e}")))?;
-    let price_resp = price_resp
-        .map_err(|e| rpc_error(&format!("eth_gasPrice request failed: {e}")))?;
-
-    let estimate_json: serde_json::Value = estimate_resp
-        .json()
-        .await
-        .map_err(|e| rpc_error(&format!("Invalid estimateGas response: {e}")))?;
-    let price_json: serde_json::Value = price_resp
-        .json()
-        .await
-        .map_err(|e| rpc_error(&format!("Invalid gasPrice response: {e}")))?;
+    let estimate_json = estimate_result
+        .map_err(|e| rpc_error(&format!("eth_estimateGas failed: {e}")))?;
+    let price_json = price_result
+        .map_err(|e| rpc_error(&format!("eth_gasPrice failed: {e}")))?;
 
     // Parse gas units from hex
     let gas_hex = estimate_json

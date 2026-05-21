@@ -84,8 +84,8 @@ async fn main() {
     let rpc_url =
         std::env::var("RPC_URL").unwrap_or_else(|_| "https://1rpc.io/eth".into());
 
-    // Build per-chain RPC URL map
-    // Helper: treat empty env vars the same as unset (avoids reqwest builder errors)
+    // Build per-chain RPC URL map (primary URL for backward compat)
+    // Helper: treat empty env vars the same as unset
     let env_or = |key: &str, default: &str| -> String {
         std::env::var(key)
             .ok()
@@ -93,7 +93,7 @@ async fn main() {
             .unwrap_or_else(|| default.into())
     };
     let mut rpc_urls = std::collections::HashMap::new();
-    rpc_urls.insert(1, env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"));
+    rpc_urls.insert(1u64, env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"));
     rpc_urls.insert(8453, env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"));
     rpc_urls.insert(42161, env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"));
     rpc_urls.insert(10, env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"));
@@ -102,7 +102,49 @@ async fn main() {
     rpc_urls.insert(11155111, env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"));
     rpc_urls.insert(84532, env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"));
 
-    let app_state = AppState::new(&database_url, rpc_url, rpc_urls).await
+    // Multi-RPC fallback: multiple public endpoints per chain (from ChainList)
+    let chain_rpcs: std::collections::HashMap<u64, Vec<String>> = [
+        (1u64, vec![
+            env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"),
+            "https://eth.drpc.org".into(),
+            "https://rpc.ankr.com/eth".into(),
+        ]),
+        (8453, vec![
+            env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"),
+            "https://base.drpc.org".into(),
+            "https://1rpc.io/base".into(),
+        ]),
+        (42161, vec![
+            env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"),
+            "https://arbitrum.drpc.org".into(),
+            "https://1rpc.io/arb".into(),
+        ]),
+        (10, vec![
+            env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"),
+            "https://optimism.drpc.org".into(),
+            "https://1rpc.io/op".into(),
+        ]),
+        (56, vec![
+            env_or("BSC_MAINNET_RPC_URL", "https://bsc-dataseed.binance.org"),
+            "https://bsc-dataseed1.defibit.io".into(),
+            "https://bsc.drpc.org".into(),
+        ]),
+        (137, vec![
+            env_or("POLYGON_MAINNET_RPC_URL", "https://polygon.drpc.org"),
+            "https://polygon-bor-rpc.publicnode.com".into(),
+            "https://1rpc.io/matic".into(),
+        ]),
+        (11155111, vec![
+            env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"),
+            "https://sepolia.drpc.org".into(),
+        ]),
+        (84532, vec![
+            env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
+            "https://base-sepolia-rpc.publicnode.com".into(),
+        ]),
+    ].into_iter().collect();
+
+    let app_state = AppState::new(&database_url, rpc_url, rpc_urls, chain_rpcs).await
         .expect("Database connection required — cannot start without PostgreSQL");
 
     let encryption_key = std::env::var("ENCRYPTION_KEY")

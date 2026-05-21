@@ -12,6 +12,7 @@ use crate::services::claude::AiClient;
 use crate::services::email::EmailService;
 use crate::services::mpc_participant::MpcParticipant;
 use crate::services::presign_manager::PresignManager;
+use crate::services::rpc_provider::RpcProvider;
 use crate::services::tx_tracker::TxTracker;
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub struct AppState {
     pub db: Option<PgPool>,
     pub rpc_url: String,
     pub rpc_urls: HashMap<u64, String>,
+    pub rpc: RpcProvider,
     pub price_cache: PriceCache,
     pub yield_cache: YieldCache,
     pub http: reqwest::Client,
@@ -40,7 +42,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new(database_url: &str, rpc_url: String, rpc_urls: HashMap<u64, String>) -> Result<Self, sqlx::Error> {
+    pub async fn new(database_url: &str, rpc_url: String, rpc_urls: HashMap<u64, String>, chain_rpcs: HashMap<u64, Vec<String>>) -> Result<Self, sqlx::Error> {
         // Configure production-grade connection pool
         let pool_options = sqlx::postgres::PgPoolOptions::new()
             .max_connections(
@@ -165,6 +167,10 @@ impl AppState {
 
         // Initialize transaction confirmation tracker
         let http_client = Self::create_http_client();
+
+        // Build RPC provider with multi-URL fallback
+        let rpc = RpcProvider::new(http_client.clone(), chain_rpcs, vec![rpc_url.clone()]);
+
         let tx_tracker = Arc::new(TxTracker::new(
             db.clone(),
             http_client.clone(),
@@ -178,6 +184,7 @@ impl AppState {
             db: Some(db.clone()),
             rpc_url,
             rpc_urls,
+            rpc,
             price_cache: PriceCache::new(),
             yield_cache: YieldCache::new(),
             http: http_client,
@@ -199,12 +206,14 @@ impl AppState {
         })
     }
 
-    /// Get RPC URL for a specific chain, with fallback to default
+    /// Get the preferred RPC URL for a specific chain (first healthy one).
     pub fn rpc_for_chain(&self, chain_id: u64) -> &str {
-        self.rpc_urls
-            .get(&chain_id)
-            .map(|s| s.as_str())
-            .unwrap_or(&self.rpc_url)
+        self.rpc.rpc_for_chain(chain_id)
+    }
+
+    /// Send a JSON-RPC call with automatic multi-RPC fallback.
+    pub async fn rpc_call(&self, chain_id: u64, body: &serde_json::Value) -> Result<serde_json::Value, String> {
+        self.rpc.rpc_call(chain_id, body).await
     }
 
 
