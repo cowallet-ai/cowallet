@@ -623,7 +623,16 @@ class ChatViewState extends State<ChatView> {
         _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: ''));
       } else {
         msg.confirmed = true;
-        _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: '⚠ ${result.message}'));
+        _messages.add(ChatMsg(
+          kind: ChatMsgKind.widget,
+          widgetType: WidgetType.txResult,
+          widgetData: {
+            'success': false,
+            'amount': params['amount'],
+            'token': params['token'],
+            'error_message': result.message,
+          },
+        ));
       }
     });
     _scrollToBottom();
@@ -815,7 +824,16 @@ class ChatViewState extends State<ChatView> {
         ));
         _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: result.message));
       } else {
-        _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: '⚠ ${result.message}'));
+        _messages.add(ChatMsg(
+          kind: ChatMsgKind.widget,
+          widgetType: WidgetType.txResult,
+          widgetData: {
+            'success': false,
+            'amount': params['amount'],
+            'token': '${params['from_token']} → ${params['to_token']}',
+            'error_message': result.message,
+          },
+        ));
       }
     });
     _scrollToBottom();
@@ -1201,6 +1219,7 @@ class ChatViewState extends State<ChatView> {
           success: msg.widgetData['success'] ?? true,
           amount: msg.widgetData['amount'],
           token: msg.widgetData['token'],
+          errorMessage: msg.widgetData['error_message'],
           tracker: _txTracker,
         );
       case WidgetType.txDetail:

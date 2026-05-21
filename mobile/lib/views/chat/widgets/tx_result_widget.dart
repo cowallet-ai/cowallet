@@ -12,6 +12,7 @@ class ChatTxResultWidget extends StatefulWidget {
   final bool success;
   final String? amount;
   final String? token;
+  final String? errorMessage;
   final TxTrackerService? tracker;
 
   const ChatTxResultWidget({
@@ -20,6 +21,7 @@ class ChatTxResultWidget extends StatefulWidget {
     this.success = true,
     this.amount,
     this.token,
+    this.errorMessage,
     this.tracker,
   });
 
@@ -131,27 +133,38 @@ class _ChatTxResultWidgetState extends State<ChatTxResultWidget> {
               ),
             ),
           ],
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: widget.txHash));
-              showTopToast(context, S.txHashCopied);
-            },
-            child: Row(
-              children: [
-                Text(
-                  'Tx: $shortHash',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'JetBrainsMono',
-                    color: CwColors.ink3,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.copy, size: 12, color: CwColors.ink4),
-              ],
+          if (isFailed && widget.errorMessage != null && widget.errorMessage!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.errorMessage!,
+              style: const TextStyle(fontSize: 13, color: CwColors.ink2),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
+          ],
+          if (widget.txHash.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: widget.txHash));
+                showTopToast(context, S.txHashCopied);
+              },
+              child: Row(
+                children: [
+                  Text(
+                    'Tx: $shortHash',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'JetBrainsMono',
+                      color: CwColors.ink3,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.copy, size: 12, color: CwColors.ink4),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
