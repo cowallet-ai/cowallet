@@ -779,6 +779,9 @@ async fn chat_stream(
         if let Some(db) = &state.db {
             if let Ok(rows) = ChatStore::load_messages(db, db_session_id, 20).await {
                 for row in rows {
+                    if row.role == "tool_result" {
+                        continue;
+                    }
                     if row.role == "user" && row.content.as_deref() == Some(user_message.as_str()) {
                         continue;
                     }
