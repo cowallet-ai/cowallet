@@ -572,15 +572,30 @@ class _HomeViewState extends State<HomeView> {
       BuildContext context, Map<String, dynamic> tx, String walletAddress) {
     final from = (tx['from'] as String? ?? '').toLowerCase();
     final to = (tx['to'] as String? ?? '').toLowerCase();
-    final isReceive = to == walletAddress;
-    final value = tx['value'] as String? ?? '0';
     final timestamp = tx['timestamp'] as String? ?? '';
     final status = tx['status'] as String? ?? '';
-    final tokenSymbol = tx['token_symbol'] as String? ?? 'ETH';
     final chainId = tx['chain_id'] as int? ?? 1;
 
-    // Format value from wei to ETH (18 decimals)
-    final formattedValue = _formatWeiValue(value);
+    // Check for ERC-20 token transfer in log events
+    final tokenTransfers = (tx['token_transfers'] as List<dynamic>?) ?? [];
+    final String value;
+    final String tokenSymbol;
+    final bool isReceive;
+    final String formattedValue;
+    if (tokenTransfers.isNotEmpty) {
+      final transfer = tokenTransfers[0] as Map<String, dynamic>;
+      final transferTo = (transfer['to'] as String? ?? '').toLowerCase();
+      isReceive = transferTo == walletAddress;
+      value = transfer['value'] as String? ?? '0';
+      tokenSymbol = transfer['token_symbol'] as String? ?? 'ERC20';
+      final decimals = transfer['decimals'] as int? ?? 18;
+      formattedValue = _formatWeiValueWithDecimals(value, decimals);
+    } else {
+      isReceive = to == walletAddress;
+      value = tx['value'] as String? ?? '0';
+      tokenSymbol = tx['token_symbol'] as String? ?? 'ETH';
+      formattedValue = _formatWeiValue(value);
+    }
 
     // Direction icon and colors
     final IconData icon;
@@ -634,7 +649,43 @@ class _HomeViewState extends State<HomeView> {
       trailingColor: trailingColor,
       chainColor: chainColor,
       chainName: chain?.displayName ?? 'Chain $chainId',
+      onTap: () => _showTxInChat(tx, walletAddress),
     );
+  }
+
+  void _showTxInChat(Map<String, dynamic> tx, String walletAddress) {
+    final to = (tx['to'] as String? ?? '').toLowerCase();
+    final chainId = tx['chain_id'] as int? ?? 1;
+    final tokenTransfers = (tx['token_transfers'] as List<dynamic>?) ?? [];
+
+    final String tokenSymbol;
+    final String value;
+    final bool isIncoming;
+    if (tokenTransfers.isNotEmpty) {
+      final transfer = tokenTransfers[0] as Map<String, dynamic>;
+      tokenSymbol = transfer['token_symbol'] as String? ?? 'ERC20';
+      value = transfer['value'] as String? ?? '0';
+      isIncoming = (transfer['to'] as String? ?? '').toLowerCase() == walletAddress;
+    } else {
+      tokenSymbol = tx['token_symbol'] as String? ?? 'ETH';
+      value = tx['value'] as String? ?? '0';
+      isIncoming = to == walletAddress;
+    }
+
+    AppShell.goToChatAndShowTx(context, {
+      'tx_hash': tx['tx_hash'] ?? '',
+      'from': tx['from'] ?? '',
+      'to': tx['to'] ?? '',
+      'value': value,
+      'token': tokenSymbol,
+      'status': tx['status'] ?? '',
+      'chain_id': chainId,
+      'timestamp': tx['timestamp'],
+      'gas_used': tx['gas_used'],
+      'is_incoming': isIncoming,
+      if (tokenTransfers.isNotEmpty)
+        'token_transfers': tokenTransfers,
+    });
   }
 
   static Color _chainColor(ChainConfig chain) {
@@ -659,18 +710,23 @@ class _HomeViewState extends State<HomeView> {
   }
 
   String _formatWeiValue(String weiValue) {
+    return _formatWeiValueWithDecimals(weiValue, 18);
+  }
+
+  String _formatWeiValueWithDecimals(String weiValue, int decimals) {
     if (weiValue == '0' || weiValue.isEmpty) return '0';
     try {
       final wei = BigInt.tryParse(weiValue);
       if (wei == null || wei == BigInt.zero) return '0';
-      final ethValue = wei / BigInt.from(10).pow(18);
-      final remainder = wei % BigInt.from(10).pow(18);
-      if (remainder == BigInt.zero) return ethValue.toString();
-      // Show up to 4 decimal places
-      final fracStr = remainder.toString().padLeft(18, '0');
-      final trimmed = fracStr.substring(0, 4).replaceAll(RegExp(r'0+$'), '');
-      if (trimmed.isEmpty) return ethValue.toString();
-      return '$ethValue.$trimmed';
+      final divisor = BigInt.from(10).pow(decimals);
+      final whole = wei ~/ divisor;
+      final remainder = (wei % divisor).abs();
+      if (remainder == BigInt.zero) return whole.toString();
+      final fracStr = remainder.toString().padLeft(decimals, '0');
+      final showDigits = decimals < 4 ? decimals : 4;
+      final trimmed = fracStr.substring(0, showDigits).replaceAll(RegExp(r'0+$'), '');
+      if (trimmed.isEmpty) return whole.toString();
+      return '$whole.$trimmed';
     } catch (_) {
       return '0';
     }
@@ -702,8 +758,12 @@ class _HomeViewState extends State<HomeView> {
     Color? trailingColor,
     Color? chainColor,
     String? chainName,
+    VoidCallback? onTap,
   }) {
-    return Padding(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
@@ -781,6 +841,7 @@ class _HomeViewState extends State<HomeView> {
           ],
         ],
       ),
+    ),
     );
   }
 

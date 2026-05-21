@@ -146,15 +146,28 @@ class _TxHistoryViewState extends State<TxHistoryView> {
   void _showTransactionDetail(Map<String, dynamic> tx) {
     final walletAddress = CowalletApp.of(context).walletAddress;
     final to = tx['to'] as String? ?? '';
-    final isIncoming = to.toLowerCase() == walletAddress.toLowerCase();
     final chainId = tx['chain_id'] as int? ?? 1;
-    final tokenSymbol = _getTokenSymbol(tx, chainId);
+    final tokenTransfers = (tx['token_transfers'] as List<dynamic>?) ?? [];
+
+    final String tokenSymbol;
+    final String value;
+    final bool isIncoming;
+    if (tokenTransfers.isNotEmpty) {
+      final transfer = tokenTransfers[0] as Map<String, dynamic>;
+      tokenSymbol = transfer['token_symbol'] as String? ?? 'ERC20';
+      value = transfer['value'] as String? ?? '0';
+      isIncoming = (transfer['to'] as String? ?? '').toLowerCase() == walletAddress.toLowerCase();
+    } else {
+      tokenSymbol = tx['token_symbol'] as String? ?? _nativeSymbol(chainId);
+      value = tx['value'] as String? ?? '0';
+      isIncoming = to.toLowerCase() == walletAddress.toLowerCase();
+    }
 
     AppShell.goToChatAndShowTx(context, {
       'tx_hash': tx['tx_hash'] ?? '',
       'from': tx['from'] ?? '',
       'to': to,
-      'value': tx['value'] ?? '0',
+      'value': value,
       'token': tokenSymbol,
       'status': tx['status'] ?? '',
       'chain_id': chainId,
@@ -162,13 +175,12 @@ class _TxHistoryViewState extends State<TxHistoryView> {
       'timestamp': tx['timestamp'],
       'gas_used': tx['gas_used'],
       'is_incoming': isIncoming,
+      if (tokenTransfers.isNotEmpty) 'token_transfers': tokenTransfers,
     });
   }
 
-  String _getTokenSymbol(Map<String, dynamic> tx, int chainId) {
-    final symbol = tx['token_symbol'] as String?;
-    if (symbol != null && symbol.isNotEmpty) return symbol;
-    if (chainId == 137) return 'POL';
+  String _nativeSymbol(int chainId) {
+    if (chainId == 137 || chainId == 80002) return 'POL';
     if (chainId == 56) return 'BNB';
     return 'ETH';
   }
@@ -362,13 +374,22 @@ class _TransactionItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final from = tx['from'] as String? ?? '';
     final to = tx['to'] as String? ?? '';
-    final value = tx['value'] as String? ?? '0';
     final status = tx['status'] as String? ?? '';
     final timestamp = tx['timestamp'] as String?;
     final blockNumber = tx['block_number'] as int?;
     final chainId = tx['chain_id'] as int? ?? 1;
+    final tokenTransfers = (tx['token_transfers'] as List<dynamic>?) ?? [];
 
-    final isIncoming = to.toLowerCase() == walletAddress.toLowerCase();
+    final String value;
+    final bool isIncoming;
+    if (tokenTransfers.isNotEmpty) {
+      final transfer = tokenTransfers[0] as Map<String, dynamic>;
+      value = transfer['value'] as String? ?? '0';
+      isIncoming = (transfer['to'] as String? ?? '').toLowerCase() == walletAddress.toLowerCase();
+    } else {
+      value = tx['value'] as String? ?? '0';
+      isIncoming = to.toLowerCase() == walletAddress.toLowerCase();
+    }
     final chain = ChainConfig.byChainId(chainId);
     final chainColor = chain != null ? _TxHistoryViewState._chainColor(chain) : CwColors.ink3;
 
@@ -486,7 +507,7 @@ class _TransactionItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    _formatValue(value, _getTokenSymbol(tx)),
+                    _formatValue(value, _getTokenSymbol(tx), decimals: _getDecimals(tx)),
                     style: TextStyle(
                       fontFamily: 'JetBrainsMono',
                       fontSize: 14,
@@ -511,6 +532,10 @@ class _TransactionItem extends StatelessWidget {
   }
 
   String _getTokenSymbol(Map<String, dynamic> tx) {
+    final tokenTransfers = (tx['token_transfers'] as List<dynamic>?) ?? [];
+    if (tokenTransfers.isNotEmpty) {
+      return (tokenTransfers[0] as Map<String, dynamic>)['token_symbol'] as String? ?? 'ERC20';
+    }
     final symbol = tx['token_symbol'] as String?;
     if (symbol != null && symbol.isNotEmpty) return symbol;
     final tokenAddress = tx['token_address'] as String?;
@@ -523,21 +548,27 @@ class _TransactionItem extends StatelessWidget {
     return 'Token';
   }
 
-  String _formatValue(String value, String symbol) {
+  int _getDecimals(Map<String, dynamic> tx) {
+    final tokenTransfers = (tx['token_transfers'] as List<dynamic>?) ?? [];
+    if (tokenTransfers.isNotEmpty) {
+      return (tokenTransfers[0] as Map<String, dynamic>)['decimals'] as int? ?? 18;
+    }
+    return 18;
+  }
+
+  String _formatValue(String value, String symbol, {int decimals = 18}) {
     try {
       final val = BigInt.parse(value);
-      final divisor18 = BigInt.from(10).pow(18);
-      final whole = val ~/ divisor18;
-      final frac = val % divisor18;
-      if (whole == BigInt.zero) {
-        final divisor15 = BigInt.from(10).pow(15);
-        final milli = val ~/ divisor15;
-        if (milli == BigInt.zero) return '< 0.001 $symbol';
-        return '0.${milli.toString().padLeft(3, '0')} $symbol';
-      }
+      if (val == BigInt.zero) return '0 $symbol';
+      final divisor = BigInt.from(10).pow(decimals);
+      final whole = val ~/ divisor;
+      final frac = (val % divisor).abs();
       if (frac == BigInt.zero) return '$whole $symbol';
-      final fracStr = (frac * BigInt.from(1000) ~/ divisor18).toString().padLeft(3, '0');
-      return '$whole.$fracStr $symbol';
+      final fracStr = frac.toString().padLeft(decimals, '0');
+      final showDigits = decimals < 4 ? decimals : 4;
+      final trimmed = fracStr.substring(0, showDigits).replaceAll(RegExp(r'0+$'), '');
+      if (trimmed.isEmpty) return '$whole $symbol';
+      return '$whole.$trimmed $symbol';
     } catch (e) {
       return value;
     }
