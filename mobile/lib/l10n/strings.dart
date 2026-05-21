@@ -657,4 +657,13 @@ class S {
   static String get backupEncryptedData => _p('加密备份数据', 'Encrypted backup data');
   static String get backupNotExported => _p('尚未导出备份', 'Backup not yet exported');
   static String get backupReminder => _p('请尽快导出你的第 3 份钥匙以确保钱包可恢复', 'Please export your 3rd key to ensure wallet recovery');
+
+  // Search
+  static String get searchHint => _p('搜索功能、资产、交易...', 'Search features, assets, transactions...');
+  static String get features => _p('功能', 'Features');
+  static String get myAssets => _p('我的资产', 'My Assets');
+  static String get noResults => _p('没有找到匹配结果', 'No results found');
+  static String get recentTx => _p('交易记录', 'Transactions');
+  static String get securityAudit => _p('安全审计', 'Security Audit');
+  static String get noAssets => _p('暂无资产数据', 'No assets data');
 }

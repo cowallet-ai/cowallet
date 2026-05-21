@@ -8,6 +8,7 @@ import '../../router/app_router.dart';
 import '../../api/tx_history_api.dart';
 import '../../config/api_config.dart';
 import '../../utils/secure_storage.dart';
+import 'search_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -224,7 +225,10 @@ class _HomeViewState extends State<HomeView> {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.search, color: CwColors.ink3, size: 22),
-            onPressed: () {},
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SearchView()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.menu, color: CwColors.ink3, size: 22),
