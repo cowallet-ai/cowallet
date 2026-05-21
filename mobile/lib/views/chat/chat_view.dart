@@ -131,12 +131,22 @@ class ChatViewState extends State<ChatView> {
     });
   }
 
-  /// Start a new topic
+  /// Start a new topic — explicitly create a fresh session
   void startNewSession() {
     setState(() {
       _sessionId = null;
       _messages.clear();
     });
+    _createFreshSession();
+  }
+
+  Future<void> _createFreshSession() async {
+    final userId = await SecureStorage.getUserId();
+    if (userId == null || userId.isEmpty) return;
+    final result = await AiApi.createSession(userId: userId);
+    if (result.isSuccess && result.data != null) {
+      _sessionId = result.data!.id;
+    }
   }
 
   /// Load a specific session
