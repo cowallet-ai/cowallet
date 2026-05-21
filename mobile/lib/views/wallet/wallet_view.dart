@@ -326,7 +326,13 @@ class _WalletViewState extends State<WalletView> {
     final chain = ChainConfig.byChainId(chainId)!;
     final chainColor = _chainColor(chain);
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => AppShell.goToChatAndSend(
+        context,
+        '查看${chain.displayName}上的资产',
+      ),
+      child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: CwColors.bgCard,
@@ -377,6 +383,7 @@ class _WalletViewState extends State<WalletView> {
           ...tokens.map((token) => _tokenRowInChain(context, token)),
         ],
       ),
+    ),
     );
   }
 
@@ -402,6 +409,7 @@ class _WalletViewState extends State<WalletView> {
     }
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => AppShell.goToChatAndSend(
         context,
         S.actionTokenInfo(symbol, balance, usd),
