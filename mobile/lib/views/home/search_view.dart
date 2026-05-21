@@ -258,26 +258,13 @@ class _SearchViewState extends State<SearchView> {
   Widget _assetRow(TokenBalance token) {
     final chainName = token.chainId != null ? ChainConfig.byId(token.chainId!).name : '';
     return InkWell(
-      onTap: () => _goChat('${token.symbol} $chainName'),
+      onTap: () => _goChat('查看${chainName.isNotEmpty ? "$chainName上的" : ""}${token.symbol}余额'),
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: CwColors.bgSubtle,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Center(
-                child: Text(
-                  token.symbol.substring(0, token.symbol.length > 3 ? 3 : token.symbol.length),
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: CwColors.ink2),
-                ),
-              ),
-            ),
+            _tokenIcon(token),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -352,6 +339,39 @@ class _SearchViewState extends State<SearchView> {
 
   void _goChat(String message) {
     Navigator.of(context).pop(message);
+  }
+
+  Widget _tokenIcon(TokenBalance token) {
+    if (token.logoUrl != null && token.logoUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Image.network(
+          token.logoUrl!,
+          width: 36,
+          height: 36,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _tokenFallbackIcon(token.symbol),
+        ),
+      );
+    }
+    return _tokenFallbackIcon(token.symbol);
+  }
+
+  Widget _tokenFallbackIcon(String symbol) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: CwColors.bgSubtle,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Center(
+        child: Text(
+          symbol.substring(0, symbol.length > 3 ? 3 : symbol.length),
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: CwColors.ink2),
+        ),
+      ),
+    );
   }
 
   Widget _sectionTitle(String text) {
