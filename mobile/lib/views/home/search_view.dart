@@ -329,10 +329,7 @@ class _SearchViewState extends State<SearchView> {
         : hash;
     final tokenSymbol = tx['token_symbol'] as String? ?? '';
     return InkWell(
-      onTap: () {
-        Navigator.pop(context);
-        AppShell.goToChatAndShowTx(context, tx);
-      },
+      onTap: () => Navigator.of(context).pop(hash),
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -354,8 +351,7 @@ class _SearchViewState extends State<SearchView> {
   // -- Helpers ----------------------------------------------------------------
 
   void _goChat(String message) {
-    Navigator.pop(context);
-    AppShell.goToChatAndSend(context, message);
+    Navigator.of(context).pop(message);
   }
 
   Widget _sectionTitle(String text) {

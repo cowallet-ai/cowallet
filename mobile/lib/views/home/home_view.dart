@@ -225,10 +225,15 @@ class _HomeViewState extends State<HomeView> {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.search, color: CwColors.ink3, size: 22),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SearchView()),
-            ),
+            onPressed: () async {
+              final result = await Navigator.push<String>(
+                context,
+                MaterialPageRoute(builder: (_) => const SearchView()),
+              );
+              if (result != null && result.isNotEmpty && mounted) {
+                AppShell.goToChatAndSend(context, result);
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.menu, color: CwColors.ink3, size: 22),
