@@ -1039,6 +1039,12 @@ async fn chat_stream(
                 "kind": kind,
                 "widget_type": widget,
             }));
+            // Persist write-tool widgets at tool_call phase (params contain the display data)
+            if kind == ToolKind::Write {
+                if let (Some(db), Some(w)) = (&state.db, &widget) {
+                    let _ = ChatStore::save_widget_message(db, db_session_id, w, &params, Some(&tc.id)).await;
+                }
+            }
         }
 
         // Execute tools based on kind
@@ -1101,9 +1107,6 @@ async fn chat_stream(
                     "result": prepared,
                     "error": null,
                 }));
-                if let (Some(db), Some(w)) = (&state.db, &widget) {
-                    let _ = ChatStore::save_widget_message(db, db_session_id, w, &prepared, Some(&tc.id)).await;
-                }
                 tool_results.push(ToolExecutionResult {
                     tool_id: tc.id.clone(),
                     tool_name: tc.name.clone(),
@@ -1282,6 +1285,13 @@ async fn chat_stream(
                         "widget_type": widget,
                     }));
 
+                    // Persist write-tool widgets at tool_call phase (params have display data)
+                    if kind == ToolKind::Write {
+                        if let (Some(db), Some(w)) = (&state.db, &widget) {
+                            let _ = ChatStore::save_widget_message(db, db_session_id, w, &params, Some(&tc.id)).await;
+                        }
+                    }
+
                     if kind == ToolKind::Meta {
                         yield sse_event("tool_result", &serde_json::json!({
                             "tool_id": tc.id,
@@ -1319,9 +1329,6 @@ async fn chat_stream(
                             "result": prepared,
                             "error": null,
                         }));
-                        if let (Some(db), Some(w)) = (&state.db, &widget) {
-                            let _ = ChatStore::save_widget_message(db, db_session_id, w, &prepared, Some(&tc.id)).await;
-                        }
                     } else {
                         // Read tools in second round
                         let result = tool_ctx.execute_tool(&tc.name, &tc.id, params.clone()).await;
