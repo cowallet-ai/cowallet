@@ -195,6 +195,28 @@ struct CovalentTxItem {
     gas_spent: Option<u64>,
     gas_quote: Option<f64>,
     value_quote: Option<f64>,
+    log_events: Option<Vec<CovalentLogEvent>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CovalentLogEvent {
+    sender_address: Option<String>,
+    sender_name: Option<String>,
+    sender_contract_ticker_symbol: Option<String>,
+    sender_contract_decimals: Option<u32>,
+    decoded: Option<CovalentDecodedEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CovalentDecodedEvent {
+    name: Option<String>,
+    params: Option<Vec<CovalentDecodedParam>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CovalentDecodedParam {
+    name: Option<String>,
+    value: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -210,6 +232,44 @@ pub struct TransactionItem {
     pub value_quote: f64,
     pub chain_id: u64,
     pub chain_name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub token_transfers: Vec<TokenTransfer>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TokenTransfer {
+    pub from: String,
+    pub to: String,
+    pub value: String,
+    pub token_symbol: String,
+    pub token_address: String,
+    pub decimals: u32,
+}
+
+fn extract_token_transfers(log_events: &Option<Vec<CovalentLogEvent>>) -> Vec<TokenTransfer> {
+    let events = match log_events {
+        Some(events) => events,
+        None => return Vec::new(),
+    };
+
+    events
+        .iter()
+        .filter_map(|event| {
+            let decoded = event.decoded.as_ref()?;
+            if decoded.name.as_deref() != Some("Transfer") {
+                return None;
+            }
+            let params = decoded.params.as_ref()?;
+            let from = params.iter().find(|p| p.name.as_deref() == Some("from"))?.value.clone().unwrap_or_default();
+            let to = params.iter().find(|p| p.name.as_deref() == Some("to"))?.value.clone().unwrap_or_default();
+            let value = params.iter().find(|p| p.name.as_deref() == Some("value"))?.value.clone().unwrap_or_else(|| "0".into());
+            let symbol = event.sender_contract_ticker_symbol.clone().unwrap_or_else(|| "???".into());
+            let token_address = event.sender_address.clone().unwrap_or_default();
+            let decimals = event.sender_contract_decimals.unwrap_or(18);
+
+            Some(TokenTransfer { from, to, value, token_symbol: symbol, token_address, decimals })
+        })
+        .collect()
 }
 
 pub async fn get_transactions(
@@ -281,22 +341,31 @@ pub async fn get_transactions(
     let transactions: Vec<TransactionItem> = data
         .items
         .into_iter()
-        .map(|item| TransactionItem {
-            tx_hash: item.tx_hash.unwrap_or_default(),
-            from: item.from_address.unwrap_or_default(),
-            to: item.to_address.unwrap_or_default(),
-            value: item.value.unwrap_or_else(|| "0".to_string()),
-            timestamp: item.block_signed_at.unwrap_or_default(),
-            status: if item.successful.unwrap_or(false) {
-                "confirmed".to_string()
+        .map(|item| {
+            let token_transfers = extract_token_transfers(&item.log_events);
+            let (display_symbol, display_value) = if token_transfers.len() == 1 && item.value.as_deref() == Some("0") {
+                (token_transfers[0].token_symbol.clone(), token_transfers[0].value.clone())
             } else {
-                "failed".to_string()
-            },
-            gas_used: item.gas_spent.unwrap_or(0),
-            token_symbol: native_symbol(chain_id).to_string(),
-            value_quote: item.value_quote.unwrap_or(0.0),
-            chain_id,
-            chain_name: chain_display_name(chain_id).to_string(),
+                (native_symbol(chain_id).to_string(), item.value.unwrap_or_else(|| "0".to_string()))
+            };
+            TransactionItem {
+                tx_hash: item.tx_hash.unwrap_or_default(),
+                from: item.from_address.unwrap_or_default(),
+                to: item.to_address.unwrap_or_default(),
+                value: display_value,
+                timestamp: item.block_signed_at.unwrap_or_default(),
+                status: if item.successful.unwrap_or(false) {
+                    "confirmed".to_string()
+                } else {
+                    "failed".to_string()
+                },
+                gas_used: item.gas_spent.unwrap_or(0),
+                token_symbol: display_symbol,
+                value_quote: item.value_quote.unwrap_or(0.0),
+                chain_id,
+                chain_name: chain_display_name(chain_id).to_string(),
+                token_transfers,
+            }
         })
         .collect();
 

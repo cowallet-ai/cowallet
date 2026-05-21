@@ -240,6 +240,8 @@ struct CovalentTxInfo {
     gas_used: u64,
     token_symbol: String,
     value_quote: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    token_transfers: Vec<covalent::TokenTransfer>,
 }
 
 /// GET /api/v1/tx/tx-history?address={addr}&chain_id={id}
@@ -289,6 +291,7 @@ async fn get_covalent_history(
             gas_used: item.gas_used,
             token_symbol: item.token_symbol,
             value_quote: item.value_quote,
+            token_transfers: item.token_transfers,
         })
         .collect();
 
@@ -326,6 +329,8 @@ struct AllChainTxInfo {
     gas_used: u64,
     token_symbol: String,
     value_quote: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    token_transfers: Vec<covalent::TokenTransfer>,
 }
 
 /// GET /api/v1/tx/all-history?address={addr}&chains={chain_ids}&limit={n}
@@ -394,6 +399,7 @@ async fn get_all_chain_history(
             gas_used: item.gas_used,
             token_symbol: item.token_symbol,
             value_quote: item.value_quote,
+            token_transfers: item.token_transfers,
         })
         .collect();
 
