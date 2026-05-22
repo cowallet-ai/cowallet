@@ -6,7 +6,6 @@ use tracing_subscriber;
 /// Background worker for periodic tasks.
 ///
 /// Jobs:
-/// - Key resharing scheduler (every 30 days per user)
 /// - Price feed updater (every 30 seconds)
 /// - Expired session cleanup
 /// - Approval request expiry check
@@ -40,12 +39,6 @@ async fn main() {
     if let Some(db_pool) = db.clone() {
         handles.push(tokio::spawn(async move {
             session_cleanup_task(db_pool).await;
-        }));
-    }
-
-    if let Some(db_pool) = db.clone() {
-        handles.push(tokio::spawn(async move {
-            reshare_scheduler_task(db_pool).await;
         }));
     }
 
@@ -137,89 +130,6 @@ async fn yield_refresh_task() {
                 }
             }
             Err(e) => tracing::warn!("yield data refresh failed: {}", e),
-        }
-    }
-}
-
-/// Reshare Scheduler Task: checks for wallets needing key reshare
-/// Runs every hour (configurable via RESHARE_CHECK_INTERVAL_SECS env var).
-/// Wallets are reshared every 30 days (configurable via RESHARE_INTERVAL_DAYS env var).
-async fn reshare_scheduler_task(db: PgPool) {
-    let check_interval_secs: u64 = std::env::var("RESHARE_CHECK_INTERVAL_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(3600);
-    let reshare_interval_days: i64 = std::env::var("RESHARE_INTERVAL_DAYS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(30);
-
-    let mut interval = tokio::time::interval(Duration::from_secs(check_interval_secs));
-
-    tracing::info!(
-        "reshare scheduler started: check every {}s, reshare interval {} days",
-        check_interval_secs,
-        reshare_interval_days
-    );
-
-    loop {
-        interval.tick().await;
-
-        let interval_str = format!("{} days", reshare_interval_days);
-
-        let wallets = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid)>(&format!(
-            "SELECT w.id, w.user_id FROM wallets w \
-             WHERE w.status = 'active' \
-             AND (w.last_reshare IS NULL OR w.last_reshare < NOW() - interval '{}')",
-            interval_str
-        ))
-        .fetch_all(&db)
-        .await;
-
-        match wallets {
-            Ok(rows) => {
-                if rows.is_empty() {
-                    tracing::debug!("no wallets need reshare");
-                    continue;
-                }
-
-                tracing::info!("{} wallet(s) need reshare", rows.len());
-
-                for (wallet_id, user_id) in rows {
-                    let session_id = uuid::Uuid::new_v4();
-
-                    let result = sqlx::query(
-                        "INSERT INTO mpc_sessions (id, user_id, session_type, parties, threshold, status, current_round, wallet_id) \
-                         VALUES ($1, $2, 'reshare', ARRAY[0,1], 2, 'pending', 0, $3)"
-                    )
-                    .bind(session_id)
-                    .bind(user_id)
-                    .bind(wallet_id)
-                    .execute(&db)
-                    .await;
-
-                    match result {
-                        Ok(_) => {
-                            tracing::info!(
-                                "Scheduled reshare for wallet {} (user {}), session {}",
-                                wallet_id,
-                                user_id,
-                                session_id
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "failed to create reshare session for wallet {}: {}",
-                                wallet_id,
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!("reshare scheduler query failed: {}", e);
-            }
         }
     }
 }

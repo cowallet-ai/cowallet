@@ -21,6 +21,7 @@ class MpcWalletService implements WalletService {
   String? _currentSessionId;
   BackupResult? _lastBackupResult;
   List<int>? _lastBackupShard;
+  bool _backupNeedsReExport = false;
   int _lastMessageId = 0;
   static const int _deviceParty = 0;
   static const int _serverParty = 1;
@@ -324,6 +325,13 @@ class MpcWalletService implements WalletService {
   /// 执行密钥轮转协议 (Reshare)
   /// 刷新密钥分片，旧分片失效，公钥不变
   /// [walletId] 可选，指定要轮转的钱包
+  ///
+  /// Failure recovery strategy:
+  /// - Before finalize: old shard still valid (in hardware + server), safe to retry
+  /// - After finalize but before hardware persist: new shard in Rust memory,
+  ///   export immediately to hardware. If hardware write fails, new shard is lost
+  ///   on restart → use backup shard recovery.
+  /// - After hardware persist: device done; backup refresh is best-effort
   Future<WalletInfo> runReshare({String? walletId}) async {
     final sessionResult = await MpcApi.createSession(
       sessionType: 'reshare',
@@ -358,6 +366,9 @@ class MpcWalletService implements WalletService {
       // Generate Round 1 (new polynomial evaluations)
       final round1Messages = await MpcBridge.reshareGenerateRound1(localSessionId);
 
+      // Extract device's new backup contribution before sending messages
+      final deviceBackupContrib = await MpcBridge.reshareDeriveBackupShare(localSessionId);
+
       // Send evaluations addressed to server via WebSocket
       for (final msgJson in round1Messages) {
         final msg = jsonDecode(msgJson) as Map<String, dynamic>;
@@ -382,11 +393,25 @@ class MpcWalletService implements WalletService {
       // Process server's evaluations and compute new share
       await MpcBridge.reshareProcessRound1(localSessionId, serverMsgsJson);
 
-      // Finalize: new shard replaces old in memory
+      // === POINT OF NO RETURN ===
+      // After finalize, Rust memory holds the new shard and old is gone.
+      // Must persist to hardware immediately.
       final walletInfo = await MpcBridge.reshareFinalize(localSessionId);
 
-      // Update stored address (should be unchanged)
+      // Persist new device shard to hardware IMMEDIATELY after finalize
+      final newShardBytes = await MpcBridge.exportDeviceShard();
+      await SecureHardware.storeDeviceShard(Uint8List.fromList(newShardBytes));
+
+      // Update stored address and public key
       await SecureStorage.save('mpc_address', walletInfo.address);
+      final pubKeyHex = walletInfo.publicKey
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      await SecureStorage.save('mpc_public_key', pubKeyHex);
+      await SecureStorage.save('last_key_rotation', DateTime.now().toIso8601String());
+
+      // Re-derive backup shard (best-effort — device+server are already safe)
+      await _refreshBackupShard(remoteSessionId, deviceBackupContrib);
 
       // Clear session state on success
       await MpcSessionStore.clearSession();
@@ -458,6 +483,46 @@ class MpcWalletService implements WalletService {
     return generated;
   }
 
+  /// Re-derive backup shard after reshare using new polynomial contributions.
+  /// Fetches server's new g_server(3), combines with device's g_device(3).
+  /// Does NOT auto-store — saves to memory for UI to prompt user to choose backup method.
+  Future<void> _refreshBackupShard(String remoteSessionId, List<int> deviceContribution) async {
+    try {
+      if (deviceContribution.length != 32) {
+        print('[MpcWalletService] Invalid device backup contribution length after reshare');
+        return;
+      }
+
+      final serverResult = await MpcApi.getBackupContribution(remoteSessionId);
+      if (!serverResult.isSuccess || serverResult.data == null) {
+        print('[MpcWalletService] Failed to fetch server reshare backup contribution');
+        return;
+      }
+
+      final serverContribution = serverResult.data!;
+      if (serverContribution.length != 32) {
+        print('[MpcWalletService] Invalid server backup contribution length after reshare');
+        return;
+      }
+
+      final newBackupShard = await MpcBridge.combineBackupShares(
+        deviceShare: deviceContribution,
+        serverShare: serverContribution,
+      );
+
+      if (newBackupShard.length != 32) {
+        print('[MpcWalletService] Invalid combined backup shard after reshare');
+        return;
+      }
+
+      _lastBackupShard = newBackupShard;
+      _backupNeedsReExport = true;
+      print('[MpcWalletService] New backup shard ready, awaiting user choice');
+    } catch (e) {
+      print('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
+    }
+  }
+
   /// 提取并存储备份分片
   /// 计算完整备份分片 (f_device(3) + f_server(3))
   /// 返回 32 字节标量，不自动存储。UI 层负责让用户选择存储方式。
@@ -512,6 +577,9 @@ class MpcWalletService implements WalletService {
   /// UI 层应调用此方法获取数据，然后让用户选择存储方式
   List<int>? get lastBackupShard => _lastBackupShard;
 
+  /// 轮换后备份分片需要重新导出（离线文件方式）
+  bool get backupNeedsReExport => _backupNeedsReExport;
+
   /// 用户选择存储方式后调用此方法
   Future<BackupResult> storeBackupShard(List<int> shardBytes, {required bool useCloud}) async {
     final backupService = BackupShardService(PlatformCloudBackup());
@@ -521,6 +589,7 @@ class MpcWalletService implements WalletService {
     }
     _lastBackupResult = await backupService.storeBackupShard(shardBytes, useCloud: useCloud);
     _lastBackupShard = null;
+    _backupNeedsReExport = false;
     return _lastBackupResult!;
   }
 

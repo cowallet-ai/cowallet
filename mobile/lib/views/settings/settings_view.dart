@@ -4,12 +4,15 @@ import '../../l10n/strings.dart';
 import '../../widgets/cw_chip.dart';
 import '../../widgets/section_label.dart';
 import '../../widgets/top_toast.dart';
+import '../../widgets/loading_overlay.dart';
 import '../../main.dart';
 import '../../services/locator.dart';
 import '../../services/settings_service.dart';
 import '../../widgets/pin_verify_dialog.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
+import '../../api/wallet_api.dart';
+import '../../api/mpc_api.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -23,9 +26,10 @@ class _SettingsViewState extends State<SettingsView> {
   bool _biometricAvailable = false;
   bool _hasEnrolledBiometrics = false;
   String _biometricType = 'Biometric';
-  bool _autoRotateEnabled = false;
   String? _lastRotationDate;
   bool _isRotating = false;
+  int _presignCount = 0;
+  bool _generatingPresigns = false;
 
   KeyStatus _phoneStatus = KeyStatus.unknown;
   KeyStatus _serverStatus = KeyStatus.unknown;
@@ -39,6 +43,7 @@ class _SettingsViewState extends State<SettingsView> {
     _loadBiometricStatus();
     _loadKeySecuritySettings();
     _loadKeyHealth();
+    _loadPresignStatus();
     _settings.addListener(_onSettingsChanged);
   }
 
@@ -115,7 +120,6 @@ class _SettingsViewState extends State<SettingsView> {
     if (!_biometricAvailable) return;
 
     if (value) {
-      // Enabling: verify PIN first, then biometric to confirm enrollment
       final ctx = Services.navigatorKey.currentContext;
       if (ctx == null) return;
       final pinOk = await PinVerifyDialog.show(ctx, reason: S.biometricAuthReason);
@@ -126,12 +130,14 @@ class _SettingsViewState extends State<SettingsView> {
       );
       if (!bioOk) return;
     } else {
-      // Disabling: standard auth (biometric since it's currently on)
       final authenticated = await Services.authenticate(reason: S.biometricAuthReason);
       if (!authenticated) return;
     }
 
+    if (!mounted) return;
+    LoadingOverlay.show(context);
     await Services.biometrics.setEnabled(value);
+    LoadingOverlay.dismiss();
     if (mounted) {
       setState(() => _biometricEnabled = value);
     }
@@ -139,8 +145,18 @@ class _SettingsViewState extends State<SettingsView> {
 
   Future<void> _toggleEmergencyFreeze() async {
     if (_settings.emergencyFreezeActive) {
-      // Deactivating — no confirmation needed
+      // Deactivating — require auth first
+      final authed = await Services.authenticate(reason: S.biometricAuthReason);
+      if (!authed) return;
+
+      if (!mounted) return;
+      LoadingOverlay.show(context);
+      final address = await SecureStorage.get('mpc_address');
+      if (address != null) {
+        await WalletApi.unfreezeWallet(address);
+      }
       await _settings.setEmergencyFreezeActive(false);
+      LoadingOverlay.dismiss();
       if (mounted) {
         showTopToast(context, S.emergencyFreezeDeactivated, backgroundColor: CwColors.success);
       }
@@ -165,7 +181,14 @@ class _SettingsViewState extends State<SettingsView> {
         ),
       );
       if (confirmed == true) {
+        if (!mounted) return;
+        LoadingOverlay.show(context);
+        final address = await SecureStorage.get('mpc_address');
+        if (address != null) {
+          await WalletApi.freezeWallet(address);
+        }
         await _settings.setEmergencyFreezeActive(true);
+        LoadingOverlay.dismiss();
         if (mounted) {
           showTopToast(context, S.emergencyFreezeActivated, backgroundColor: CwColors.danger);
         }
@@ -179,37 +202,148 @@ class _SettingsViewState extends State<SettingsView> {
     CowalletApp.of(context).setLang(newLang);
   }
 
-  void _toggleIntentMode() {
-    final newMode = _settings.intentMode == IntentMode.onEnter
-        ? IntentMode.whileTyping
-        : IntentMode.onEnter;
-    _settings.setIntentMode(newMode);
-  }
 
   void _toggleVoiceInput() {
     _settings.setVoiceInputEnabled(!_settings.voiceInputEnabled);
   }
 
   void _toggleWeeklyReport() {
+    if (!_settings.weeklyReportEnabled) {
+      showTopToast(
+        context,
+        S.lang == Lang.zh ? '功能开发中，敬请期待' : 'Coming soon',
+        backgroundColor: CwColors.ink3,
+      );
+      return;
+    }
     _settings.setWeeklyReportEnabled(!_settings.weeklyReportEnabled);
   }
 
+  Future<void> _handleResetOnboarding() async {
+    final balanceService = Services.balance;
+    final address = CowalletApp.of(context).walletAddress;
+
+    // Show loading while refreshing balance
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 20, height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 16),
+            Text(S.resetWalletChecking),
+          ],
+        ),
+      ),
+    );
+
+    await balanceService.refresh(address);
+    if (!mounted) return;
+    Navigator.pop(context); // dismiss loading
+
+    final totalUsd = double.tryParse(balanceService.portfolioTotalUsd) ?? 0.0;
+
+    if (totalUsd > 0) {
+      // Wallet has assets — warn user to transfer first
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(S.resetWalletTitle),
+          content: Text(S.resetWalletHasBalance),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(S.cancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamedAndRemoveUntil(
+                    context, '/', (_) => false);
+              },
+              child: Text(S.resetWalletGoTransfer),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Balance is zero — show final confirmation
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.resetWalletConfirmTitle),
+        content: Text(S.resetWalletConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: CwColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(S.resetWalletConfirm),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      CowalletApp.of(context).resetOnboarding();
+      Navigator.pushNamedAndRemoveUntil(
+          context, '/onboarding', (_) => false);
+    }
+  }
+
   Future<void> _loadKeySecuritySettings() async {
-    final autoRotate = await SecureStorage.get('auto_rotate_keys');
     final lastRotation = await SecureStorage.get('last_key_rotation');
 
     if (mounted) {
       setState(() {
-        _autoRotateEnabled = autoRotate == 'true';
         _lastRotationDate = lastRotation;
       });
     }
   }
 
-  Future<void> _toggleAutoRotate(bool value) async {
-    await SecureStorage.save('auto_rotate_keys', value.toString());
-    if (mounted) {
-      setState(() => _autoRotateEnabled = value);
+  Future<void> _loadPresignStatus() async {
+    try {
+      final walletAddress = await Services.mpcWallet.getAddress();
+      final result = await MpcApi.getPresignStatus(walletAddress);
+      if (result.isSuccess && result.data != null && mounted) {
+        setState(() {
+          _presignCount = result.data!['available_count'] as int? ?? 0;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _generatePresignatures() async {
+    if (_generatingPresigns) return;
+    setState(() => _generatingPresigns = true);
+
+    try {
+      final walletAddress = await Services.mpcWallet.getAddress();
+      final generated = await Services.mpcWallet.runPresign(
+        walletId: walletAddress,
+        count: 5,
+      );
+      if (mounted) {
+        setState(() => _generatingPresigns = false);
+        showTopToast(context, '${S.generationSuccess} ($generated/5)', backgroundColor: CwColors.success);
+        await _loadPresignStatus();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _generatingPresigns = false);
+        showTopToast(context, '${S.generationFailed}', backgroundColor: CwColors.danger);
+      }
     }
   }
 
@@ -217,29 +351,114 @@ class _SettingsViewState extends State<SettingsView> {
     if (_isRotating) return;
 
     setState(() => _isRotating = true);
+    if (mounted) LoadingOverlay.show(context);
 
     try {
       final walletAddress = await Services.mpcWallet.getAddress();
       await Services.mpcWallet.runReshare(walletId: walletAddress);
 
-      final now = DateTime.now().toIso8601String();
-      await SecureStorage.save('last_key_rotation', now);
+      LoadingOverlay.dismiss();
+
+      // Force user to save new backup shard before rotation is complete
+      final backupShard = Services.mpcWallet.lastBackupShard;
+      if (backupShard != null && mounted) {
+        final saved = await _showBackupChoiceDialog(backupShard);
+        if (!saved && mounted) {
+          showTopToast(
+            context,
+            S.lang == Lang.zh ? '请尽快备份新恢复密钥' : 'Please backup your new recovery key soon',
+            backgroundColor: CwColors.warn,
+          );
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _lastRotationDate = now;
+          _lastRotationDate = DateTime.now().toIso8601String();
           _isRotating = false;
         });
 
         showTopToast(context, S.rotationSuccess, backgroundColor: CwColors.success);
       }
     } catch (e) {
+      LoadingOverlay.dismiss();
       if (mounted) {
         setState(() => _isRotating = false);
 
         showTopToast(context, '${S.rotationFailed}: $e', backgroundColor: CwColors.danger);
       }
     }
+  }
+
+  /// Shows dialog forcing user to choose backup method for the new shard.
+  /// Returns true if user completed backup, false if dismissed.
+  Future<bool> _showBackupChoiceDialog(List<int> backupShard) async {
+    final isZh = S.lang == Lang.zh;
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(isZh ? '保存恢复密钥' : 'Save Recovery Key'),
+        content: Text(isZh
+            ? '轮换后旧的恢复密钥已失效，请选择新密钥的保存方式：'
+            : 'Old recovery key is now invalid. Choose how to save the new one:'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cloud'),
+            child: Text(isZh ? '保存到云端' : 'Save to Cloud'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'file'),
+            child: Text(isZh ? '导出加密文件' : 'Export Encrypted File'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'skip'),
+            style: TextButton.styleFrom(foregroundColor: CwColors.ink4),
+            child: Text(isZh ? '稍后再说' : 'Later'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'cloud') {
+      try {
+        LoadingOverlay.show(context);
+        await Services.mpcWallet.storeBackupShard(backupShard, useCloud: true);
+        LoadingOverlay.dismiss();
+        if (mounted) {
+          showTopToast(context, isZh ? '已保存到云端' : 'Saved to cloud',
+              backgroundColor: CwColors.success);
+        }
+        return true;
+      } catch (e) {
+        LoadingOverlay.dismiss();
+        if (mounted) {
+          showTopToast(context, isZh ? '云端保存失败: $e' : 'Cloud save failed: $e',
+              backgroundColor: CwColors.danger);
+        }
+        return false;
+      }
+    } else if (choice == 'file') {
+      try {
+        LoadingOverlay.show(context);
+        await Services.mpcWallet.storeBackupShard(backupShard, useCloud: false);
+        LoadingOverlay.dismiss();
+        if (mounted) {
+          showTopToast(context, isZh ? '已导出到文件' : 'Exported to file',
+              backgroundColor: CwColors.success);
+        }
+        return true;
+      } catch (e) {
+        LoadingOverlay.dismiss();
+        if (mounted) {
+          showTopToast(context, isZh ? '导出失败: $e' : 'Export failed: $e',
+              backgroundColor: CwColors.danger);
+        }
+        return false;
+      }
+    }
+
+    return false;
   }
 
   String _formatLastRotation() {
@@ -548,6 +767,8 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.infoSoft,
           title: S.riskGuard,
           subtitle: S.riskGuardSub,
+          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          onTap: () => Navigator.pushNamed(context, '/policy'),
         ),
       ],
     );
@@ -555,25 +776,8 @@ class _SettingsViewState extends State<SettingsView> {
 
   // ── Conversation settings list ──
   Widget _conversationList(BuildContext context) {
-    final intentLabel = _settings.intentMode == IntentMode.onEnter
-        ? S.onEnter
-        : S.whileTyping;
     return _settingsContainer(
       children: [
-        _settingRow(
-          context,
-          icon: Icons.chat_bubble_outline,
-          iconColor: CwColors.ink3,
-          iconBg: CwColors.bgSubtle,
-          title: S.intentMode,
-          subtitle: S.intentModeSub,
-          trailing: Text(
-            intentLabel,
-            style: const TextStyle(fontSize: 11, color: CwColors.ink3),
-          ),
-          onTap: _toggleIntentMode,
-        ),
-        const Divider(indent: 52, height: 1),
         _settingRow(
           context,
           icon: Icons.mic_none,
@@ -634,7 +838,6 @@ class _SettingsViewState extends State<SettingsView> {
             onChanged: (_) => _toggleWeeklyReport(),
             activeThumbColor: CwColors.accent,
           ),
-          onTap: _toggleWeeklyReport,
         ),
         const Divider(indent: 52, height: 1),
         _settingRow(
@@ -648,11 +851,7 @@ class _SettingsViewState extends State<SettingsView> {
             '↻',
             style: TextStyle(fontSize: 16, color: CwColors.ink3),
           ),
-          onTap: () {
-            CowalletApp.of(context).resetOnboarding();
-            Navigator.pushNamedAndRemoveUntil(
-                context, '/onboarding', (_) => false);
-          },
+          onTap: () => _handleResetOnboarding(),
         ),
       ],
     );
@@ -699,16 +898,27 @@ class _SettingsViewState extends State<SettingsView> {
         const Divider(indent: 52, height: 1),
         _settingRow(
           context,
-          icon: Icons.schedule,
-          iconColor: CwColors.info,
-          iconBg: CwColors.infoSoft,
-          title: S.autoRotate,
-          subtitle: S.autoRotateSub,
-          trailing: Switch(
-            value: _autoRotateEnabled,
-            onChanged: _toggleAutoRotate,
-            activeThumbColor: CwColors.accent,
-          ),
+          icon: Icons.bolt_outlined,
+          iconColor: CwColors.accent,
+          iconBg: CwColors.accentSoft,
+          title: S.presignatures,
+          subtitle: S.presignaturesSub,
+          trailing: _generatingPresigns
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(
+                  '$_presignCount',
+                  style: TextStyle(
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: _presignCount > 3 ? CwColors.success : CwColors.warn,
+                  ),
+                ),
+          onTap: _generatingPresigns ? null : _generatePresignatures,
         ),
       ],
     );

@@ -35,6 +35,10 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>CoWallet needs camera access to scan QR codes for wallet addresses and transactions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CoWallet uses the microphone for voice input in the AI chat.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>CoWallet uses speech recognition to convert your voice into text commands.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>We use Face ID to protect your wallet keys in the Secure Enclave. Your biometric data never leaves your device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

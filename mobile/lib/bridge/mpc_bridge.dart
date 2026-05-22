@@ -215,6 +215,17 @@ class MpcBridge {
     }
   }
 
+  /// Get device's backup contribution from reshare polynomial: g_device(3).
+  /// Must be called after reshareGenerateRound1(). Returns 32-byte scalar.
+  static Future<List<int>> reshareDeriveBackupShare(String sessionId) async {
+    try {
+      final result = await frb.reshareDeriveBackupShare(sessionId: sessionId);
+      return result;
+    } catch (e) {
+      throw MpcException('Reshare derive backup share failed: $e');
+    }
+  }
+
   /// Process reshare Round 1 messages from other parties.
   static Future<void> reshareProcessRound1(
     String sessionId,

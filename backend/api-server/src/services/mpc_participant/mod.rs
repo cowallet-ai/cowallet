@@ -587,6 +587,14 @@ impl MpcParticipant {
         let round1_msgs = reshare.generate_round1()
             .map_err(|e| format!("Reshare round 1 generation failed: {}", e))?;
 
+        // Store server's backup contribution for the new backup shard (g_server(3))
+        if let Ok(backup_contrib) = reshare.derive_backup_share() {
+            if backup_contrib.len() == 32 {
+                self.backup_contributions.insert(session_id, backup_contrib);
+                tracing::debug!("Stored reshare backup contribution for session {}", session_id);
+            }
+        }
+
         // Store outbound messages addressed to target (Party 0 in recovery, or all in normal reshare)
         for msg in &round1_msgs {
             if msg.to == 0 || msg.to == BROADCAST_PARTY {

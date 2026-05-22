@@ -20,6 +20,8 @@ pub fn router() -> Router<AppState> {
         .route("/{id}", get(get_wallet))
         .route("/{id}/chains", post(add_chain))
         .route("/{id}/chains/{chain_id}", delete(remove_chain))
+        .route("/{id}/freeze", post(freeze_wallet))
+        .route("/{id}/unfreeze", post(unfreeze_wallet))
 }
 
 #[derive(Serialize)]
@@ -220,6 +222,98 @@ async fn add_chain(
     })?;
 
     tracing::info!("Added chain {} to wallet {}", body.chain_id, id);
+
+    Ok(Json(WalletResponse {
+        id: row.0.to_string(),
+        name: row.1,
+        eth_address: format!("0x{}", hex::encode(&row.2)),
+        chain_ids: row.3,
+        status: row.4,
+        created_at: row.5.to_rfc3339(),
+    }))
+}
+
+/// Resolve wallet identifier: UUID or 0x-prefixed ETH address.
+async fn resolve_wallet(wid: &str, db: &sqlx::PgPool) -> Result<Uuid, StatusCode> {
+    if let Ok(uid) = Uuid::parse_str(wid) {
+        return Ok(uid);
+    }
+    if wid.starts_with("0x") || wid.starts_with("0X") {
+        let addr_bytes = hex::decode(wid.trim_start_matches("0x").trim_start_matches("0X"))
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM wallets WHERE eth_address = $1"
+        )
+        .bind(&addr_bytes)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(row.ok_or(StatusCode::NOT_FOUND)?.0);
+    }
+    Err(StatusCode::BAD_REQUEST)
+}
+
+/// POST /api/v1/wallets/{id}/freeze — freeze wallet, blocking all transactions
+/// {id} can be a UUID or 0x-prefixed ETH address.
+async fn freeze_wallet(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<String>,
+) -> Result<Json<WalletResponse>, StatusCode> {
+    let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let wallet_id = resolve_wallet(&id, db).await?;
+
+    let row: (Uuid, String, Vec<u8>, Vec<i64>, String, DateTime<Utc>) = sqlx::query_as(
+        "UPDATE wallets SET status = 'frozen' WHERE id = $1 AND user_id = $2
+         RETURNING id, name, eth_address, chain_ids, status, created_at"
+    )
+    .bind(wallet_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to freeze wallet {}: {}", wallet_id, e);
+        StatusCode::NOT_FOUND
+    })?;
+
+    tracing::info!("Wallet {} frozen by user {}", wallet_id, user_id);
+
+    Ok(Json(WalletResponse {
+        id: row.0.to_string(),
+        name: row.1,
+        eth_address: format!("0x{}", hex::encode(&row.2)),
+        chain_ids: row.3,
+        status: row.4,
+        created_at: row.5.to_rfc3339(),
+    }))
+}
+
+/// POST /api/v1/wallets/{id}/unfreeze — unfreeze wallet, re-enabling transactions
+/// {id} can be a UUID or 0x-prefixed ETH address.
+async fn unfreeze_wallet(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<String>,
+) -> Result<Json<WalletResponse>, StatusCode> {
+    let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let wallet_id = resolve_wallet(&id, db).await?;
+
+    let row: (Uuid, String, Vec<u8>, Vec<i64>, String, DateTime<Utc>) = sqlx::query_as(
+        "UPDATE wallets SET status = 'active' WHERE id = $1 AND user_id = $2 AND status = 'frozen'
+         RETURNING id, name, eth_address, chain_ids, status, created_at"
+    )
+    .bind(wallet_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to unfreeze wallet {}: {}", wallet_id, e);
+        StatusCode::NOT_FOUND
+    })?;
+
+    tracing::info!("Wallet {} unfrozen by user {}", wallet_id, user_id);
 
     Ok(Json(WalletResponse {
         id: row.0.to_string(),

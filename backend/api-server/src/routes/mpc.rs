@@ -96,6 +96,29 @@ pub async fn create_session(
         None => None,
     };
 
+    // Block sign/presign sessions if wallet is frozen
+    if matches!(body.session_type.as_str(), "sign" | "presign") {
+        if let Some(wid) = wallet_id {
+            let status: Option<(String,)> = sqlx::query_as(
+                "SELECT status FROM wallets WHERE id = $1"
+            )
+            .bind(wid)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check wallet freeze status: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            if let Some((s,)) = status {
+                if s == "frozen" {
+                    tracing::warn!("Wallet {} is frozen, rejecting {} session", wid, body.session_type);
+                    return Err(StatusCode::FORBIDDEN);
+                }
+            }
+        }
+    }
+
     sqlx::query(
         "INSERT INTO mpc_sessions (id, user_id, session_type, parties, threshold, status, current_round, wallet_id)
          VALUES ($1, $2, $3, $4, $5, 'active', 0, $6)"

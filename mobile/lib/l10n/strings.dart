@@ -343,7 +343,20 @@ class S {
   static String get weeklyReport => _p('每周透明度报告', 'Weekly transparency report');
   static String get weeklyReportSub => _p('CoWallet 自我体检 · 公开', 'CoWallet self-audits · public');
   static String get redoOnboarding => _p('重置引导流程', 'Redo onboarding');
-  static String get redoOnboardingSub => _p('从头看一遍', 'See it from the start');
+  static String get redoOnboardingSub => _p('将重新创建钱包，当前钱包数据会被清除', 'This will create a new wallet and erase current data');
+  static String get resetWalletTitle => _p('重置钱包', 'Reset Wallet');
+  static String get resetWalletHasBalance => _p(
+    '当前钱包仍有资产，请先将所有代币转移至其他地址后再重置。',
+    'Your wallet still has assets. Please transfer all tokens to another address before resetting.',
+  );
+  static String get resetWalletGoTransfer => _p('去转账', 'Transfer assets');
+  static String get resetWalletConfirmTitle => _p('确认重置', 'Confirm Reset');
+  static String get resetWalletConfirmBody => _p(
+    '重置后将创建全新钱包，当前地址和密钥分片将被永久清除，且无法撤销。确定继续？',
+    'This will create a new wallet. Your current address and key shards will be permanently erased. Continue?',
+  );
+  static String get resetWalletConfirm => _p('确认重置', 'Confirm Reset');
+  static String get resetWalletChecking => _p('正在检查余额…', 'Checking balance…');
   static String get off => _p('关', 'off');
   static String get whileTyping => _p('打字时浮现', 'While typing');
   static String get emergencyFreezeConfirmTitle => _p('确认紧急冻结', 'Confirm Emergency Freeze');
@@ -410,8 +423,6 @@ class S {
   static String get rotateKeySharesSub => _p('刷新三份钥匙，旧的失效，钱包地址不变', 'Refresh all three keys, old ones invalidated, wallet address unchanged');
   static String get lastRotation => _p('上次轮转', 'Last rotation');
   static String get never => _p('从未', 'Never');
-  static String get autoRotate => _p('每 30 天自动轮转', 'Auto-rotate every 30 days');
-  static String get autoRotateSub => _p('定期刷新三份钥匙以提高安全性', 'Periodically refresh all three keys for better security');
   static String get rotating => _p('轮转中...', 'Rotating...');
   static String get rotationSuccess => _p('三份钥匙已刷新', 'All three keys refreshed');
   static String get rotationFailed => _p('钥匙轮转失败', 'Key rotation failed');

@@ -14,10 +14,10 @@ class SettingsService extends ChangeNotifier {
   late SharedPreferences _prefs;
 
   bool _biometricEnabled = false;
-  bool _voiceInputEnabled = false;
+  bool _voiceInputEnabled = true;
   IntentMode _intentMode = IntentMode.onEnter;
   String _language = 'zh';
-  bool _weeklyReportEnabled = true;
+  bool _weeklyReportEnabled = false;
   bool _emergencyFreezeActive = false;
 
   // Getters
@@ -32,12 +32,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _biometricEnabled = _prefs.getBool(_keyBiometric) ?? false;
-    _voiceInputEnabled = _prefs.getBool(_keyVoiceInput) ?? false;
+    _voiceInputEnabled = _prefs.getBool(_keyVoiceInput) ?? true;
     _intentMode = _prefs.getString(_keyIntentMode) == 'whileTyping'
         ? IntentMode.whileTyping
         : IntentMode.onEnter;
     _language = _prefs.getString(_keyLanguage) ?? 'zh';
-    _weeklyReportEnabled = _prefs.getBool(_keyWeeklyReport) ?? true;
+    _weeklyReportEnabled = _prefs.getBool(_keyWeeklyReport) ?? false;
     _emergencyFreezeActive = _prefs.getBool(_keyEmergencyFreeze) ?? false;
   }
 

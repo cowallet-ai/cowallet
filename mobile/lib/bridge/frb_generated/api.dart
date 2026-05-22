@@ -122,6 +122,11 @@ Future<FfiReshareRound1Result> reshareGenerateRound1({
   required String sessionId,
 }) => RustLib.instance.api.crateApiReshareGenerateRound1(sessionId: sessionId);
 
+/// Get device's backup contribution from reshare polynomial: g_device(3).
+/// Must be called after reshareGenerateRound1(). Returns 32-byte scalar.
+Future<List<int>> reshareDeriveBackupShare({required String sessionId}) =>
+    RustLib.instance.api.crateApiReshareDeriveBackupShare(sessionId: sessionId);
+
 /// Process reshare Round 1 messages from other parties and compute new key share.
 Future<void> reshareProcessRound1({
   required String sessionId,

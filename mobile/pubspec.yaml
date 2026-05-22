@@ -70,6 +70,9 @@ dependencies:
   # UI
   google_fonts: ^6.2.1
 
+  # Speech-to-text (system STT engine)
+  speech_to_text: ^7.0.0
+
   # Markdown rendering for AI chat
   flutter_markdown: ^0.7.4+3
 

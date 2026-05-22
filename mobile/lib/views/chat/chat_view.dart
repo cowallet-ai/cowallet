@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
 import '../../widgets/cw_orb.dart';
@@ -88,6 +89,11 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   final _focusNode = FocusNode();
   final _txTracker = TxTrackerService();
 
+  // Speech-to-text
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  bool _speechAvailable = false;
+
   String? _sessionId;
   StreamSubscription? _streamSub;
 
@@ -95,6 +101,11 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    Services.settings.addListener(_onSettingsChanged);
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -109,6 +120,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    Services.settings.removeListener(_onSettingsChanged);
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -119,6 +131,63 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   Lang get _lang => CowalletApp.of(context).lang;
   bool get _isEmpty => _messages.isEmpty;
+
+  bool _voiceCancelled = false;
+  String _voiceText = '';
+
+  Future<void> _startListening() async {
+    if (!_speechAvailable) {
+      _speechAvailable = await _speech.initialize(
+        onError: (error) {
+          print('[STT] error: ${error.errorMsg}');
+          _stopListening(cancelled: false);
+        },
+        onStatus: (status) {
+          if (status == 'done' || status == 'notListening') {
+            if (_isListening) _stopListening(cancelled: _voiceCancelled);
+          }
+        },
+      );
+      if (!_speechAvailable) return;
+    }
+
+    _voiceCancelled = false;
+    _voiceText = '';
+    setState(() => _isListening = true);
+
+    await _speech.listen(
+      onResult: (result) {
+        setState(() => _voiceText = result.recognizedWords);
+        if (result.finalResult) {
+          _stopListening(cancelled: _voiceCancelled);
+        }
+      },
+      localeId: S.lang == Lang.zh ? 'zh_CN' : 'en_US',
+      listenMode: stt.ListenMode.dictation,
+    );
+  }
+
+  Future<void> _stopListening({required bool cancelled}) async {
+    await _speech.stop();
+    if (!mounted) return;
+    setState(() => _isListening = false);
+    if (!cancelled && _voiceText.trim().isNotEmpty) {
+      _controller.text = _voiceText.trim();
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+    }
+    _voiceText = '';
+  }
+
+  void _onVoiceLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    final dy = details.offsetFromOrigin.dy;
+    if (dy < -80 && !_voiceCancelled) {
+      setState(() => _voiceCancelled = true);
+    } else if (dy >= -80 && _voiceCancelled) {
+      setState(() => _voiceCancelled = false);
+    }
+  }
 
   void sendMessage(String message) {
     _send(message);
@@ -621,6 +690,10 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
           },
         ));
         _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: result.message));
+      } else if (result.needsConfirm) {
+        // Policy requires confirmation (e.g. large transfer)
+        _showPolicyConfirmDialog(result.message, params, msg);
+        return;
       } else if (result.data['suggest_deduct_gas'] == 'true') {
         msg.confirmed = true;
         final maxSendable = result.data['max_sendable'] ?? '0';
@@ -656,6 +729,70 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       }
     });
     _scrollToBottom();
+  }
+
+  Future<void> _showPolicyConfirmDialog(
+    String reason,
+    Map<String, String> params,
+    ChatMsg originalMsg,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.lang == Lang.zh ? '风险提示' : 'Risk Warning'),
+        content: Text(reason),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.lang == Lang.zh ? '取消' : 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: CwColors.accent),
+            child: Text(S.lang == Lang.zh ? '确认继续' : 'Continue'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() => originalMsg.loading = true);
+      final result = await Services.intent.execute('transfer', params, skipPolicy: true);
+      if (!mounted) return;
+      setState(() {
+        originalMsg.loading = false;
+        originalMsg.confirmed = true;
+        if (result.success) {
+          _messages.add(ChatMsg(
+            kind: ChatMsgKind.widget,
+            widgetType: WidgetType.txResult,
+            widgetData: {
+              'tx_hash': result.data['txHash'] ?? '',
+              'success': true,
+              'amount': params['amount'],
+              'token': params['token'],
+            },
+          ));
+          _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: result.message));
+        } else {
+          _messages.add(ChatMsg(
+            kind: ChatMsgKind.widget,
+            widgetType: WidgetType.txResult,
+            widgetData: {
+              'success': false,
+              'amount': params['amount'],
+              'token': params['token'],
+              'error_message': result.message,
+            },
+          ));
+        }
+      });
+      _scrollToBottom();
+    } else {
+      setState(() {
+        originalMsg.loading = false;
+        originalMsg.confirmed = true;
+      });
+    }
   }
 
   Future<void> _autoFetchDeduction(int index) async {
@@ -925,12 +1062,71 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
-      child: Column(
+      child: Stack(
         children: [
-          _buildHeader(),
-          Expanded(child: _isEmpty ? _buildEmptyState() : _buildConversation()),
-          _buildComposer(),
+          Column(
+            children: [
+              _buildHeader(),
+              Expanded(child: _isEmpty ? _buildEmptyState() : _buildConversation()),
+              _buildComposer(),
+            ],
+          ),
+          if (_isListening) _buildVoiceOverlay(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVoiceOverlay() {
+    final isZh = S.lang == Lang.zh;
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black54,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: _voiceCancelled ? CwColors.danger : CwColors.accent,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _voiceCancelled ? Icons.close : Icons.mic,
+                size: 48,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (_voiceText.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: CwColors.bgCard,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _voiceText,
+                  style: const TextStyle(fontSize: 15, color: CwColors.ink1),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            const SizedBox(height: 16),
+            Text(
+              _voiceCancelled
+                  ? (isZh ? '松开取消' : 'Release to cancel')
+                  : (isZh ? '上滑取消，松开发送' : 'Slide up to cancel'),
+              style: TextStyle(
+                fontSize: 13,
+                color: _voiceCancelled ? CwColors.danger : Colors.white70,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1320,9 +1516,24 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(width: 4),
+            if (Services.settings.voiceInputEnabled)
+              GestureDetector(
+                onLongPressStart: (_) => _startListening(),
+                onLongPressMoveUpdate: _onVoiceLongPressMoveUpdate,
+                onLongPressEnd: (_) => _stopListening(cancelled: _voiceCancelled),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: Icon(
+                    _isListening ? Icons.mic : Icons.mic_none,
+                    size: 20,
+                    color: _isListening ? CwColors.danger : CwColors.ink3,
+                  ),
+                ),
+              ),
             SizedBox(
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               child: IconButton(
                 padding: EdgeInsets.zero,
                 icon: const Icon(Icons.send_rounded, size: 20),

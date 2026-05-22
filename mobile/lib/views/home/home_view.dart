@@ -235,10 +235,6 @@ class _HomeViewState extends State<HomeView> {
               }
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.menu, color: CwColors.ink3, size: 22),
-            onPressed: () {},
-          ),
         ],
       ),
     );
@@ -872,6 +868,7 @@ class _HomeViewState extends State<HomeView> {
                   icon: Icons.auto_awesome,
                   title: S.scAiReads,
                   desc: S.scAiReadsSub,
+                  onTap: () => AppShell.goToChatAndSend(context, '介绍一下AI读懂意图功能'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -882,6 +879,7 @@ class _HomeViewState extends State<HomeView> {
                   icon: Icons.smart_toy_outlined,
                   title: S.scAgentPay,
                   desc: S.scAgentPaySub,
+                  onTap: () => AppShell.goToChatAndSend(context, '介绍一下代理支付功能'),
                 ),
               ),
             ],
@@ -896,6 +894,7 @@ class _HomeViewState extends State<HomeView> {
                   icon: Icons.family_restroom,
                   title: S.scFamily,
                   desc: S.scFamilySub,
+                  onTap: () => AppShell.goToChatAndSend(context, '介绍一下家庭共管功能'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -906,6 +905,7 @@ class _HomeViewState extends State<HomeView> {
                   icon: Icons.extension_outlined,
                   title: S.scSkills,
                   desc: S.scSkillsSub,
+                  onTap: () => AppShell.goToChatAndSend(context, '介绍一下技能扩展功能'),
                 ),
               ),
             ],
@@ -921,8 +921,11 @@ class _HomeViewState extends State<HomeView> {
     required IconData icon,
     required String title,
     required String desc,
+    VoidCallback? onTap,
   }) {
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: CwColors.bgCard,
@@ -962,6 +965,7 @@ class _HomeViewState extends State<HomeView> {
                 ),
           ),
         ],
+      ),
       ),
     );
   }

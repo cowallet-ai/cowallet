@@ -7,6 +7,7 @@ import '../api/tx_api.dart';
 import '../l10n/strings.dart';
 import 'chain_service.dart';
 import 'locator.dart';
+import 'policy_service.dart';
 import 'wallet_service.dart';
 
 abstract class TxService {
@@ -18,6 +19,7 @@ abstract class TxService {
     BigInt? maxPriorityFeePerGas,
     String? data,
     int? chainId,
+    bool skipPolicy,
   });
 
   Future<String> sendErc20({
@@ -28,6 +30,7 @@ abstract class TxService {
     BigInt? maxFeePerGas,
     BigInt? maxPriorityFeePerGas,
     int? chainId,
+    bool skipPolicy,
   });
 }
 
@@ -37,6 +40,14 @@ class TxSigningException implements Exception {
 
   @override
   String toString() => 'TxSigningException: $message';
+}
+
+class TxPolicyConfirmException implements Exception {
+  final String reason;
+  TxPolicyConfirmException(this.reason);
+
+  @override
+  String toString() => 'TxPolicyConfirmException: $reason';
 }
 
 class MpcTxService implements TxService {
@@ -61,8 +72,14 @@ class MpcTxService implements TxService {
     BigInt? maxPriorityFeePerGas,
     String? data,
     int? chainId,
+    bool skipPolicy = false,
   }) async {
     final effectiveChainId = chainId ?? this.chainId;
+
+    // Emergency freeze check — block all transactions when active
+    if (Services.settings.emergencyFreezeActive) {
+      throw TxSigningException('钱包已紧急冻结，无法发起交易');
+    }
 
     // Switch chain RPC if targeting a different chain
     if (_chain is JsonRpcChainService && effectiveChainId != this.chainId) {
@@ -70,6 +87,25 @@ class MpcTxService implements TxService {
     }
 
     final address = await _wallet.getAddress();
+
+    // Policy engine check — evaluate against user-configured rules
+    if (!skipPolicy) {
+      final policyResult = await Services.policy.checkTransaction(
+        from: address,
+        to: to,
+        value: value.toString(),
+        token: _nativeSymbolForChain(effectiveChainId),
+        chainId: effectiveChainId,
+      );
+      if (policyResult.decision == PolicyDecision.deny) {
+        throw TxSigningException(policyResult.reason ?? '策略拦截：交易被拒绝');
+      }
+      if (policyResult.decision == PolicyDecision.requireApproval) {
+        throw TxPolicyConfirmException(
+          policyResult.reason ?? '大额转账，请确认是否继续',
+        );
+      }
+    }
 
     final nonce = await _chain.getTransactionCount(address);
 
@@ -200,6 +236,7 @@ class MpcTxService implements TxService {
     BigInt? maxFeePerGas,
     BigInt? maxPriorityFeePerGas,
     int? chainId,
+    bool skipPolicy = false,
   }) async {
     // ERC-20 transfer(address,uint256) selector = 0xa9059cbb
     final toStripped = to.toLowerCase().replaceFirst('0x', '').padLeft(64, '0');
@@ -214,6 +251,7 @@ class MpcTxService implements TxService {
       maxFeePerGas: maxFeePerGas,
       maxPriorityFeePerGas: maxPriorityFeePerGas,
       chainId: chainId,
+      skipPolicy: skipPolicy,
     );
   }
 

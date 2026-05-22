@@ -30,6 +30,9 @@ pub struct ReshareSession {
     /// Needed for Lagrange interpolation when fewer than `total_parties` participate.
     participants: Vec<u16>,
     state: ReshareState,
+    /// Our polynomial evaluation at the backup party index (party 2, x=3).
+    /// Stored during generate_round1() for post-reshare backup shard derivation.
+    backup_eval: Option<Scalar>,
 }
 
 /// Round 1 message for resharing: each party's new VSS commitments
@@ -90,6 +93,7 @@ impl ReshareSession {
             participants: (0..n).collect(),
             old_share,
             state: ReshareState::AwaitingRound1,
+            backup_eval: None,
         }
     }
 
@@ -109,6 +113,7 @@ impl ReshareSession {
             participants,
             old_share,
             state: ReshareState::AwaitingRound1,
+            backup_eval: None,
         }
     }
 
@@ -162,6 +167,7 @@ impl ReshareSession {
         let target = self.target_party;
         let mut evaluations = Vec::new();
         let mut self_eval_for_target = Scalar::ZERO;
+        let backup_party_index: u16 = 2;
 
         for j in 0..n {
             let x = Scalar::from((j + 1) as u64);
@@ -173,6 +179,9 @@ impl ReshareSession {
             }
             if j as u16 == target {
                 self_eval_for_target = y;
+            }
+            if j as u16 == backup_party_index {
+                self.backup_eval = Some(y);
             }
             evaluations.push((j as u16, y.to_bytes().to_vec()));
         }
@@ -292,6 +301,16 @@ impl ReshareSession {
             ReshareState::Failed { error } => Err(MpcError::ResharingFailed(error)),
             _ => Err(MpcError::ResharingFailed("resharing not complete".into())),
         }
+    }
+
+    /// Get this party's contribution to the backup shard: g_i(backup_party_index + 1).
+    /// Must be called after generate_round1(). Returns 32-byte scalar.
+    pub fn derive_backup_share(&self) -> Result<Vec<u8>> {
+        self.backup_eval
+            .map(|s| s.to_bytes().to_vec())
+            .ok_or_else(|| MpcError::ResharingFailed(
+                "backup evaluation not available — call after generate_round1()".into(),
+            ))
     }
 
     /// Compute Lagrange coefficient for party `i` within `participants`.

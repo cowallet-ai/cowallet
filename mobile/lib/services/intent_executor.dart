@@ -34,8 +34,9 @@ class IntentExecutor {
 
   Future<ActionResult> execute(
     String kind,
-    Map<String, String> params,
-  ) async {
+    Map<String, String> params, {
+    bool skipPolicy = false,
+  }) async {
     // Block execution when emergency freeze is active
     if (Services.settings.emergencyFreezeActive) {
       return ActionResult.fail(S.emergencyFreezeActive);
@@ -45,7 +46,7 @@ class IntentExecutor {
       case 'balance':
         return _executeBalance();
       case 'transfer':
-        return _executeTransfer(params);
+        return _executeTransfer(params, skipPolicy: skipPolicy);
       case 'swap':
         return _executeSwap(params);
       default:
@@ -102,7 +103,7 @@ class IntentExecutor {
     }
   }
 
-  Future<ActionResult> _executeTransfer(Map<String, String> params) async {
+  Future<ActionResult> _executeTransfer(Map<String, String> params, {bool skipPolicy = false}) async {
     try {
       final to = params['to'] ?? '';
       final amountStr = params['amount'] ?? '0';
@@ -222,6 +223,7 @@ class IntentExecutor {
           gasLimit: sendAllGasLimit,
           maxFeePerGas: sendAllMaxFee,
           maxPriorityFeePerGas: sendAllMaxPriority,
+          skipPolicy: skipPolicy,
         );
       } else {
         // ERC-20: use contract address from AI params, or resolve locally
@@ -236,6 +238,7 @@ class IntentExecutor {
           tokenContract: tokenContract,
           amount: amount,
           chainId: targetChainId,
+          skipPolicy: skipPolicy,
         );
       }
 
@@ -260,6 +263,8 @@ class IntentExecutor {
         S.transferSuccess(shortHash),
         data: {'txHash': txHash, 'amount': amountStr, 'token': token},
       );
+    } on TxPolicyConfirmException catch (e) {
+      return ActionResult.confirm(e.reason);
     } catch (e) {
       final msg = e.toString();
       final txHash = params['to'] ?? 'unknown';

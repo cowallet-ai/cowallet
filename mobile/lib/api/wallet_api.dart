@@ -71,6 +71,18 @@ class WalletApi {
     return await DioClient.delete('/wallets/$walletId/chains/$chainId');
   }
 
+  /// 冻结钱包 — 阻止所有交易签名
+  /// POST /api/v1/wallets/{id}/freeze
+  static Future<Result<Map<String, dynamic>>> freezeWallet(String id) async {
+    return await DioClient.post('/wallets/$id/freeze');
+  }
+
+  /// 解冻钱包 — 恢复交易能力
+  /// POST /api/v1/wallets/{id}/unfreeze
+  static Future<Result<Map<String, dynamic>>> unfreezeWallet(String id) async {
+    return await DioClient.post('/wallets/$id/unfreeze');
+  }
+
   /// 获取钱包总价值（通过交易历史和价格计算）
   /// 这是一个示例方法，实际余额应该在链上查询
   static Future<double> getEstimatedValue(String address) async {

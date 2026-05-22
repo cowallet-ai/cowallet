@@ -173,6 +173,10 @@ abstract class RustLibApi extends BaseApi {
     required List<int> serverCommitment,
   });
 
+  Future<List<int>> crateApiReshareDeriveBackupShare({
+    required String sessionId,
+  });
+
   Future<FfiReshareComplete> crateApiReshareFinalize({
     required String sessionId,
   });
@@ -1069,6 +1073,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           "publicKey",
           "serverCommitment",
         ],
+      );
+
+  @override
+  Future<List<int>> crateApiReshareDeriveBackupShare({
+    required String sessionId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiReshareDeriveBackupShareConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiReshareDeriveBackupShareConstMeta =>
+      const TaskConstMeta(
+        debugName: "reshare_derive_backup_share",
+        argNames: ["sessionId"],
       );
 
   @override

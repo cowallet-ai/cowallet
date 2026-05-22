@@ -376,6 +376,15 @@ class Api {
     );
   }
 
+  /// Get device's backup contribution from reshare polynomial: g_device(3).
+  Future<List<int>> reshareDeriveBackupShare({required String sessionId}) async {
+    return _callNative<List<int>>(
+      'reshare_derive_backup_share',
+      [sessionId],
+      (result) => List<int>.from(result as List),
+    );
+  }
+
   /// Process reshare Round 1 messages from other parties.
   Future<void> reshareProcessRound1(String sessionId, List<String> messagesJson) async {
     await _callNative<void>(

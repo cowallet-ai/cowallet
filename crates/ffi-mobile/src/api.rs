@@ -496,6 +496,17 @@ pub fn reshare_generate_round1(session_id: String) -> Result<FfiReshareRound1Res
     Ok(FfiReshareRound1Result { messages_json: json_messages })
 }
 
+/// Get this party's backup contribution from the reshare polynomial: g_device(3).
+/// Must be called after reshare_generate_round1(). Returns 32-byte scalar.
+pub fn reshare_derive_backup_share(session_id: String) -> Result<Vec<u8>, String> {
+    let arc = state::get_reshare_session_arc(&session_id)
+        .ok_or("reshare session not found")?;
+
+    let session = arc.lock().unwrap();
+    session.derive_backup_share()
+        .map_err(|e| format!("reshare derive_backup_share failed: {}", e))
+}
+
 /// Process reshare Round 1 messages from other parties and compute new key share.
 pub fn reshare_process_round1(
     session_id: String,
