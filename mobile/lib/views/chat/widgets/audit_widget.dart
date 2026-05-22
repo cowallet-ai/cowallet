@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 
@@ -73,7 +74,7 @@ class ChatAuditWidget extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
-                        fontFamily: 'JetBrainsMono',
+                        fontFamily: CwTypography.monoFamily,
                         color: scoreColor,
                       ),
                     ),

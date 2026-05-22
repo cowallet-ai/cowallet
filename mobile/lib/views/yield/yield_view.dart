@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../api/yield_api.dart';
 import '../../theme/colors.dart';
@@ -116,8 +117,8 @@ class _YieldViewState extends State<YieldView> {
         children: [
           Text(
             S.yieldLabel,
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
@@ -169,8 +170,8 @@ class _YieldViewState extends State<YieldView> {
           const SizedBox(width: 4),
           Text(
             value,
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 12,
               fontWeight: FontWeight.w700,
               color: CwColors.success,
@@ -276,8 +277,8 @@ class _YieldViewState extends State<YieldView> {
                           child: Text(
                             opp.tokenLabel,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'JetBrainsMono',
+                            style: TextStyle(
+                              fontFamily: CwTypography.monoFamily,
                               fontSize: 11,
                               color: CwColors.ink3,
                             ),
@@ -300,8 +301,8 @@ class _YieldViewState extends State<YieldView> {
                 children: [
                   Text(
                     '${opp.apy.toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
+                    style: TextStyle(
+                      fontFamily: CwTypography.monoFamily,
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
                       color: CwColors.success,
@@ -327,8 +328,8 @@ class _YieldViewState extends State<YieldView> {
               // TVL
               Text(
                 'TVL ${_formatUsd(opp.tvlUsd)}',
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                style: TextStyle(
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: CwColors.ink3,
@@ -400,8 +401,8 @@ class _YieldViewState extends State<YieldView> {
                 const Spacer(),
                 Text(
                   '${opp.apy.toStringAsFixed(1)}% APY',
-                  style: const TextStyle(
-                    fontFamily: 'JetBrainsMono',
+                  style: TextStyle(
+                    fontFamily: CwTypography.monoFamily,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: CwColors.success,
@@ -412,8 +413,8 @@ class _YieldViewState extends State<YieldView> {
             const SizedBox(height: 6),
             Text(
               opp.tokenLabel,
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
+              style: TextStyle(
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 13,
                 color: CwColors.ink3,
               ),
@@ -422,8 +423,8 @@ class _YieldViewState extends State<YieldView> {
               const SizedBox(height: 16),
               Text(
                 S.yieldStrategy,
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                style: TextStyle(
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink3,
@@ -443,8 +444,8 @@ class _YieldViewState extends State<YieldView> {
             // APY breakdown
             Text(
               S.yieldApyBreakdown,
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
+              style: TextStyle(
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: CwColors.ink3,
@@ -461,8 +462,8 @@ class _YieldViewState extends State<YieldView> {
             if (opp.riskFactors.isNotEmpty) ...[
               Text(
                 S.yieldRisks,
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                style: TextStyle(
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink3,
@@ -526,8 +527,8 @@ class _YieldViewState extends State<YieldView> {
           const Spacer(),
           Text(
             '${value.toStringAsFixed(2)}%',
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: CwColors.ink2,

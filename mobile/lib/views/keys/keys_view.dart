@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -219,8 +220,8 @@ class _KeysViewState extends State<KeysView> {
                 children: [
                   TextSpan(
                     text: '${S.keysH1a}\n',
-                    style: const TextStyle(
-                      fontFamily: 'NotoSerifSC',
+                    style: TextStyle(
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 26,
                       fontWeight: FontWeight.w600,
                       color: CwColors.ink1,
@@ -230,8 +231,8 @@ class _KeysViewState extends State<KeysView> {
                   ),
                   TextSpan(
                     text: S.keysH1b,
-                    style: const TextStyle(
-                      fontFamily: 'NotoSerifSC',
+                    style: TextStyle(
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 26,
                       fontWeight: FontWeight.w600,
                       color: CwColors.ink1,
@@ -241,8 +242,8 @@ class _KeysViewState extends State<KeysView> {
                   ),
                   TextSpan(
                     text: S.keysH1em,
-                    style: const TextStyle(
-                      fontFamily: 'Fraunces',
+                    style: TextStyle(
+                      fontFamily: CwTypography.serifEnFamily,
                       fontSize: 26,
                       fontWeight: FontWeight.w600,
                       fontStyle: FontStyle.italic,
@@ -311,8 +312,8 @@ class _KeysViewState extends State<KeysView> {
                 children: [
                   Text(
                     S.keysExplainLabel,
-                    style: const TextStyle(
-                      fontFamily: 'NotoSerifSC',
+                    style: TextStyle(
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 13.5,
                       fontWeight: FontWeight.w600,
                       color: CwColors.ink1,
@@ -343,8 +344,8 @@ class _KeysViewState extends State<KeysView> {
                     children: [
                       Text(
                         S.keysTechLabel,
-                        style: const TextStyle(
-                          fontFamily: 'NotoSerifSC',
+                        style: TextStyle(
+                          fontFamily: CwTypography.serifFamily,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                           color: CwColors.ink1,
@@ -422,8 +423,8 @@ class _KeysViewState extends State<KeysView> {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
-                          fontFamily: 'NotoSerifSC',
+                        style: TextStyle(
+                          fontFamily: CwTypography.serifFamily,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                           color: CwColors.ink1,
@@ -458,8 +459,8 @@ class _KeysViewState extends State<KeysView> {
                     )
                   : Text(
                       meta,
-                      style: const TextStyle(
-                        fontFamily: 'JetBrainsMono',
+                      style: TextStyle(
+                        fontFamily: CwTypography.monoFamily,
                         fontSize: 10,
                         color: CwColors.ink3,
                       ),

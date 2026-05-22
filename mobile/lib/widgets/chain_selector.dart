@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../l10n/strings.dart';
@@ -38,8 +39,7 @@ class ChainSelector extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               chain.displayName,
-              style: const TextStyle(
-                fontFamily: 'Inter',
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: CwColors.ink2,
@@ -144,8 +144,8 @@ class _ChainList extends StatelessWidget {
               // Title
               Text(
                 S.selectNetwork,
-                style: const TextStyle(
-                  fontFamily: 'NotoSerifSC',
+                style: TextStyle(
+                  fontFamily: CwTypography.serifFamily,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: CwColors.ink1,
@@ -180,8 +180,8 @@ class _ChainList extends StatelessWidget {
   Widget _sectionHeader(String title) {
     return Text(
       title,
-      style: const TextStyle(
-        fontFamily: 'JetBrainsMono',
+      style: TextStyle(
+        fontFamily: CwTypography.monoFamily,
         fontSize: 10,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.8,
@@ -226,7 +226,6 @@ class _ChainList extends StatelessWidget {
                   Text(
                     chain.displayName,
                     style: TextStyle(
-                      fontFamily: 'Inter',
                       fontSize: 14,
                       fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                       color: CwColors.ink1,
@@ -235,8 +234,8 @@ class _ChainList extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     chain.symbol,
-                    style: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
+                    style: TextStyle(
+                      fontFamily: CwTypography.monoFamily,
                       fontSize: 11,
                       color: CwColors.ink3,
                     ),

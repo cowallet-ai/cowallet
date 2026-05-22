@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/colors.dart';
@@ -103,7 +104,7 @@ class ChatTxDetailWidget extends StatelessWidget {
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              fontFamily: 'JetBrainsMono',
+              fontFamily: CwTypography.monoFamily,
               color: isIncoming ? CwColors.success : CwColors.ink1,
             ),
           ),
@@ -155,9 +156,9 @@ class ChatTxDetailWidget extends StatelessWidget {
                     Expanded(
                       child: Text(
                         shortHash,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          fontFamily: 'JetBrainsMono',
+                          fontFamily: CwTypography.monoFamily,
                           color: CwColors.accent,
                         ),
                         textAlign: TextAlign.right,
@@ -191,9 +192,9 @@ class ChatTxDetailWidget extends StatelessWidget {
             Expanded(
               child: Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
-                  fontFamily: 'JetBrainsMono',
+                  fontFamily: CwTypography.monoFamily,
                   color: CwColors.ink2,
                 ),
                 textAlign: TextAlign.right,

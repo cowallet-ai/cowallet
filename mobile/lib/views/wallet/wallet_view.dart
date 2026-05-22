@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
@@ -92,8 +93,8 @@ class _WalletViewState extends State<WalletView> {
         children: [
           Text(
             S.totalBalance,
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
@@ -103,8 +104,8 @@ class _WalletViewState extends State<WalletView> {
           const SizedBox(height: 8),
           Text(
             bal.loading ? '...' : '\$${bal.portfolioTotalUsd}',
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 34,
               fontWeight: FontWeight.w700,
               color: CwColors.ink1,
@@ -116,20 +117,18 @@ class _WalletViewState extends State<WalletView> {
             const SizedBox(height: 12),
             Text(
               bal.error!,
-              style: const TextStyle(
-                fontFamily: 'Inter',
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: CwColors.danger,
               ),
             ),
           ] else if (bal.loading)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
               child: Text(
                 'Loading...',
                 style: TextStyle(
-                  fontFamily: 'Inter',
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                   color: CwColors.ink4,
@@ -241,8 +240,7 @@ class _WalletViewState extends State<WalletView> {
               const SizedBox(width: 8),
               Text(
                 chain.displayName,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink1,
@@ -251,8 +249,8 @@ class _WalletViewState extends State<WalletView> {
               const Spacer(),
               Text(
                 '\$$chainTotal',
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                style: TextStyle(
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: CwColors.ink1,
@@ -330,8 +328,8 @@ class _WalletViewState extends State<WalletView> {
                   ),
                   Text(
                     balance,
-                    style: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
+                    style: TextStyle(
+                      fontFamily: CwTypography.monoFamily,
                       fontSize: 11,
                       color: CwColors.ink3,
                     ),
@@ -341,8 +339,8 @@ class _WalletViewState extends State<WalletView> {
             ),
             Text(
               '\$$usd',
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
+              style: TextStyle(
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: CwColors.ink1,
@@ -482,8 +480,7 @@ class _WalletViewState extends State<WalletView> {
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
             child: Text(
               '${S.browseAll} →',
-              style: const TextStyle(
-                fontFamily: 'Inter',
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: CwColors.accent,
@@ -509,8 +506,7 @@ class _WalletViewState extends State<WalletView> {
           children: [
             Text(
               name,
-              style: const TextStyle(
-                fontFamily: 'Inter',
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: CwColors.ink1,
@@ -520,7 +516,7 @@ class _WalletViewState extends State<WalletView> {
             Text(
               detail,
               style: TextStyle(
-                fontFamily: 'JetBrainsMono',
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: color,
@@ -587,10 +583,10 @@ class _WalletViewState extends State<WalletView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'APY',
                         style: TextStyle(
-                          fontFamily: 'JetBrainsMono',
+                          fontFamily: CwTypography.monoFamily,
                           fontSize: 10,
                           fontWeight: FontWeight.w500,
                           color: CwColors.ink3,
@@ -598,10 +594,10 @@ class _WalletViewState extends State<WalletView> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
+                      Text(
                         '4.82%',
                         style: TextStyle(
-                          fontFamily: 'JetBrainsMono',
+                          fontFamily: CwTypography.monoFamily,
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
                           color: CwColors.success,
@@ -622,8 +618,7 @@ class _WalletViewState extends State<WalletView> {
                     children: [
                       Text(
                         '放了 \$10,000 · ${S.today}赚了 \$1.32',
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: CwColors.ink2,

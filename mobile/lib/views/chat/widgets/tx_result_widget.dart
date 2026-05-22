@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -153,9 +154,9 @@ class _ChatTxResultWidgetState extends State<ChatTxResultWidget> {
                 children: [
                   Text(
                     'Tx: $shortHash',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      fontFamily: 'JetBrainsMono',
+                      fontFamily: CwTypography.monoFamily,
                       color: CwColors.ink3,
                     ),
                   ),

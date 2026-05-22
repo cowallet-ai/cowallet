@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../l10n/strings.dart';
@@ -291,7 +292,7 @@ class ChatSendConfirmWidget extends StatelessWidget {
         )),
         Text(value, style: TextStyle(
           fontSize: 12,
-          fontFamily: 'JetBrainsMono',
+          fontFamily: CwTypography.monoFamily,
           color: bold ? CwColors.ink1 : CwColors.ink2,
           fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
         )),
@@ -307,9 +308,9 @@ class ChatSendConfirmWidget extends StatelessWidget {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              fontFamily: 'JetBrainsMono',
+              fontFamily: CwTypography.monoFamily,
               color: CwColors.ink2,
             ),
             textAlign: TextAlign.right,

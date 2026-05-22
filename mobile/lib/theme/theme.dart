@@ -7,6 +7,7 @@ ThemeData cwTheme() {
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
+    fontFamily: CwTypography.sansFamily,
     scaffoldBackgroundColor: CwColors.bgPaper,
     colorScheme: const ColorScheme.light(
       primary: CwColors.accent,
@@ -48,8 +49,8 @@ ThemeData cwTheme() {
         foregroundColor: Colors.white,
         minimumSize: const Size.fromHeight(52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        textStyle: const TextStyle(
-          fontFamily: 'Inter',
+        textStyle: TextStyle(
+          fontFamily: CwTypography.sansFamily,
           fontSize: 15,
           fontWeight: FontWeight.w600,
         ),

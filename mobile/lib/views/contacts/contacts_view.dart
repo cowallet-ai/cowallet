@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -280,8 +281,8 @@ class _ContactsViewState extends State<ContactsView> {
         children: [
           Text(
             shortAddr,
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 12,
               color: CwColors.ink3,
             ),

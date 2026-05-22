@@ -113,6 +113,7 @@ Future<FfiSignResult> signProcessRound2({
 
 /// Initialize a reshare session using the current device shard.
 /// The old shard is consumed; after finalize() the new shard replaces it.
+/// `participants` specifies which parties are active (e.g. [0,1] for device+server).
 Future<FfiReshareSession> reshareSessionNew({required int partyIndex}) =>
     RustLib.instance.api.crateApiReshareSessionNew(partyIndex: partyIndex);
 

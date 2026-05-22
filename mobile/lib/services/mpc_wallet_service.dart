@@ -389,10 +389,11 @@ class MpcWalletService implements WalletService {
         final msg = jsonDecode(msgJson) as Map<String, dynamic>;
         final to = msg['to'] as int;
         if (to == _serverParty) {
+          final rawPayload = List<int>.from(msg['payload'] as List);
           ws.sendRaw(
             toParty: _serverParty,
             round: 1,
-            payload: utf8.encode(msgJson),
+            payload: rawPayload,
           );
         }
       }

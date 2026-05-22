@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 
@@ -26,8 +27,8 @@ class SectionLabel extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
+              style: TextStyle(
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.5,
@@ -42,7 +43,7 @@ class SectionLabel extends StatelessWidget {
               child: Text(
                 trailing!,
                 style: TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 10,
                   letterSpacing: 0.8,
                   color: trailingColor ?? CwColors.accent,

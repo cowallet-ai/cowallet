@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/colors.dart';
@@ -164,7 +165,7 @@ class ChatHistoryWidget extends StatelessWidget {
                   '-$value $token',
                   style: TextStyle(
                     fontSize: 13,
-                    fontFamily: 'JetBrainsMono',
+                    fontFamily: CwTypography.monoFamily,
                     fontWeight: FontWeight.w500,
                     color: isFailed ? CwColors.danger : CwColors.ink1,
                   ),

@@ -182,7 +182,7 @@ impl AiClient {
             .map_err(|_| "DEEPSEEK_API_KEY not set")?;
         let base_url = std::env::var("DEEPSEEK_BASE_URL").ok();
         let model = std::env::var("DEEPSEEK_MODEL").ok();
-        tracing::info!("Using DeepSeek AI (base={})", base_url.as_deref().unwrap_or("https://api.deepseek.com"));
+        tracing::info!("Using DeepSeek AI (base={}, model={})", base_url.as_deref().unwrap_or("https://api.deepseek.com"), model.as_deref().unwrap_or("deepseek-chat"));
         Self::new(api_key, base_url, model)
     }
 

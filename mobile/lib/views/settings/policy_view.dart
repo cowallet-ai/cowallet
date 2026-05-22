@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
@@ -196,8 +197,8 @@ class _PolicyViewState extends State<PolicyView> {
   Widget _sectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(
-        fontFamily: 'NotoSerifSC',
+      style: TextStyle(
+        fontFamily: CwTypography.serifFamily,
         fontSize: 14,
         fontWeight: FontWeight.w600,
         color: CwColors.ink1,
@@ -240,8 +241,8 @@ class _PolicyViewState extends State<PolicyView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(
-                      fontFamily: 'NotoSerifSC',
+                    Text(title, style: TextStyle(
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 13.5,
                       fontWeight: FontWeight.w500,
                       color: CwColors.ink1,

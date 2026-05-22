@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
@@ -444,7 +445,6 @@ class _TransactionItem extends StatelessWidget {
                         Text(
                           chain?.displayName ?? (tx['chain_name'] as String? ?? 'Chain $chainId'),
                           style: TextStyle(
-                            fontFamily: 'Inter',
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: chainColor,
@@ -454,8 +454,8 @@ class _TransactionItem extends StatelessWidget {
                         Expanded(
                           child: Text(
                             _truncateAddress(isIncoming ? from : to),
-                            style: const TextStyle(
-                              fontFamily: 'JetBrainsMono',
+                            style: TextStyle(
+                              fontFamily: CwTypography.monoFamily,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: CwColors.ink1,
@@ -509,7 +509,7 @@ class _TransactionItem extends StatelessWidget {
                   Text(
                     _formatValue(value, _getTokenSymbol(tx), decimals: _getDecimals(tx)),
                     style: TextStyle(
-                      fontFamily: 'JetBrainsMono',
+                      fontFamily: CwTypography.monoFamily,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: isIncoming ? CwColors.success : CwColors.ink1,

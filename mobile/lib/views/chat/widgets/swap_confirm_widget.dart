@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../l10n/strings.dart';
@@ -152,10 +153,10 @@ class ChatSwapConfirmWidget extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             amount,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              fontFamily: 'JetBrainsMono',
+              fontFamily: CwTypography.monoFamily,
               color: CwColors.ink1,
             ),
           ),

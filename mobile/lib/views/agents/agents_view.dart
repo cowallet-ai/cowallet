@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
@@ -113,8 +114,8 @@ class AgentsView extends StatelessWidget {
         children: [
           Text(
             S.agentsLabel,
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
@@ -223,8 +224,8 @@ class AgentsView extends StatelessWidget {
             children: [
               Text(
                 '\$${usageAmount.toInt()} / \$${usageLimit.toInt()}',
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                style: TextStyle(
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: CwColors.ink3,
@@ -234,8 +235,7 @@ class AgentsView extends StatelessWidget {
                 const Spacer(),
                 Text(
                   meta,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
+                  style: TextStyle(
                     fontSize: 11,
                     color: CwColors.ink3,
                   ),
@@ -316,8 +316,7 @@ class AgentsView extends StatelessWidget {
               const Spacer(),
               Text(
                 s.name,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink1,
@@ -382,8 +381,8 @@ class AgentsView extends StatelessWidget {
                       ),
                       child: Text(
                         p.name,
-                        style: const TextStyle(
-                          fontFamily: 'JetBrainsMono',
+                        style: TextStyle(
+                          fontFamily: CwTypography.monoFamily,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: CwColors.ink2,

@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -42,8 +43,8 @@ class _BackupShardViewState extends State<BackupShardView>
       appBar: AppBar(
         title: Text(
           S.backupExport,
-          style: const TextStyle(
-            fontFamily: 'NotoSerifSC',
+          style: TextStyle(
+            fontFamily: CwTypography.serifFamily,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -279,8 +280,8 @@ class _ExportTabState extends State<_ExportTab> {
                 const SizedBox(height: 8),
                 SelectableText(
                   _exportedData!,
-                  style: const TextStyle(
-                    fontFamily: 'JetBrainsMono',
+                  style: TextStyle(
+                    fontFamily: CwTypography.monoFamily,
                     fontSize: 11,
                     color: CwColors.ink2,
                   ),
@@ -422,8 +423,8 @@ class _ImportTabState extends State<_ImportTab> {
               tooltip: S.backupPasteData,
             ),
           ),
-          style: const TextStyle(
-            fontFamily: 'JetBrainsMono',
+          style: TextStyle(
+            fontFamily: CwTypography.monoFamily,
             fontSize: 11,
           ),
         ),

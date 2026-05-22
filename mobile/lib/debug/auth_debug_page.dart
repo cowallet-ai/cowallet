@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../api/auth_api.dart';
 import '../utils/secure_storage.dart';
@@ -184,8 +185,8 @@ class _AuthDebugPageState extends State<AuthDebugPage> {
               child: SingleChildScrollView(
                 child: Text(
                   _log.isEmpty ? "准备好了，点击上方按钮开始测试" : _log,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
+                  style: TextStyle(
+                    fontFamily: CwTypography.monoFamily,
                     fontSize: 12,
                   ),
                 ),

@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
@@ -298,7 +299,7 @@ class _HomeViewState extends State<HomeView> {
             Text(
               '${address.substring(0, 6)}...${address.substring(address.length - 4)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'JetBrainsMono',
+                    fontFamily: CwTypography.monoFamily,
                     color: CwColors.ink4,
                     fontSize: 11,
                   ),
@@ -801,7 +802,6 @@ class _HomeViewState extends State<HomeView> {
                       Text(
                         chainName,
                         style: TextStyle(
-                          fontFamily: 'Inter',
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: chainColor,

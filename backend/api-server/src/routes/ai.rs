@@ -827,7 +827,7 @@ async fn chat_stream(
             Ok(resp) => resp,
             Err(e) => {
                 tracing::error!("AI stream failed: {}", e);
-                yield sse_event("error", &serde_json::json!({"message": format!("AI 请求失败: {}", e)}));
+                yield sse_event("error", &serde_json::json!({"message": "AI 服务暂时不可用，请稍后重试"}));
                 yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
                 return;
             }

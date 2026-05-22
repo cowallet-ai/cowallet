@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -1188,8 +1189,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             const SizedBox(height: 24),
             Text(
               S.chatEmpty,
-              style: const TextStyle(
-                fontFamily: 'NotoSerifSC',
+              style: TextStyle(
+                fontFamily: CwTypography.serifFamily,
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
                 color: CwColors.ink1,
@@ -1305,10 +1306,10 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                   ),
                 ),
                 const SizedBox(width: 5),
-                const Text(
+                Text(
                   'COWALLET',
                   style: TextStyle(
-                    fontFamily: 'JetBrainsMono',
+                    fontFamily: CwTypography.monoFamily,
                     fontSize: 10,
                     letterSpacing: 1.0,
                     fontWeight: FontWeight.w600,
@@ -1333,7 +1334,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                       h3: const TextStyle(fontSize: 16, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w600),
                       h4: const TextStyle(fontSize: 15, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w600),
                       code: TextStyle(
-                        fontFamily: 'JetBrainsMono',
+                        fontFamily: CwTypography.monoFamily,
                         fontSize: 13,
                         color: CwColors.ink1,
                         backgroundColor: CwColors.bgCard,

@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
@@ -12,7 +13,6 @@ import '../../widgets/pin_verify_dialog.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 import '../../api/wallet_api.dart';
-import '../../api/mpc_api.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -28,8 +28,6 @@ class _SettingsViewState extends State<SettingsView> {
   String _biometricType = 'Biometric';
   String? _lastRotationDate;
   bool _isRotating = false;
-  int _presignCount = 0;
-  bool _generatingPresigns = false;
 
   KeyStatus _phoneStatus = KeyStatus.unknown;
   KeyStatus _serverStatus = KeyStatus.unknown;
@@ -43,7 +41,6 @@ class _SettingsViewState extends State<SettingsView> {
     _loadBiometricStatus();
     _loadKeySecuritySettings();
     _loadKeyHealth();
-    _loadPresignStatus();
     _settings.addListener(_onSettingsChanged);
   }
 
@@ -312,40 +309,6 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
-  Future<void> _loadPresignStatus() async {
-    try {
-      final walletAddress = await Services.mpcWallet.getAddress();
-      final result = await MpcApi.getPresignStatus(walletAddress);
-      if (result.isSuccess && result.data != null && mounted) {
-        setState(() {
-          _presignCount = result.data!['available_count'] as int? ?? 0;
-        });
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _generatePresignatures() async {
-    if (_generatingPresigns) return;
-    setState(() => _generatingPresigns = true);
-
-    try {
-      final walletAddress = await Services.mpcWallet.getAddress();
-      final generated = await Services.mpcWallet.runPresign(
-        walletId: walletAddress,
-        count: 5,
-      );
-      if (mounted) {
-        setState(() => _generatingPresigns = false);
-        showTopToast(context, '${S.generationSuccess} ($generated/5)', backgroundColor: CwColors.success);
-        await _loadPresignStatus();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _generatingPresigns = false);
-        showTopToast(context, '${S.generationFailed}', backgroundColor: CwColors.danger);
-      }
-    }
-  }
 
   Future<void> _performKeyRotation() async {
     if (_isRotating) return;
@@ -554,8 +517,8 @@ class _SettingsViewState extends State<SettingsView> {
           Center(
             child: Text(
               S.signoff1,
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
+              style: TextStyle(
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 10,
                 color: CwColors.ink4,
               ),
@@ -565,8 +528,8 @@ class _SettingsViewState extends State<SettingsView> {
           Center(
             child: Text(
               S.signoff2,
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
+              style: TextStyle(
+                fontFamily: CwTypography.monoFamily,
                 fontSize: 10,
                 color: CwColors.ink4,
               ),
@@ -600,8 +563,8 @@ class _SettingsViewState extends State<SettingsView> {
                     children: [
                       Text(
                         S.keysCheckup,
-                        style: const TextStyle(
-                          fontFamily: 'NotoSerifSC',
+                        style: TextStyle(
+                          fontFamily: CwTypography.serifFamily,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                           color: CwColors.ink1,
@@ -910,22 +873,20 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.accentSoft,
           title: S.presignatures,
           subtitle: S.presignaturesSub,
-          trailing: _generatingPresigns
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(
-                  '$_presignCount',
-                  style: TextStyle(
-                    fontFamily: 'JetBrainsMono',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: _presignCount > 3 ? CwColors.success : CwColors.warn,
-                  ),
-                ),
-          onTap: _generatingPresigns ? null : _generatePresignatures,
+          trailing: Text(
+            '5',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: CwColors.success,
+            ),
+          ),
+          onTap: () => showTopToast(
+            context,
+            S.lang == Lang.zh ? '功能开发中，敬请期待' : 'Coming soon',
+            backgroundColor: CwColors.ink3,
+          ),
         ),
       ],
     );
@@ -967,8 +928,8 @@ class _SettingsViewState extends State<SettingsView> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontFamily: 'NotoSerifSC',
+                    style: TextStyle(
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 13.5,
                       fontWeight: FontWeight.w500,
                       color: CwColors.ink1,

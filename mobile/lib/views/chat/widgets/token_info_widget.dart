@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 
@@ -72,8 +73,8 @@ class ChatTokenInfoWidget extends StatelessWidget {
                       children: [
                         Text(
                           symbol,
-                          style: const TextStyle(
-                            fontFamily: 'JetBrainsMono',
+                          style: TextStyle(
+                            fontFamily: CwTypography.monoFamily,
                             fontSize: 12,
                             color: CwColors.ink3,
                           ),
@@ -102,8 +103,8 @@ class ChatTokenInfoWidget extends StatelessWidget {
               if (priceUsd != null)
                 Text(
                   '\$${priceUsd.toStringAsFixed(priceUsd > 100 ? 0 : 2)}',
-                  style: const TextStyle(
-                    fontFamily: 'JetBrainsMono',
+                  style: TextStyle(
+                    fontFamily: CwTypography.monoFamily,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: CwColors.ink1,
@@ -160,8 +161,8 @@ class ChatTokenInfoWidget extends StatelessWidget {
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
+            style: TextStyle(
+              fontFamily: CwTypography.monoFamily,
               fontSize: 12,
               fontWeight: FontWeight.w500,
               color: CwColors.ink2,

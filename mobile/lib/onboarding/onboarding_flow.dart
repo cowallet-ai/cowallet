@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -1467,8 +1468,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   child: TextField(
                     controller: _nameCtrl,
                     textCapitalization: TextCapitalization.words,
-                    style: const TextStyle(
-                      fontFamily: 'NotoSerifSC',
+                    style: TextStyle(
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 20,
                       fontWeight: FontWeight.w500,
                       color: CwColors.ink1,
@@ -1477,7 +1478,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     decoration: InputDecoration(
                       hintText: S.namePlaceholder,
                       hintStyle: TextStyle(
-                        fontFamily: 'NotoSerifSC',
+                        fontFamily: CwTypography.serifFamily,
                         fontSize: 20,
                         fontWeight: FontWeight.w400,
                         color: CwColors.ink4,
@@ -1715,7 +1716,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           child: Text(
             '$n',
             style: TextStyle(
-              fontFamily: 'JetBrainsMono',
+              fontFamily: CwTypography.monoFamily,
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: CwColors.accent,

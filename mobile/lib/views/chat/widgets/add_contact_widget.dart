@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 
@@ -63,7 +64,7 @@ class AddContactWidget extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       shortAddr,
-                      style: TextStyle(fontSize: 13, color: CwColors.ink3, fontFamily: 'monospace'),
+                      style: TextStyle(fontSize: 13, color: CwColors.ink3, fontFamily: CwTypography.monoFamily),
                     ),
                   ],
                 ),

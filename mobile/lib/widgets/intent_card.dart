@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 
@@ -56,8 +57,8 @@ class IntentCard extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 headerLabel,
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
+                style: TextStyle(
+                  fontFamily: CwTypography.monoFamily,
                   fontSize: 10,
                   letterSpacing: 1.0,
                   fontWeight: FontWeight.w600,
@@ -69,8 +70,8 @@ class IntentCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             title,
-            style: const TextStyle(
-              fontFamily: 'NotoSerifSC',
+            style: TextStyle(
+              fontFamily: CwTypography.serifFamily,
               fontSize: 15,
               fontWeight: FontWeight.w500,
               height: 1.35,

@@ -1,3 +1,4 @@
+import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 import '../../../l10n/strings.dart';
@@ -188,10 +189,10 @@ class ChatBalanceWidget extends StatelessWidget {
           children: [
             Text(
               balance,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                fontFamily: 'JetBrainsMono',
+                fontFamily: CwTypography.monoFamily,
                 color: CwColors.ink1,
               ),
             ),
