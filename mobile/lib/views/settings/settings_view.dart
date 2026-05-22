@@ -7,6 +7,7 @@ import '../../widgets/top_toast.dart';
 import '../../main.dart';
 import '../../services/locator.dart';
 import '../../services/settings_service.dart';
+import '../../widgets/pin_verify_dialog.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 
@@ -88,6 +89,7 @@ class _SettingsViewState extends State<SettingsView> {
     final enabled = await Services.biometrics.isEnabled();
     final hasEnrolled = await Services.biometrics.hasEnrolledBiometrics();
     final bioType = await Services.biometrics.getPrimaryBiometricType();
+    print('[Settings] biometric available=$available, enabled=$enabled, hasEnrolled=$hasEnrolled, type=$bioType');
 
     if (mounted) {
       setState(() {
@@ -110,10 +112,24 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Future<void> _toggleBiometric(bool value) async {
-    if (!_biometricAvailable || !_hasEnrolledBiometrics) return;
+    if (!_biometricAvailable) return;
 
-    final authenticated = await Services.authenticate(reason: S.biometricAuthReason);
-    if (!authenticated) return;
+    if (value) {
+      // Enabling: verify PIN first, then biometric to confirm enrollment
+      final ctx = Services.navigatorKey.currentContext;
+      if (ctx == null) return;
+      final pinOk = await PinVerifyDialog.show(ctx, reason: S.biometricAuthReason);
+      if (!pinOk) return;
+
+      final bioOk = await Services.biometrics.authenticate(
+        reason: S.biometricAuthReason,
+      );
+      if (!bioOk) return;
+    } else {
+      // Disabling: standard auth (biometric since it's currently on)
+      final authenticated = await Services.authenticate(reason: S.biometricAuthReason);
+      if (!authenticated) return;
+    }
 
     await Services.biometrics.setEnabled(value);
     if (mounted) {
@@ -494,8 +510,8 @@ class _SettingsViewState extends State<SettingsView> {
           title: S.biometricAuth,
           subtitle: _getBiometricSubtitle(),
           trailing: Switch(
-            value: _biometricEnabled && _biometricAvailable && _hasEnrolledBiometrics,
-            onChanged: _biometricAvailable && _hasEnrolledBiometrics ? _toggleBiometric : null,
+            value: _biometricEnabled,
+            onChanged: _biometricAvailable ? _toggleBiometric : null,
             activeThumbColor: CwColors.accent,
           ),
         ),

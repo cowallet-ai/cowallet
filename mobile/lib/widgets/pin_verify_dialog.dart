@@ -91,14 +91,14 @@ class _PinVerifyDialogState extends State<PinVerifyDialog> {
                 ),
               ),
             ),
-            const Spacer(flex: 2),
+            const Spacer(),
             Icon(Icons.lock_outline, size: 48, color: CwColors.accent),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Text(
               widget.reason,
               style: const TextStyle(fontSize: 16, color: CwColors.ink2),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(6, (i) {
@@ -124,15 +124,15 @@ class _PinVerifyDialogState extends State<PinVerifyDialog> {
             ),
             if (_error)
               Padding(
-                padding: const EdgeInsets.only(top: 16),
+                padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   'PIN码错误，还剩${_maxAttempts - _attempts}次机会',
                   style: const TextStyle(color: CwColors.danger, fontSize: 13),
                 ),
               ),
-            const Spacer(flex: 1),
+            const Spacer(),
             _buildNumPad(),
-            const SizedBox(height: 40),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -167,21 +167,18 @@ class _PinVerifyDialogState extends State<PinVerifyDialog> {
                     height: 56,
                     margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
-                      color: CwColors.bgPaper,
-                      borderRadius: BorderRadius.circular(12),
+                      color: CwColors.bgCard,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: CwColors.line),
                     ),
-                    child: Center(
-                      child: key == '⌫'
-                          ? const Icon(Icons.backspace_outlined,
-                              size: 22, color: CwColors.ink2)
-                          : Text(
-                              key,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w500,
-                                color: CwColors.ink1,
-                              ),
-                            ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      key,
+                      style: TextStyle(
+                        fontSize: key == '⌫' ? 20 : 24,
+                        fontWeight: FontWeight.w500,
+                        color: CwColors.ink1,
+                      ),
                     ),
                   ),
                 );

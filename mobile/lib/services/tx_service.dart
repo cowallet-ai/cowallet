@@ -117,13 +117,16 @@ class MpcTxService implements TxService {
     payload.setRange(1, payload.length, unsignedRlp);
 
     final msgHash = Digest('Keccak/256').process(payload);
+    print('[TxService] msgHash computed, starting MPC sign...');
 
     // MPC distributed signature (device + server cooperate, no full key ever exists)
-    final signResult = await _wallet.signWithSession(msgHash.toList());
+    try {
+      final signResult = await _wallet.signWithSession(msgHash.toList());
+      print('[TxService] MPC sign complete, sig length=${signResult.signature.length}');
 
-    if (signResult.signature.length != 65) {
-      throw TxSigningException('Invalid MPC signature length: ${signResult.signature.length}');
-    }
+      if (signResult.signature.length != 65) {
+        throw TxSigningException('Invalid MPC signature length: ${signResult.signature.length}');
+      }
 
     final r = _bytesToBigInt(Uint8List.fromList(signResult.signature.sublist(0, 32)));
     final s = _bytesToBigInt(Uint8List.fromList(signResult.signature.sublist(32, 64)));
@@ -165,6 +168,8 @@ class MpcTxService implements TxService {
       mpcSessionId: signResult.sessionId,
     );
 
+    print('[TxService] submit result: success=${submitResult.isSuccess}, error=${submitResult.errorMessage}');
+
     if (!submitResult.isSuccess || submitResult.data == null) {
       throw TxSigningException(
         submitResult.errorMessage ?? 'Transaction submission failed',
@@ -180,6 +185,10 @@ class MpcTxService implements TxService {
     Services.presignPool.checkAndRefill();
 
     return submitResult.data!['tx_hash'] as String;
+    } catch (e) {
+      print('[TxService] ERROR during sign/submit: $e');
+      rethrow;
+    }
   }
 
   @override

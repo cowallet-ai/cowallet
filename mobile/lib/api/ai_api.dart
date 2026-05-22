@@ -44,6 +44,7 @@ class AiApi {
     List<int>? supportedChains,
     Map<String, dynamic>? portfolioContext,
     List<Map<String, dynamic>>? contacts,
+    String? authMethod,
   }) async* {
     final response = await DioClient.postStream(
       "/ai/chat",
@@ -55,6 +56,7 @@ class AiApi {
         if (supportedChains != null) "supported_chains": supportedChains,
         if (portfolioContext != null) "portfolio": portfolioContext,
         if (contacts != null && contacts.isNotEmpty) "contacts": contacts,
+        if (authMethod != null) "auth_method": authMethod,
       },
     );
 

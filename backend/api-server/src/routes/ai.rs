@@ -551,6 +551,8 @@ pub struct ChatRequest {
     pub portfolio: Option<serde_json::Value>,
     #[serde(default)]
     pub contacts: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub auth_method: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1052,6 +1054,7 @@ async fn chat_stream(
             app_state: state.clone(),
             user_id: req.user_id.clone(),
             wallet_address: req.wallet_address.clone(),
+            auth_method: req.auth_method.clone(),
         };
 
         let mut tool_results: Vec<ToolExecutionResult> = Vec::new();

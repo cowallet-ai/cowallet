@@ -23,6 +23,7 @@ pub struct ToolContext {
     pub app_state: AppState,
     pub user_id: Option<String>,
     pub wallet_address: Option<String>,
+    pub auth_method: Option<String>,
 }
 
 /// Result of a tool execution
@@ -1505,6 +1506,27 @@ impl ToolContext {
         let user_uuid = self.user_id.as_ref()
             .and_then(|uid| uuid::Uuid::parse_str(uid).ok());
 
+        let db_available = self.app_state.require_db().is_ok();
+        let has_user = user_uuid.is_some();
+
+        if !db_available || !has_user {
+            tracing::warn!(
+                "security_audit: skipping DB checks — db_available={}, has_user={}, user_id={:?}",
+                db_available, has_user, self.user_id
+            );
+            score -= 30;
+            findings.push(serde_json::json!({
+                "severity": "medium",
+                "type": "audit_incomplete",
+                "message": if !db_available {
+                    "数据库连接不可用，部分安全检查无法执行"
+                } else {
+                    "用户身份未验证，部分安全检查无法执行"
+                },
+            }));
+            recommendations.push("请确保已登录并联网后重新执行审计".into());
+        }
+
         // ═══ 1. Shard Health Check ═══
         if let (Ok(db), Some(uid)) = (self.app_state.require_db(), &user_uuid) {
             let shards: Vec<(String, String, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
@@ -1602,6 +1624,12 @@ impl ToolContext {
                     "type": "failed_transactions",
                     "message": format!("过去7天有 {} 笔失败交易", failed_count),
                 }));
+            } else {
+                findings.push(serde_json::json!({
+                    "severity": "info",
+                    "type": "tx_clean",
+                    "message": "近7天交易记录正常，无异常失败",
+                }));
             }
 
             // Large value transactions without policy (24h)
@@ -1666,25 +1694,49 @@ impl ToolContext {
                 }));
                 recommendations.push("转账前仔细核对完整地址，不要只看首尾字符".into());
             }
+        } else if !db_available || !has_user {
+            // Already reported above
+        } else {
+            findings.push(serde_json::json!({
+                "severity": "info",
+                "type": "tx_clean",
+                "message": "近7天交易记录正常，无异常失败",
+            }));
         }
 
         // ═══ 3. On-Chain ERC-20 Approval Check ═══
         let approval_check = self.check_token_approvals(&address).await;
-        if let Some((unlimited_count, high_risk_approvals)) = approval_check {
-            if unlimited_count > 0 {
-                score -= std::cmp::min(unlimited_count as u32 * 5, 20);
+        match approval_check {
+            Some((unlimited_count, high_risk_approvals)) => {
+                if unlimited_count > 0 {
+                    score -= std::cmp::min(unlimited_count as u32 * 5, 20);
+                    findings.push(serde_json::json!({
+                        "severity": "high",
+                        "type": "unlimited_approvals",
+                        "message": format!("发现 {} 个无限额度代币授权，存在资产被盗风险", unlimited_count),
+                        "details": high_risk_approvals,
+                    }));
+                    recommendations.push("撤销不必要的代币授权，特别是无限额度的授权".into());
+                } else {
+                    findings.push(serde_json::json!({
+                        "severity": "info",
+                        "type": "approvals_clean",
+                        "message": "未发现高风险代币授权",
+                    }));
+                }
+            }
+            None => {
+                tracing::warn!("security_audit: on-chain approval check failed for {:?}", address);
                 findings.push(serde_json::json!({
-                    "severity": "high",
-                    "type": "unlimited_approvals",
-                    "message": format!("发现 {} 个无限额度代币授权，存在资产被盗风险", unlimited_count),
-                    "details": high_risk_approvals,
+                    "severity": "medium",
+                    "type": "approval_check_failed",
+                    "message": "链上授权检查暂时不可用，请稍后重试",
                 }));
-                recommendations.push("撤销不必要的代币授权，特别是无限额度的授权".into());
             }
         }
 
         // ═══ 4. Presign Pool Status ═══
-        if let Some(pm) = &self.app_state.presign_manager {
+        if let Some(_pm) = &self.app_state.presign_manager {
             if let (Ok(db), Some(uid)) = (self.app_state.require_db(), &user_uuid) {
                 let presign_count: i64 = sqlx::query_scalar(
                     "SELECT COUNT(*) FROM presignatures WHERE user_id = $1 AND used = false"
@@ -1709,6 +1761,12 @@ impl ToolContext {
                     }));
                 }
             }
+        } else {
+            findings.push(serde_json::json!({
+                "severity": "medium",
+                "type": "no_presignatures",
+                "message": "预签名服务未初始化",
+            }));
         }
 
         // ═══ 5. Policy Engine Check ═══
@@ -1749,11 +1807,34 @@ impl ToolContext {
             "type": "transport_encryption",
             "message": "Noise_XX 协议传输加密已启用",
         }));
-        findings.push(serde_json::json!({
-            "severity": "info",
-            "type": "biometric_auth",
-            "message": "生物识别签名授权已启用",
-        }));
+
+        // Check auth method from client context
+        let auth_method = self.auth_method.as_deref().unwrap_or("unknown");
+        match auth_method {
+            "biometric" => {
+                findings.push(serde_json::json!({
+                    "severity": "info",
+                    "type": "biometric_auth",
+                    "message": "生物识别签名授权已启用",
+                }));
+            }
+            "pin" => {
+                score -= 5;
+                findings.push(serde_json::json!({
+                    "severity": "medium",
+                    "type": "biometric_auth",
+                    "message": "当前使用 PIN 验证，建议开启生物识别以提高安全性",
+                }));
+                recommendations.push("在设置中开启 Face ID / 指纹验证，比 PIN 更安全且不可窥视".into());
+            }
+            _ => {
+                findings.push(serde_json::json!({
+                    "severity": "medium",
+                    "type": "biometric_auth",
+                    "message": "无法确认本地认证方式",
+                }));
+            }
+        }
 
         // Always include base recommendations
         if recommendations.is_empty() {

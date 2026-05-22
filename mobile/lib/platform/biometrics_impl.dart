@@ -40,23 +40,20 @@ class LocalAuthBiometricService implements BiometricService {
     }
   }
 
-  /// Check if user has any biometric enrolled on the device
+  /// Check if user has any biometric (Face ID / fingerprint) enrolled on the device.
+  /// Returns false if only device passcode is available — we don't want passcode fallback.
   @override
   Future<bool> hasEnrolledBiometrics() async {
     try {
-      // On some devices getAvailableBiometrics returns empty even when enrolled
-      // So we also check isDeviceSupported as a fallback
+      final canCheck = await _auth.canCheckBiometrics;
       final types = await _auth.getAvailableBiometrics();
-      final isSupported = await _auth.isDeviceSupported();
-      _debug('hasEnrolledBiometrics: types.length=${types.length}, types=$types, isDeviceSupported=$isSupported');
+      _debug('hasEnrolledBiometrics: canCheck=$canCheck, types=$types');
 
-      // More lenient check: if device supports biometrics, assume user may have enrolled
-      // The actual authentication will fail if not enrolled anyway
-      return types.isNotEmpty || isSupported;
+      if (types.isNotEmpty) return true;
+      return canCheck;
     } on PlatformException catch (e) {
       _debug('hasEnrolledBiometrics error: ${e.code}, ${e.message}');
-      // Fallback: if we got here and device supports auth, return true
-      return await _auth.isDeviceSupported();
+      return false;
     }
   }
 
@@ -99,13 +96,6 @@ class LocalAuthBiometricService implements BiometricService {
       _debug('authenticate: available=$available');
       if (!available) {
         _debug('authenticate: biometric not available');
-        return false;
-      }
-
-      final hasEnrolled = await hasEnrolledBiometrics();
-      _debug('authenticate: hasEnrolled=$hasEnrolled');
-      if (!hasEnrolled) {
-        _debug('authenticate: no biometric enrolled');
         return false;
       }
 

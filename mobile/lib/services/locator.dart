@@ -92,11 +92,22 @@ class Services {
   /// All sensitive operations MUST use this — never call biometrics.authenticate directly.
   static Future<bool> authenticate({required String reason}) async {
     final biometricEnabled = await biometrics.isEnabled();
+    print('[Auth] biometricEnabled=$biometricEnabled');
     if (biometricEnabled) {
-      return biometrics.authenticate(reason: reason);
+      final hasEnrolled = await biometrics.hasEnrolledBiometrics();
+      print('[Auth] hasEnrolled=$hasEnrolled');
+      if (hasEnrolled) {
+        final result = await biometrics.authenticate(reason: reason);
+        print('[Auth] biometric authenticate result=$result');
+        return result;
+      }
+      print('[Auth] biometric enabled but not enrolled, falling through to PIN');
     }
     final ctx = navigatorKey.currentContext;
+    print('[Auth] navigatorKey.currentContext=${ctx != null ? "available" : "NULL"}');
     if (ctx == null) return false;
-    return PinVerifyDialog.show(ctx, reason: reason);
+    final pinResult = await PinVerifyDialog.show(ctx, reason: reason);
+    print('[Auth] PIN verify result=$pinResult');
+    return pinResult;
   }
 }

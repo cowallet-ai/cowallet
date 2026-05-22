@@ -121,10 +121,13 @@ class IosSecureEnclaveChannel {
   /// Returns null if no shard is stored
   static Future<List<int>?> loadEncryptedShard() async {
     try {
-      final result = await secureStorage.invokeMethod<Uint8List>(
+      final result = await secureStorage.invokeMethod<dynamic>(
         'loadEncryptedShard',
       );
-      return result?.toList();
+      if (result == null) return null;
+      if (result is Uint8List) return result.toList();
+      if (result is List) return result.cast<int>();
+      return null;
     } catch (e) {
       throw SeException('Failed to load encrypted shard: $e');
     }

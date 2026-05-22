@@ -81,7 +81,7 @@ class ChatView extends StatefulWidget {
   State<ChatView> createState() => ChatViewState();
 }
 
-class ChatViewState extends State<ChatView> {
+class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _messages = <ChatMsg>[];
@@ -92,7 +92,23 @@ class ChatViewState extends State<ChatView> {
   StreamSubscription? _streamSub;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App回到前台，重置session让下次发消息创建新会话
+      _sessionId = null;
+      setState(() => _messages.clear());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -269,6 +285,9 @@ class ChatViewState extends State<ChatView> {
         .map((c) => {'name': c.name, 'address': c.address, 'chain': c.chain})
         .toList();
 
+    final biometricEnabled = await Services.biometrics.isEnabled();
+    final authMethod = biometricEnabled ? 'biometric' : 'pin';
+
     final stream = AiApi.chatStream(
       message: text,
       sessionId: _sessionId,
@@ -277,6 +296,7 @@ class ChatViewState extends State<ChatView> {
       supportedChains: supportedChains,
       portfolioContext: portfolioContext,
       contacts: contactsList,
+      authMethod: authMethod,
     );
 
     _streamSub?.cancel();

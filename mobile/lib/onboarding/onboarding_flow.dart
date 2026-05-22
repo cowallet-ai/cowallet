@@ -326,7 +326,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
   }
 
-  void _skipBio() => _goTo(_Stage.pin);
+  void _skipBio() {
+    Services.biometrics.setEnabled(false);
+    _goTo(_Stage.pin);
+  }
 
   // ---- Name ----
   void _submitName() {

@@ -16,7 +16,7 @@ public class CloudBackupHandler: NSObject, FlutterPlugin {
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "isAvailable":
-      result(true)
+      checkICloudAvailability(result: result)
     case "store":
       store(call, result: result)
     case "retrieve":
@@ -26,6 +26,25 @@ public class CloudBackupHandler: NSObject, FlutterPlugin {
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  private func checkICloudAvailability(result: @escaping FlutterResult) {
+    // Check if iCloud is available by verifying ubiquity identity token
+    if FileManager.default.ubiquityIdentityToken == nil {
+      result(false)
+      return
+    }
+    // Verify we can actually access the synchronizable keychain
+    let testQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccount as String: "__cowallet_icloud_check__",
+      kSecAttrService as String: CloudBackupHandler.service,
+      kSecAttrSynchronizable as String: true,
+      kSecReturnData as String: true,
+    ]
+    let status = SecItemCopyMatching(testQuery as CFDictionary, nil)
+    // errSecItemNotFound means keychain access works, just no item yet
+    result(status == errSecSuccess || status == errSecItemNotFound)
   }
 
   private func store(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
