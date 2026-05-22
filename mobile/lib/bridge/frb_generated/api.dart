@@ -171,16 +171,10 @@ Future<void> recoveryImportBackupShard({required List<int> backupBytes}) =>
 /// 2. User provides backup shard (Party 2)
 /// 3. Server initiates a special reshare where Party 0 is reconstructed
 /// 4. The backup + server shards generate a new device shard without changing the public key
-Future<bool> verifyBackupShardFeldman({
-  required List<int> backupBytes,
-  required List<int> serverCommitment,
-  required List<int> expectedPublicKey,
-}) => RustLib.instance.api.crateApiVerifyBackupShardFeldman(
-  backupBytes: backupBytes,
-  serverCommitment: serverCommitment,
-  expectedPublicKey: expectedPublicKey,
-);
-
+///
+/// `server_commitment` is G*(lambda_1 * s_1) (compressed SEC1, 33 bytes).
+/// Before resharing, we verify: server_commitment + G*(lambda_2 * backup_shard) == PublicKey.
+/// This ensures the backup shard is correct without revealing any secret.
 Future<FfiDkgComplete> recoveryReconstructDeviceShard({
   required String sessionId,
   required List<String> serverMessagesJson,
@@ -231,6 +225,20 @@ Future<bool> verifyBackupShard({
 }) => RustLib.instance.api.crateApiVerifyBackupShard(
   backupBytes: backupBytes,
   deviceShardBytes: deviceShardBytes,
+  expectedPublicKey: expectedPublicKey,
+);
+
+/// Verify a backup shard using Feldman commitment (for post-recovery wallets).
+///
+/// After recovery, device shard is on a new polynomial so Lagrange with backup won't work.
+/// Instead verify: server_commitment + G*(lambda_2 * backup_shard) == PublicKey.
+Future<bool> verifyBackupShardFeldman({
+  required List<int> backupBytes,
+  required List<int> serverCommitment,
+  required List<int> expectedPublicKey,
+}) => RustLib.instance.api.crateApiVerifyBackupShardFeldman(
+  backupBytes: backupBytes,
+  serverCommitment: serverCommitment,
   expectedPublicKey: expectedPublicKey,
 );
 

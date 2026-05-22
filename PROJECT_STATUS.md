@@ -247,5 +247,5 @@
 - **密码学**: DKLS23 (自研), secp256k1, AES-GCM, Noise Protocol
 - **区块链**: Alloy (EVM), Covalent API, 0x API
 - **移动端**: Flutter/Dart, flutter_rust_bridge v2
-- **AI**: DeepSeek (OpenAI-compatible), SSE streaming, Function Calling
-- **部署**: Docker, GitHub Actions, Alibaba Cloud ECS
+- **AI**: Claude + DeepSeek (OpenAI-compatible), SSE streaming, Function Calling
+- **部署**: Docker, GitHub Actions, AWS Cloud ECS

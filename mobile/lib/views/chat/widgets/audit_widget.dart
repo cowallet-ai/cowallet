@@ -12,10 +12,16 @@ class ChatAuditWidget extends StatelessWidget {
     final riskLevel = data['risk_level'] as String? ?? 'unknown';
     final findings = (data['findings'] as List<dynamic>?) ?? [];
     final recommendations = (data['recommendations'] as List<dynamic>?) ?? [];
+    final auditTime = data['audit_time'] as String?;
 
     final scoreColor = score >= 90
         ? CwColors.success
         : (score >= 70 ? const Color(0xFFE5A100) : CwColors.danger);
+
+    // Separate findings by severity for grouped display
+    final highFindings = findings.where((f) => _getSeverity(f) == 'high').toList();
+    final mediumFindings = findings.where((f) => _getSeverity(f) == 'medium').toList();
+    final infoFindings = findings.where((f) => _getSeverity(f) == 'info').toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -32,8 +38,8 @@ class ChatAuditWidget extends StatelessWidget {
             children: [
               const Icon(Icons.shield_outlined, size: 16, color: CwColors.accent),
               const SizedBox(width: 6),
-              Text(
-                '安全审计',
+              const Text(
+                '安全审计报告',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -41,6 +47,12 @@ class ChatAuditWidget extends StatelessWidget {
                   letterSpacing: 0.5,
                 ),
               ),
+              const Spacer(),
+              if (auditTime != null)
+                Text(
+                  _formatTime(auditTime),
+                  style: const TextStyle(fontSize: 10, color: CwColors.ink4),
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -79,19 +91,33 @@ class ChatAuditWidget extends StatelessWidget {
               ],
             ),
           ),
-          if (findings.isNotEmpty) ...[
+          // High severity findings
+          if (highFindings.isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text(
-              '检查项目',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: CwColors.ink3),
-            ),
-            const SizedBox(height: 8),
-            ...findings.map((f) => _buildFinding(f)).toList(),
+            _sectionHeader('风险项', CwColors.danger),
+            const SizedBox(height: 6),
+            ...highFindings.map((f) => _buildFinding(f)),
+          ],
+          // Medium severity findings
+          if (mediumFindings.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _sectionHeader('注意项', const Color(0xFFE5A100)),
+            const SizedBox(height: 6),
+            ...mediumFindings.map((f) => _buildFinding(f)),
+          ],
+          // Info findings (passed checks)
+          if (infoFindings.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _sectionHeader('已通过', CwColors.success),
+            const SizedBox(height: 6),
+            ...infoFindings.map((f) => _buildFinding(f)),
           ],
           if (recommendations.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1, color: CwColors.line),
             const SizedBox(height: 12),
             const Text(
-              '建议',
+              '安全建议',
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: CwColors.ink3),
             ),
             const SizedBox(height: 6),
@@ -109,10 +135,30 @@ class ChatAuditWidget extends StatelessWidget {
                   ),
                 ],
               ),
-            )).toList(),
+            )),
           ],
         ],
       ),
+    );
+  }
+
+  Widget _sectionHeader(String title, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 3,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          title,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        ),
+      ],
     );
   }
 
@@ -120,20 +166,21 @@ class ChatAuditWidget extends StatelessWidget {
     final map = finding is Map<String, dynamic> ? finding : <String, dynamic>{};
     final severity = map['severity'] as String? ?? 'info';
     final message = map['message'] as String? ?? '';
+    final type = map['type'] as String? ?? '';
 
     IconData icon;
     Color color;
     switch (severity) {
       case 'high':
-        icon = Icons.error;
+        icon = _typeIcon(type, Icons.error);
         color = CwColors.danger;
         break;
       case 'medium':
-        icon = Icons.warning_amber_rounded;
+        icon = _typeIcon(type, Icons.warning_amber_rounded);
         color = const Color(0xFFE5A100);
         break;
       default:
-        icon = Icons.check_circle_outline;
+        icon = _typeIcon(type, Icons.check_circle_outline);
         color = CwColors.success;
     }
 
@@ -155,6 +202,45 @@ class ChatAuditWidget extends StatelessWidget {
     );
   }
 
+  IconData _typeIcon(String type, IconData fallback) {
+    switch (type) {
+      case 'shard_complete':
+      case 'shard_incomplete':
+      case 'shard_unhealthy':
+      case 'shard_stale':
+        return Icons.key;
+      case 'mpc_protection':
+        return Icons.security;
+      case 'transport_encryption':
+        return Icons.lock_outline;
+      case 'biometric_auth':
+        return Icons.fingerprint;
+      case 'presign_ready':
+      case 'no_presignatures':
+        return Icons.speed;
+      case 'policies_active':
+      case 'no_policies':
+        return Icons.policy_outlined;
+      case 'unlimited_approvals':
+        return Icons.token;
+      case 'failed_transactions':
+      case 'large_transactions':
+      case 'tx_frequency_spike':
+        return Icons.receipt_long;
+      case 'many_recipients':
+        return Icons.people_outline;
+      default:
+        return fallback;
+    }
+  }
+
+  String _getSeverity(dynamic finding) {
+    if (finding is Map<String, dynamic>) {
+      return finding['severity'] as String? ?? 'info';
+    }
+    return 'info';
+  }
+
   String _riskLabel(String level) {
     switch (level) {
       case 'low':
@@ -165,6 +251,15 @@ class ChatAuditWidget extends StatelessWidget {
         return '高风险';
       default:
         return '未知';
+    }
+  }
+
+  String _formatTime(String isoTime) {
+    try {
+      final dt = DateTime.parse(isoTime);
+      return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '';
     }
   }
 }

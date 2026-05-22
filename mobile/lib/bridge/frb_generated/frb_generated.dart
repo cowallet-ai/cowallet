@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -910282382;
+  int get rustContentHash => 654632785;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -1063,7 +1063,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiRecoveryReconstructDeviceShardConstMeta =>
       const TaskConstMeta(
         debugName: "recovery_reconstruct_device_shard",
-        argNames: ["sessionId", "serverMessagesJson", "publicKey", "serverCommitment"],
+        argNames: [
+          "sessionId",
+          "serverMessagesJson",
+          "publicKey",
+          "serverCommitment",
+        ],
       );
 
   @override
@@ -1472,10 +1477,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     );
   }
 
-  TaskConstMeta get kCrateApiVerifyBackupShardFeldmanConstMeta => const TaskConstMeta(
-    debugName: "verify_backup_shard_feldman",
-    argNames: ["backupBytes", "serverCommitment", "expectedPublicKey"],
-  );
+  TaskConstMeta get kCrateApiVerifyBackupShardFeldmanConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_backup_shard_feldman",
+        argNames: ["backupBytes", "serverCommitment", "expectedPublicKey"],
+      );
 
   @protected
   String dco_decode_String(dynamic raw) {

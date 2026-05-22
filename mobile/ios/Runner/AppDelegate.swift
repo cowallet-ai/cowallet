@@ -6,10 +6,17 @@ import FirebaseMessaging
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, MessagingDelegate {
   override func application(
-    
+
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Clear Keychain on fresh install (Keychain persists after app deletion)
+    let hasLaunchedKey = "com.cowallet.hasLaunchedBefore"
+    if !UserDefaults.standard.bool(forKey: hasLaunchedKey) {
+      clearKeychainData()
+      UserDefaults.standard.set(true, forKey: hasLaunchedKey)
+    }
+
     // Initialize Firebase
     FirebaseApp.configure()
 
@@ -46,6 +53,19 @@ import FirebaseMessaging
     didFailToRegisterForRemoteNotificationsWithError error: Error
   ) {
     print("[FCM] Failed to register for remote notifications: \(error)")
+  }
+
+  // MARK: - Keychain Cleanup
+
+  private func clearKeychainData() {
+    let secClasses = [
+      kSecClassGenericPassword,
+      kSecClassKey,
+    ]
+    for secClass in secClasses {
+      let query: [String: Any] = [kSecClass as String: secClass]
+      SecItemDelete(query as CFDictionary)
+    }
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {

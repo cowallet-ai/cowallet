@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/mac/cat/cowallet && git add mobile/lib/services/mpc_wallet_service.dart && git commit -m \\\"$(cat <<'EOF'\\nfix: sign flow HTTP fallback skips already-processed messages\\n\\nRoot ca...",
-  "error": "Exit code 128\n[main efabf37] fix: sign flow HTTP fallback skips already-processed messages\n 1 file changed, 26 insertions(+)\nfatal: unable to access 'https://github.com/pengxjwawa123/cowallet.git/': LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443",
-  "timestamp": "2026-05-21T05:39:39.281Z",
+  "tool_input_preview": "{\"command\":\"git add mobile/lib/views/chat/widgets/tx_result_widget.dart mobile/lib/views/chat/chat_view.dart && git commit -m \\\"$(cat <<'EOF'\\nfix: show error card widget instead of plain text on tran...",
+  "error": "Exit code 128\nwarning: could not open directory 'mobile/mobile/lib/views/chat/': No such file or directory\nfatal: pathspec 'mobile/lib/views/chat/widgets/tx_result_widget.dart' did not match any files",
+  "timestamp": "2026-05-21T09:54:51.138Z",
   "retry_count": 1
 }
