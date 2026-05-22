@@ -333,6 +333,21 @@ class MpcWalletService implements WalletService {
   ///   on restart → use backup shard recovery.
   /// - After hardware persist: device done; backup refresh is best-effort
   Future<WalletInfo> runReshare({String? walletId}) async {
+    // Ensure device shard is loaded into Rust memory
+    final shardBytes = await SecureHardware.loadDeviceShard();
+    if (shardBytes == null || shardBytes.isEmpty) {
+      throw MpcException('Device shard not found in secure storage');
+    }
+    final pubKeyHex = await SecureStorage.get('mpc_public_key');
+    final pubKey = pubKeyHex != null && pubKeyHex.isNotEmpty
+        ? List<int>.generate(pubKeyHex.length ~/ 2,
+            (i) => int.parse(pubKeyHex.substring(i * 2, i * 2 + 2), radix: 16))
+        : <int>[];
+    await MpcBridge.importDeviceShard(
+      shardBytes: shardBytes.toList(),
+      publicKey: pubKey,
+    );
+
     final sessionResult = await MpcApi.createSession(
       sessionType: 'reshare',
       parties: [_deviceParty, _serverParty],
@@ -386,9 +401,15 @@ class MpcWalletService implements WalletService {
 
       // Wait for server's reshare Round 1 messages (its evaluations for us)
       final serverMessages = await _waitForMessages(ws, expectedCount: 1);
-      final serverMsgsJson = serverMessages
-          .map((m) => utf8.decode(m.payload))
-          .toList();
+      final serverMsgsJson = serverMessages.map((m) {
+        return jsonEncode({
+          'session_id': remoteSessionId,
+          'from': m.fromParty,
+          'to': m.toParty,
+          'round': m.round,
+          'payload': m.payload,
+        });
+      }).toList();
 
       // Process server's evaluations and compute new share
       await MpcBridge.reshareProcessRound1(localSessionId, serverMsgsJson);

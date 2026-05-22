@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 654632785;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2091613080;
 
 // Section: executor
 
@@ -955,6 +955,39 @@ fn wire__crate__api__recovery_reconstruct_device_shard_impl(
         },
     )
 }
+fn wire__crate__api__reshare_derive_backup_share_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "reshare_derive_backup_share",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::reshare_derive_backup_share(api_session_id)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__reshare_finalize_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1394,41 +1427,6 @@ fn wire__crate__api__verify_backup_shard_feldman_impl(
     )
 }
 
-fn wire__crate__api__reshare_derive_backup_share_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "reshare_derive_backup_share",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_session_id = <String>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, String>((move || {
-                    let output_ok =
-                        crate::api::reshare_derive_backup_share(api_session_id)?;
-                    Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
-
 // Section: dart2rust
 
 impl SseDecode for String {
@@ -1739,24 +1737,24 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__reshare_finalize_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__reshare_generate_round1_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__reshare_process_round1_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__reshare_session_new_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__send_erc20_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__send_eth_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__sign_generate_round1_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__sign_hash_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__sign_process_round1_and_generate_round2_impl(
+        27 => wire__crate__api__reshare_derive_backup_share_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__reshare_finalize_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__reshare_generate_round1_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__reshare_process_round1_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__reshare_session_new_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__send_erc20_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__send_eth_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__sign_generate_round1_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__sign_hash_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__sign_process_round1_and_generate_round2_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        36 => wire__crate__api__sign_process_round2_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__verify_backup_shard_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__verify_backup_shard_feldman_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__reshare_derive_backup_share_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__sign_process_round2_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__verify_backup_shard_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__verify_backup_shard_feldman_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

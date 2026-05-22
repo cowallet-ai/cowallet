@@ -456,6 +456,7 @@ pub struct FfiReshareComplete {
 
 /// Initialize a reshare session using the current device shard.
 /// The old shard is consumed; after finalize() the new shard replaces it.
+/// `participants` specifies which parties are active (e.g. [0,1] for device+server).
 pub fn reshare_session_new(party_index: u16) -> Result<FfiReshareSession, String> {
     let old_share = state::get_share(party_index)
         .ok_or("device shard not loaded — cannot reshare")?;
@@ -469,7 +470,10 @@ pub fn reshare_session_new(party_index: u16) -> Result<FfiReshareSession, String
         party_index,
     };
 
-    let reshare = ReshareSession::new(config, old_share);
+    // Only device (0) and server (1) participate in proactive reshare;
+    // backup (2) is offline and its new share is derived separately.
+    let participants = vec![0u16, 1u16];
+    let reshare = ReshareSession::new_for_recovery(config, old_share, participants, party_index);
     state::create_reshare_session(session_id.clone(), reshare);
 
     Ok(FfiReshareSession { session_id })

@@ -580,7 +580,16 @@ impl MpcParticipant {
 
             ReshareSession::new_for_recovery(full_config, key_share, participant_indices, target_party)
         } else {
-            ReshareSession::new(config.clone(), key_share)
+            // Proactive reshare: only device (0) + server (1) participate;
+            // backup (2) is offline, its new share is derived separately.
+            let participants = vec![0u16, 1u16];
+            let server_config = SessionConfig {
+                session_id: config.session_id.clone(),
+                threshold: config.threshold,
+                total_parties: key_share.total_parties,
+                party_index: SERVER_PARTY_INDEX,
+            };
+            ReshareSession::new_for_recovery(server_config, key_share, participants, SERVER_PARTY_INDEX)
         };
 
         // Generate server's Round 1 messages (polynomial evaluations for each party)

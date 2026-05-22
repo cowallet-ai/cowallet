@@ -350,6 +350,13 @@ class _SettingsViewState extends State<SettingsView> {
   Future<void> _performKeyRotation() async {
     if (_isRotating) return;
 
+    // Verify identity before key rotation
+    final verified = await PinVerifyDialog.show(
+      context,
+      reason: S.lang == Lang.zh ? '验证身份以轮换密钥' : 'Verify identity to rotate keys',
+    );
+    if (!verified || !mounted) return;
+
     setState(() => _isRotating = true);
     if (mounted) LoadingOverlay.show(context);
 
