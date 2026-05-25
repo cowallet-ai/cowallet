@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../api/ai_api.dart';
 import '../../../l10n/strings.dart';
 import '../../../theme/colors.dart';
+import '../../../theme/typography.dart';
 import '../../../utils/secure_storage.dart';
 
 /// Bottom sheet that shows a list of past chat sessions.

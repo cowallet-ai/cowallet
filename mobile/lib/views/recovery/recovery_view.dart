@@ -8,6 +8,7 @@ import '../../main.dart';
 import '../../services/locator.dart';
 import '../../services/recovery_service.dart';
 import '../../theme/colors.dart';
+import '../../theme/typography.dart';
 import '../../utils/device_id.dart';
 import '../../utils/secure_storage.dart';
 import '../../widgets/cw_orb.dart';

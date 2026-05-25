@@ -1,7 +1,7 @@
 {
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"/Users/mac/cat/cowallet/.omc/state/sessions/824e5a58-5e29-4115-bba3-d1f0de53fc35/autopilot-state.json\"}",
-  "error": "File does not exist. Note: your current working directory is /Users/mac/cat/cowallet/mobile. Did you mean /Users/mac/cat/cowallet/mobile/.omc/state/sessions/824e5a58-5e29-4115-bba3-d1f0de53fc35/autopilot-state.json?",
-  "timestamp": "2026-05-25T03:27:26.969Z",
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sed -i '' '/theme\\\\/colors.dart/a\\\\import '\\\\''../../theme/typography.dart'\\\\'';' lib/views/recovery/recovery_view.dart && sed -i '' '/theme\\\\/colors.dart/a\\\\import '\\\\''../../theme/typogr...",
+  "error": "Exit code 1\nsed: 1: \"/theme\\/colors.dart/a\\i ...\": extra characters after \\ at the end of a command",
+  "timestamp": "2026-05-25T03:47:12.781Z",
   "retry_count": 1
 }
