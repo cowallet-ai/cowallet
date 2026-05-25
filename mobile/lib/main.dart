@@ -1,22 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'theme/theme.dart';
-import 'router/app_router.dart';
-import 'state/app_state.dart';
-import 'services/locator.dart';
-import 'services/push_service.dart';
-import 'api/auth_api.dart';
-import 'api/chains_api.dart';
-import 'config/api_config.dart';
-import 'utils/secure_storage.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:cowallet/theme/theme.dart';
+import 'package:cowallet/router/app_router.dart';
+import 'package:cowallet/state/app_state.dart';
+import 'package:cowallet/services/locator.dart';
+import 'package:cowallet/services/push_service.dart';
+import 'package:cowallet/api/auth_api.dart';
+import 'package:cowallet/utils/secure_storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
-  await Services.init();
+
+  // 🔥 INSTANT FIRST PAINT - Native splash shows immediately
   runApp(const CowalletApp());
+
+  // Start initialization in background
+  print('[main] Starting background initialization...');
+  Services.initAll().then((_) {
+    print('[main] All services initialized');
+    // Remove native splash when app is ready
+    FlutterNativeSplash.remove();
+  });
 }
 
 class CowalletApp extends StatefulWidget {
@@ -31,8 +39,7 @@ class CowalletApp extends StatefulWidget {
 
 class _CowalletAppState extends State<CowalletApp> {
   final appState = AppState();
-  String _initialRoute = AppRouter.onboarding;
-  bool _ready = false;
+  final String _initialRoute = AppRouter.onboarding;  // Default to onboarding
 
   // Use shared navigator key from Services
   GlobalKey<NavigatorState> get _navigatorKey => Services.navigatorKey;
@@ -40,12 +47,63 @@ class _CowalletAppState extends State<CowalletApp> {
   @override
   void initState() {
     super.initState();
+    _initEssentialAndNavigate();
+  }
+
+  Future<void> _initEssentialAndNavigate() async {
+    // Wait for essential services to be ready
+    await Services.initEssential();
     _setupPushNotificationHandlers();
+
+    // Check wallet status and navigate accordingly
     _checkWalletState();
   }
 
   void _setupPushNotificationHandlers() {
     Services.push.onNotificationTap = _handlePushNotificationTap;
+  }
+
+  Future<void> _checkWalletState() async {
+    final hasWallet = await Services.wallet.hasWallet();
+
+    if (!mounted) return;
+
+    if (hasWallet) {
+      // Wallet exists, navigate to home
+      _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        AppRouter.home,
+        (route) => false,
+      );
+
+      // Load wallet address in background
+      final addr = await Services.wallet.getAddress();
+      appState.setWalletAddress(addr);
+      appState.completeOnboarding();
+
+      // Background tasks
+      _refreshSessionInBackground();
+      Services.push.reregisterToken();
+      _refreshBalanceInBackground(addr);
+    }
+    // If no wallet, we stay on onboarding (initialRoute)
+  }
+
+  Future<void> _refreshSessionInBackground() async {
+    try {
+      final tokenValid = await AuthApi.isLoggedIn();
+      if (tokenValid) return;
+
+      final refreshed = await AuthApi.refreshToken();
+      if (!refreshed) {
+        await AuthApi.login(deviceId: (await SecureStorage.getDeviceId()) ?? '');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _refreshBalanceInBackground(String address) async {
+    try {
+      await Services.balance.refresh(address);
+    } catch (_) {}
   }
 
   void _handlePushNotificationTap(Map<String, dynamic> data) {
@@ -56,7 +114,6 @@ class _CowalletAppState extends State<CowalletApp> {
     switch (type) {
       case PushType.txConfirmed:
       case PushType.txFailed:
-        // Navigate to home and show tx detail in chat
         final txHash = data['tx_hash'] as String?;
         if (txHash != null) {
           _navigatorKey.currentState?.pushNamedAndRemoveUntil(
@@ -66,98 +123,18 @@ class _CowalletAppState extends State<CowalletApp> {
         }
         break;
       case PushType.securityAlert:
-        // Navigate to settings/security section
         _navigatorKey.currentState?.pushNamedAndRemoveUntil(
           AppRouter.home,
           (route) => false,
         );
         break;
       case PushType.mpcSignRequest:
-        // Navigate to home (approval will be handled via the stream listener)
         _navigatorKey.currentState?.pushNamedAndRemoveUntil(
           AppRouter.home,
           (route) => false,
         );
         break;
     }
-  }
-
-  Future<void> _checkWalletState() async {
-    try {
-      _loadSupportedChains();
-      appState.loadUserName();
-
-      final hasLocalWallet = await Services.wallet.hasWallet();
-      print('[App] hasLocalWallet=$hasLocalWallet');
-      if (!hasLocalWallet) {
-        setState(() => _ready = true);
-        return;
-      }
-
-      // Wallet exists locally
-      final addr = await Services.wallet.getAddress();
-      appState.setWalletAddress(addr);
-      appState.completeOnboarding();
-
-      // Check if onboarding was interrupted mid-flow
-      final savedStep = await SecureStorage.get(SecureStorage.keyOnboardingStep);
-      if (savedStep != null && savedStep.isNotEmpty) {
-        _initialRoute = AppRouter.onboarding;
-        setState(() => _ready = true);
-        return;
-      }
-
-      _initialRoute = AppRouter.home;
-
-      // Ensure valid token before rendering home (prevents 401 cascades)
-      await _refreshSessionInBackground();
-
-      // Re-register push token now that auth is available
-      Services.push.reregisterToken();
-
-      // Presign pool disabled — signing uses direct sign sessions
-      // Services.presignPool.start();
-
-      setState(() => _ready = true);
-      _refreshBalanceInBackground(addr);
-    } catch (_) {
-      setState(() => _ready = true);
-    }
-  }
-
-  Future<void> _refreshSessionInBackground() async {
-    try {
-      final tokenValid = await AuthApi.isLoggedIn();
-      if (tokenValid) return;
-
-      // Token 过期或不存在，尝试 refresh
-      final refreshed = await AuthApi.refreshToken();
-      if (!refreshed) {
-        await _reloginWithDeviceId();
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _reloginWithDeviceId() async {
-    final deviceId = await SecureStorage.getDeviceId();
-    if (deviceId != null && deviceId.isNotEmpty) {
-      await AuthApi.login(deviceId: deviceId);
-    }
-  }
-
-  void _loadSupportedChains() async {
-    try {
-      final result = await ChainsApi.getSupportedChains();
-      if (result.isSuccess && result.data != null) {
-        ChainConfig.loadFromRemote(result.data!);
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _refreshBalanceInBackground(String address) async {
-    try {
-      await Services.balance.refresh(address);
-    } catch (_) {}
   }
 
   @override
@@ -170,13 +147,6 @@ class _CowalletAppState extends State<CowalletApp> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: cwTheme(),
-        home: const Scaffold(body: SizedBox.shrink()),
-      );
-    }
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) => MaterialApp(

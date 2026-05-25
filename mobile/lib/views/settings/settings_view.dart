@@ -27,7 +27,6 @@ class _SettingsViewState extends State<SettingsView> {
   bool _hasEnrolledBiometrics = false;
   String _biometricType = 'Biometric';
   String? _lastRotationDate;
-  bool _isRotating = false;
 
   KeyStatus _phoneStatus = KeyStatus.unknown;
   KeyStatus _serverStatus = KeyStatus.unknown;
@@ -310,126 +309,6 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
 
-  Future<void> _performKeyRotation() async {
-    if (_isRotating) return;
-
-    // Verify identity before key rotation
-    final verified = await PinVerifyDialog.show(
-      context,
-      reason: S.lang == Lang.zh ? '验证身份以轮换密钥' : 'Verify identity to rotate keys',
-    );
-    if (!verified || !mounted) return;
-
-    setState(() => _isRotating = true);
-    if (mounted) LoadingOverlay.show(context);
-
-    try {
-      final walletAddress = await Services.mpcWallet.getAddress();
-      await Services.mpcWallet.runReshare(walletId: walletAddress);
-
-      LoadingOverlay.dismiss();
-
-      // Force user to save new backup shard before rotation is complete
-      final backupShard = Services.mpcWallet.lastBackupShard;
-      if (backupShard != null && mounted) {
-        final saved = await _showBackupChoiceDialog(backupShard);
-        if (!saved && mounted) {
-          showTopToast(
-            context,
-            S.lang == Lang.zh ? '请尽快备份新恢复密钥' : 'Please backup your new recovery key soon',
-            backgroundColor: CwColors.warn,
-          );
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _lastRotationDate = DateTime.now().toIso8601String();
-          _isRotating = false;
-        });
-
-        showTopToast(context, S.rotationSuccess, backgroundColor: CwColors.success);
-      }
-    } catch (e) {
-      LoadingOverlay.dismiss();
-      if (mounted) {
-        setState(() => _isRotating = false);
-
-        showTopToast(context, '${S.rotationFailed}: $e', backgroundColor: CwColors.danger);
-      }
-    }
-  }
-
-  /// Shows dialog forcing user to choose backup method for the new shard.
-  /// Returns true if user completed backup, false if dismissed.
-  Future<bool> _showBackupChoiceDialog(List<int> backupShard) async {
-    final isZh = S.lang == Lang.zh;
-    final choice = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Text(isZh ? '保存恢复密钥' : 'Save Recovery Key'),
-        content: Text(isZh
-            ? '轮换后旧的恢复密钥已失效，请选择新密钥的保存方式：'
-            : 'Old recovery key is now invalid. Choose how to save the new one:'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'cloud'),
-            child: Text(isZh ? '保存到云端' : 'Save to Cloud'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'file'),
-            child: Text(isZh ? '导出加密文件' : 'Export Encrypted File'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'skip'),
-            style: TextButton.styleFrom(foregroundColor: CwColors.ink4),
-            child: Text(isZh ? '稍后再说' : 'Later'),
-          ),
-        ],
-      ),
-    );
-
-    if (choice == 'cloud') {
-      try {
-        LoadingOverlay.show(context);
-        await Services.mpcWallet.storeBackupShard(backupShard, useCloud: true);
-        LoadingOverlay.dismiss();
-        if (mounted) {
-          showTopToast(context, isZh ? '已保存到云端' : 'Saved to cloud',
-              backgroundColor: CwColors.success);
-        }
-        return true;
-      } catch (e) {
-        LoadingOverlay.dismiss();
-        if (mounted) {
-          showTopToast(context, isZh ? '云端保存失败: $e' : 'Cloud save failed: $e',
-              backgroundColor: CwColors.danger);
-        }
-        return false;
-      }
-    } else if (choice == 'file') {
-      try {
-        LoadingOverlay.show(context);
-        await Services.mpcWallet.storeBackupShard(backupShard, useCloud: false);
-        LoadingOverlay.dismiss();
-        if (mounted) {
-          showTopToast(context, isZh ? '已导出到文件' : 'Exported to file',
-              backgroundColor: CwColors.success);
-        }
-        return true;
-      } catch (e) {
-        LoadingOverlay.dismiss();
-        if (mounted) {
-          showTopToast(context, isZh ? '导出失败: $e' : 'Export failed: $e',
-              backgroundColor: CwColors.danger);
-        }
-        return false;
-      }
-    }
-
-    return false;
-  }
 
   String _formatLastRotation() {
     if (_lastRotationDate == null) return S.never;
@@ -850,20 +729,12 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.accentSoft,
           title: S.rotateKeyShares,
           subtitle: '${S.lastRotation}: ${_formatLastRotation()}',
-          trailing: _isRotating
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.refresh, size: 20),
-                  color: CwColors.accent,
-                  onPressed: _performKeyRotation,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-          onTap: _isRotating ? null : _performKeyRotation,
+          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          onTap: () => showTopToast(
+            context,
+            S.lang == Lang.zh ? '功能开发中，敬请期待' : 'Coming soon',
+            backgroundColor: CwColors.ink3,
+          ),
         ),
         const Divider(indent: 52, height: 1),
         _settingRow(

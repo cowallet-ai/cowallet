@@ -61,7 +61,7 @@ class PushService {
   static const _mpcChannelName = 'MPC Signing Requests';
   static const _mpcChannelDesc = 'Notifications for MPC transaction signing';
 
-  /// Initialize the push notification service.
+  /// Initialize the push notification service (non-blocking, runs in background).
   ///
   /// Gracefully no-ops if Firebase is not configured (e.g. missing
   /// GoogleService-Info.plist / google-services.json). This allows the app
@@ -69,74 +69,90 @@ class PushService {
   Future<void> init() async {
     if (_initialized) return;
 
-    try {
-      await Firebase.initializeApp();
-    } catch (e) {
-      debugPrint('[PushService] Firebase not configured, skipping push init: $e');
-      return;
-    }
+    // Initialize Firebase in background without blocking app startup
+    _runBackgroundInit();
+  }
 
-    try {
-      _messaging = FirebaseMessaging.instance;
-
-      // Request permissions (iOS requires explicit prompt)
-      final settings = await _messaging!.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
-
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        debugPrint('[PushService] Notification permissions denied by user');
+  /// Run the actual initialization in the background.
+  void _runBackgroundInit() {
+    Future.microtask(() async {
+      try {
+        await Firebase.initializeApp();
+      } catch (e) {
+        debugPrint('[PushService] Firebase not configured, skipping push init: $e');
         return;
       }
 
-      debugPrint(
-          '[PushService] Permission status: ${settings.authorizationStatus}');
+      try {
+        _messaging = FirebaseMessaging.instance;
 
-      // Initialize local notifications for foreground display
-      await _initLocalNotifications();
+        // Request permissions (iOS requires explicit prompt)
+        final settings = await _messaging!.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
 
-      // Set background message handler
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+        if (settings.authorizationStatus == AuthorizationStatus.denied) {
+          debugPrint('[PushService] Notification permissions denied by user');
+          return;
+        }
 
-      // Get initial FCM token
-      _fcmToken = await _messaging!.getToken();
-      debugPrint('[PushService] FCM token obtained: ${_fcmToken?.substring(0, 20)}...');
+        debugPrint(
+            '[PushService] Permission status: ${settings.authorizationStatus}');
 
-      // Register token with backend (best-effort, non-blocking)
-      if (_fcmToken != null) {
-        _registerTokenWithBackend(_fcmToken!);
-      }
+        // Initialize local notifications for foreground display
+        try {
+          await _initLocalNotifications().timeout(const Duration(seconds: 3));
+        } catch (e) {
+          debugPrint('[PushService] _initLocalNotifications timed out: $e');
+        }
 
-      // Listen for token refresh
-      _messaging!.onTokenRefresh.listen((newToken) {
-        debugPrint('[PushService] FCM token refreshed');
-        _fcmToken = newToken;
-        _registerTokenWithBackend(newToken);
-      });
+        // Set background message handler
+        FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      // Handle foreground messages
-      FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+        // Get initial FCM token (timeout to avoid blocking on devices without Play Services)
+        try {
+          _fcmToken = await _messaging!.getToken().timeout(const Duration(seconds: 3));
+          debugPrint('[PushService] FCM token obtained: ${_fcmToken?.substring(0, 20)}...');
+        } catch (e) {
+          debugPrint('[PushService] getToken() timed out or failed: $e');
+        }
 
-      // Handle notification tap when app is in background/terminated
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+        // Register token with backend (best-effort, non-blocking)
+        if (_fcmToken != null) {
+          _registerTokenWithBackend(_fcmToken!);
+        }
 
-      // Check if app was opened from a terminated state via notification
-      final initialMessage = await _messaging!.getInitialMessage();
-      if (initialMessage != null) {
-        // Delay to allow the app to fully initialize before navigating
-        Future.delayed(const Duration(milliseconds: 500), () {
-          _handleMessageOpenedApp(initialMessage);
+        // Listen for token refresh
+        _messaging!.onTokenRefresh.listen((newToken) {
+          debugPrint('[PushService] FCM token refreshed');
+          _fcmToken = newToken;
+          _registerTokenWithBackend(newToken);
         });
-      }
 
-      _initialized = true;
-      debugPrint('[PushService] Initialized successfully');
-    } catch (e) {
-      debugPrint('[PushService] Initialization error: $e');
-    }
+        // Handle foreground messages
+        FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+
+        // Handle notification tap when app is in background/terminated
+        FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+
+        // Check if app was opened from a terminated state via notification
+        final initialMessage = await _messaging!.getInitialMessage();
+        if (initialMessage != null) {
+          // Delay to allow the app to fully initialize before navigating
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _handleMessageOpenedApp(initialMessage);
+          });
+        }
+
+        _initialized = true;
+        debugPrint('[PushService] Initialized successfully');
+      } catch (e) {
+        debugPrint('[PushService] Initialization error: $e');
+      }
+    });
   }
 
   /// Initialize local notification plugin and Android channels.

@@ -109,12 +109,20 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  DateTime? _pausedAt;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // App回到前台，重置session让下次发消息创建新会话
-      _sessionId = null;
-      setState(() => _messages.clear());
+    if (state == AppLifecycleState.paused) {
+      _pausedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      // Only clear if the app was in background for >30s (not just biometric/dialog)
+      final wasPaused = _pausedAt;
+      _pausedAt = null;
+      if (wasPaused != null && DateTime.now().difference(wasPaused).inSeconds > 30) {
+        _sessionId = null;
+        setState(() => _messages.clear());
+      }
     }
   }
 

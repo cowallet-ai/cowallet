@@ -50,11 +50,24 @@ class Services {
   // API clients (stateless, no initialization needed)
   static final mpcApi = MpcApi();
 
-  static Future<void> init() async {
-    await RustLib.init();
+  static bool rustReady = false;
+
+  /// Helper to ignore Future errors without awaiting.
+  static void unawaited(Future<void>? future) {
+    future?.catchError((e) {
+      // Silently ignore errors
+    });
+  }
+
+  /// Essential initialization - completes in <500ms for critical services.
+  /// Only initializes what's needed for immediate user interaction.
+  static Future<void> initEssential() async {
     storage = FlutterSecureStorageService();
     biometrics = LocalAuthBiometricService();
-    backup = BackupShardService(PlatformCloudBackup());
+    settings = SettingsService();
+    await settings.init();
+
+    // Critical services - needed for first interaction
     mpcWallet = MpcWalletService();
     wallet = mpcWallet;
     chain = JsonRpcChainService();
@@ -64,16 +77,33 @@ class Services {
       wallet: wallet,
       chain: chain,
     );
+    policy = PolicyService();
+
+    print('[Services] Essential init complete');
+  }
+
+  /// Background initialization - runs after first paint.
+  /// Heavier operations (Rust FFI, cached data) go here.
+  static Future<void> initBackground() async {
+    try {
+      await RustLib.init(forceSameCodegenVersion: false)
+          .timeout(const Duration(seconds: 5));
+      rustReady = true;
+    } catch (e) {
+      print('[Services] RustLib.init() failed: $e — FFI unavailable');
+    }
+    backup = BackupShardService(PlatformCloudBackup());
+    mpcSessionManager = MpcSessionManager(mpcWallet);
+    pendingSign = PendingSignService();
+
+    print('[Services] Background init complete');
+  }
+
+  /// Deferred initialization - runs after UI is stable.
+  /// Non-critical services (notifications, push, cached data) go here.
+  static Future<void> initDeferred() async {
     txHistory = TxHistoryService(storage: storage, chain: chain);
-    await txHistory.load();
     contacts = ContactsService();
-    await contacts.load();
-    notifications = NotificationService();
-    await notifications.init();
-    push = PushService();
-    await push.init();
-    settings = SettingsService();
-    await settings.init();
     intent = IntentExecutor(
       wallet: wallet,
       balance: balance,
@@ -82,10 +112,32 @@ class Services {
       txHistory: txHistory,
       chain: chain,
     );
-    policy = PolicyService();
     presignPool = PresignPoolService();
-    mpcSessionManager = MpcSessionManager(mpcWallet);
-    pendingSign = PendingSignService();
+
+    // Load cached data
+    unawaited(txHistory.load());
+    unawaited(contacts.load());
+
+    // Initialize notification services
+    notifications = NotificationService();
+    await notifications.init();
+    push = PushService();
+    await push.init();
+
+    print('[Services] Deferred init complete');
+  }
+
+  /// Run all initialization phases in order.
+  /// Essential first, then background, then deferred.
+  static Future<void> initAll() async {
+    await initEssential();
+    await initBackground();
+    await initDeferred();
+  }
+
+  /// @deprecated Use initAll() for better performance
+  static Future<void> init() async {
+    await initAll();
   }
 
   /// Unified authentication: biometric if user enabled it, otherwise app PIN.
