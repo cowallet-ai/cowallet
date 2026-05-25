@@ -1032,7 +1032,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     setState(() {
       msg.loading = false;
       msg.confirmed = true;
-      _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: '✅ 已保存联系人「${contact.name}」'));
+      _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: S.contactSaved(name: contact.name)));
     });
     _scrollToBottom();
   }
@@ -1127,8 +1127,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             const SizedBox(height: 16),
             Text(
               _voiceCancelled
-                  ? (isZh ? '松开取消' : 'Release to cancel')
-                  : (isZh ? '上滑取消，松开发送' : 'Slide up to cancel'),
+                  ? S.releaseToCancel
+                  : S.slideUpToSend,
               style: TextStyle(
                 fontSize: 13,
                 color: _voiceCancelled ? CwColors.danger : Colors.white70,

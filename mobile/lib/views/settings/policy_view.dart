@@ -142,14 +142,12 @@ class _PolicyViewState extends State<PolicyView> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
               children: [
                 // Quick setup section
-                _sectionTitle(isZh ? '快速设置' : 'Quick Setup'),
+                _sectionTitle(S.quickSetup),
                 const SizedBox(height: 8),
                 _quickSetupCard(
                   icon: Icons.today,
-                  title: isZh ? '每日限额' : 'Daily Limit',
-                  subtitle: isZh
-                      ? '每日累计转账不超过 \$${_dailyLimit.toInt()}'
-                      : 'Daily transfers capped at \$${_dailyLimit.toInt()}',
+                  title: S.dailyLimit,
+                  subtitle: S.dailyLimitDesc(amount: '\$${_dailyLimit.toInt()}'),
                   value: _dailyLimit,
                   onChanged: (v) => setState(() => _dailyLimit = v),
                   onSave: _createDailyLimit,
@@ -158,10 +156,8 @@ class _PolicyViewState extends State<PolicyView> {
                 const SizedBox(height: 10),
                 _quickSetupCard(
                   icon: Icons.warning_amber_rounded,
-                  title: isZh ? '大额确认' : 'Large Transfer Confirm',
-                  subtitle: isZh
-                      ? '单笔超过 \$${_singleLimit.toInt()} 需二次确认'
-                      : 'Confirm transfers over \$${_singleLimit.toInt()}',
+                  title: S.largeTransferConfirm,
+                  subtitle: S.largeTransferDesc(amount: '\$${_singleLimit.toInt()}'),
                   value: _singleLimit,
                   onChanged: (v) => setState(() => _singleLimit = v),
                   onSave: _createSingleLimit,
@@ -169,7 +165,7 @@ class _PolicyViewState extends State<PolicyView> {
                 ),
 
                 const SizedBox(height: 24),
-                _sectionTitle(isZh ? '已启用策略' : 'Active Policies'),
+                _sectionTitle(S.activePolicies),
                 const SizedBox(height: 8),
 
                 if (_policies.isEmpty)
@@ -182,7 +178,7 @@ class _PolicyViewState extends State<PolicyView> {
                     ),
                     child: Center(
                       child: Text(
-                        isZh ? '暂无策略，请使用快速设置添加' : 'No policies. Use quick setup above.',
+                        S.noPolicies,
                         style: const TextStyle(color: CwColors.ink3, fontSize: 13),
                       ),
                     ),
@@ -374,9 +370,7 @@ class _PolicyViewState extends State<PolicyView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(S.lang == Lang.zh ? '删除策略' : 'Delete Policy'),
-        content: Text(S.lang == Lang.zh
-            ? '确定删除"${policy.name}"？'
-            : 'Delete "${policy.name}"?'),
+        content: Text(S.deletePolicyConfirm(name: policy.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

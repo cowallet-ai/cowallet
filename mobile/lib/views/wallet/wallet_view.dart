@@ -223,7 +223,7 @@ class _WalletViewState extends State<WalletView> {
       behavior: HitTestBehavior.opaque,
       onTap: () => AppShell.goToChatAndSend(
         context,
-        '查看${chain.displayName}上的资产',
+        S.viewChainAssets(chain: chain.displayName),
       ),
       child: Container(
       padding: const EdgeInsets.all(14),
@@ -556,7 +556,7 @@ class _WalletViewState extends State<WalletView> {
           Row(
             children: [
               Text(
-                'Aave 上的 USDC',
+                S.aaveUsdc,
                 style: tt.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink1,
@@ -574,7 +574,7 @@ class _WalletViewState extends State<WalletView> {
 
           // Chain + audit
           Text(
-            'Base 链 · 审计过',
+            S.baseAudited,
             style: tt.bodySmall?.copyWith(color: CwColors.ink3),
           ),
           const SizedBox(height: 10),

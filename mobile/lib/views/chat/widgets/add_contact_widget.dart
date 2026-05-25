@@ -1,6 +1,7 @@
 import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
+import '../../../l10n/strings.dart';
 
 class AddContactWidget extends StatelessWidget {
   final String name;
@@ -102,7 +103,7 @@ class AddContactWidget extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: loading ? null : onDeny,
-                    child: const Text('取消'),
+                    child: Text(S.cancel),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -115,7 +116,7 @@ class AddContactWidget extends StatelessWidget {
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('保存联系人'),
+                        : Text(S.saveContact),
                   ),
                 ),
               ],

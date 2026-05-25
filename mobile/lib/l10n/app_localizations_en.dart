@@ -550,4 +550,173 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get comingSoon => 'Coming soon';
+
+  @override
+  String get quickSetup => 'Quick Setup';
+
+  @override
+  String get dailyLimit => 'Daily Limit';
+
+  @override
+  String dailyLimitDesc(String amount) {
+    return 'Daily transfer limit up to \$$amount';
+  }
+
+  @override
+  String get largeTransferConfirm => 'Large Transfer Confirm';
+
+  @override
+  String largeTransferDesc(String amount) {
+    return 'Single transfer over \$$amount requires confirmation';
+  }
+
+  @override
+  String get activePolicies => 'Active Policies';
+
+  @override
+  String get noPolicies => 'No policies. Use quick setup above.';
+
+  @override
+  String deletePolicyConfirm(String name) {
+    return 'Delete \"\$$name\"?';
+  }
+
+  @override
+  String get yesterday => 'Yesterday';
+
+  @override
+  String daysAgo(int days) {
+    return '\$$days days ago';
+  }
+
+  @override
+  String monthsAgo(int months) {
+    return '\$$months months ago';
+  }
+
+  @override
+  String get languageLabel => 'English';
+
+  @override
+  String contactSaved(String name) {
+    return '✅ Contact \"\$$name\" saved';
+  }
+
+  @override
+  String get releaseToCancel => 'Release to cancel';
+
+  @override
+  String get slideUpToSend => 'Slide up to cancel, release to send';
+
+  @override
+  String get saveContact => 'Save Contact';
+
+  @override
+  String get cautions => 'Cautions';
+
+  @override
+  String get passed => 'Passed';
+
+  @override
+  String get safetyAdvice => 'Safety Advice';
+
+  @override
+  String get riskLevelSafe => 'Safe';
+
+  @override
+  String get riskLevelMedium => 'Medium Risk';
+
+  @override
+  String get riskLevelHigh => 'High Risk';
+
+  @override
+  String get riskLevelUnknown => 'Unknown';
+
+  @override
+  String get securityAudit => 'Security audit';
+
+  @override
+  String get riskItems => 'Risk Items';
+
+  @override
+  String get allEvmChains => 'All EVM chains supported';
+
+  @override
+  String get addressCopied => 'Address copied';
+
+  @override
+  String get copyAddress => 'Copy Address';
+
+  @override
+  String get transferRejected => 'Transfer Rejected';
+
+  @override
+  String get transferExceedsLimit => 'Exceeds Transfer Limit';
+
+  @override
+  String limitLabel(String limit) {
+    return 'Limit: \$$limit';
+  }
+
+  @override
+  String get adjustLimitHint => 'Adjust the amount or modify your limit in Settings > Transfer Limits.';
+
+  @override
+  String get featureAiIntent => 'Tell me about AI intent recognition';
+
+  @override
+  String get featureProxyPay => 'Tell me about proxy payment';
+
+  @override
+  String get featureFamily => 'Tell me about family shared wallet';
+
+  @override
+  String get featureSkills => 'Tell me about skill extensions';
+
+  @override
+  String get checkBalance => 'Check balance';
+
+  @override
+  String chainBalance(String chain, String token) {
+    return 'Check \$$token balance on \$$chain';
+  }
+
+  @override
+  String get recentTransactions => 'Recent transactions';
+
+  @override
+  String get backupVerifyFailed => 'Backup verification failed. Please confirm you imported the correct backup file from registration.';
+
+  @override
+  String get backupFormatInvalid => 'Backup format is invalid. Please check if the file is complete.';
+
+  @override
+  String get noCloudBackup => 'No cloud backup found. Please try importing from a file.';
+
+  @override
+  String viewChainAssets(String chain) {
+    return 'View assets on \$$chain';
+  }
+
+  @override
+  String get aaveUsdc => 'USDC on Aave';
+
+  @override
+  String get baseAudited => 'Base Chain · Audited';
+
+  @override
+  String get agentRule1 => 'Read-only balance, \$500 daily limit, no staking';
+
+  @override
+  String agentSigned(int signed, int total) {
+    return 'Signed \$$signed/\$$total';
+  }
+
+  @override
+  String get agentRule2 => 'Team expense, auto-pay after approval';
+
+  @override
+  String pinError(int attempts) {
+    return 'Incorrect PIN. \$$attempts attempts remaining';
+  }
 }

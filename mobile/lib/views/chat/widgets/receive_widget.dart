@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/typography.dart';
 import '../../../widgets/top_toast.dart';
+import '../../../l10n/strings.dart';
 
 class ChatReceiveWidget extends StatelessWidget {
   final String address;
@@ -57,7 +58,7 @@ class ChatReceiveWidget extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '所有 EVM 链通用',
+            S.allEvmChains,
             style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
           ),
           const SizedBox(height: 4),
@@ -77,11 +78,9 @@ class ChatReceiveWidget extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: address));
-                showTopToast(context, '地址已复制');
+                showTopToast(context, S.addressCopied);
               },
-              icon: const Icon(Icons.copy, size: 16),
-              label: const Text('复制地址'),
+              label: Text(S.copyAddress),
               style: OutlinedButton.styleFrom(
                 foregroundColor: CwColors.ink2,
                 side: const BorderSide(color: CwColors.line),

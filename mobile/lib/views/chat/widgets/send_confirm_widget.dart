@@ -78,7 +78,7 @@ class ChatSendConfirmWidget extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                policyRejected ? '转账被拒绝'
+                policyRejected ? S.transferRejected
                     : resolved ? S.transferSubmitted
                     : deductGasHint ? S.amountAdjustedGas
                     : S.transferConfirm,
@@ -107,19 +107,19 @@ class ChatSendConfirmWidget extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    policyReason ?? '超出转账限额',
+                    policyReason ?? S.transferExceedsLimit,
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CwColors.danger),
                   ),
                   if (policyLimit != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      '限额: $policyLimit',
+                      S.limitLabel(limit: policyLimit ?? ''),
                       style: const TextStyle(fontSize: 11, color: CwColors.ink3),
                     ),
                   ],
                   const SizedBox(height: 8),
                   const Text(
-                    '请调整金额或在 设置 > 转账限额 中修改您的限额。',
+                    S.adjustLimitHint,
                     style: TextStyle(fontSize: 11, color: CwColors.ink3),
                   ),
                 ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../theme/typography.dart';
 import '../utils/secure_storage.dart';
+import '../l10n/strings.dart';
 
 /// Full-screen PIN verification dialog.
 /// Returns true if PIN matches, false if user cancels.
@@ -127,7 +128,7 @@ class _PinVerifyDialogState extends State<PinVerifyDialog> {
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
-                  'PIN码错误，还剩${_maxAttempts - _attempts}次机会',
+                  S.pinError(attempts: _maxAttempts - _attempts),
                   style: const TextStyle(color: CwColors.danger, fontSize: 13),
                 ),
               ),

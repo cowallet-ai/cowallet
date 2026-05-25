@@ -324,12 +324,12 @@ class _SettingsViewState extends State<SettingsView> {
       if (diff.inDays == 0) {
         return S.today;
       } else if (diff.inDays == 1) {
-        return isZh ? '昨天' : 'Yesterday';
+        return S.yesterday;
       } else if (diff.inDays < 30) {
-        return isZh ? '${diff.inDays} 天前' : '${diff.inDays} days ago';
+        return S.daysAgo(days: diff.inDays);
       } else {
         final months = (diff.inDays / 30).floor();
-        return isZh ? '$months 个月前' : '$months months ago';
+        return S.monthsAgo(months: months);
       }
     } catch (e) {
       return S.never;
@@ -662,8 +662,6 @@ class _SettingsViewState extends State<SettingsView> {
 
   // ── General settings list ──
   Widget _generalList(BuildContext context) {
-    final locale = Localizations.localeOf(context);
-    final langLabel = locale.languageCode == 'zh' ? '中文' : 'English';
     return _settingsContainer(
       children: [
         _settingRow(
@@ -673,7 +671,7 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.bgSubtle,
           title: S.language,
           trailing: Text(
-            langLabel,
+            S.languageLabel,
             style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
           ),
           onTap: _toggleLanguage,

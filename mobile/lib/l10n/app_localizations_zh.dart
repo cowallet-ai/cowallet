@@ -12,369 +12,369 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appName => 'CoWallet';
 
   @override
-  String get tagline => '会听懂人话的钱包';
+  String get tagline => 'the wallet that reads you back';
 
   @override
-  String get tabHome => '首页';
+  String get tabHome => 'Home';
 
   @override
-  String get tabWallet => '钱包';
+  String get tabWallet => 'Wallet';
 
   @override
-  String get tabAsk => '问';
+  String get tabAsk => 'ASK';
 
   @override
-  String get tabAgents => '助手';
+  String get tabAgents => 'Agents';
 
   @override
-  String get tabSettings => '设置';
+  String get tabSettings => 'Settings';
 
   @override
   String get tabDefi => 'DeFi';
 
   @override
-  String get heroKicker => '数字钱包 · 会听懂人话';
+  String get heroKicker => 'Digital wallet · speaks your language';
 
   @override
-  String get heroH1a => '会听你说话的';
+  String get heroH1a => 'A wallet that';
 
   @override
-  String get heroH1b => '';
+  String get heroH1b => 'actually';
 
   @override
-  String get heroH1em => '钱包';
+  String get heroH1em => 'listens';
 
   @override
-  String get heroExplain => '就像给你家请了个管家——你说\"帮我转 100 块给小明\",它就去做;你不会说也没关系,它有按钮。';
+  String get heroExplain => 'Like hiring a butler for your money — say \"send \$100 to Sarah\" and it does it. Don\'t feel like talking? Buttons work too.';
 
   @override
-  String get heroFeat1h => '不用懂区块链';
+  String get heroFeat1h => 'No crypto knowledge needed';
 
   @override
-  String get heroFeat1s => '说句话就能转账、收款、理财';
+  String get heroFeat1s => 'Send, receive, and earn just by saying so';
 
   @override
-  String get heroFeat2h => '100+ 个金融网络';
+  String get heroFeat2h => '100+ financial networks';
 
   @override
-  String get heroFeat2s => '全世界通用';
+  String get heroFeat2s => 'Works worldwide';
 
   @override
-  String get heroFeat3h => 'AI 帮你跑腿';
+  String get heroFeat3h => 'AI does the errands';
 
   @override
-  String get heroFeat3s => '你只需说一句话';
+  String get heroFeat3s => 'Just say the word';
 
   @override
-  String get getStarted => '开始使用';
+  String get getStarted => 'Get started';
 
   @override
-  String get heroLegal => '继续即表示同意服务条款与隐私政策';
+  String get heroLegal => 'By continuing you agree to our Terms and Privacy Policy';
 
   @override
-  String get introH1 => '你的钱包如何保护你';
+  String get introH1 => 'How your wallet protects you';
 
   @override
-  String get introSub => 'CoWallet 用一种叫\"门限签名\"的技术,把钥匙拆成三份。';
+  String get introSub => 'CoWallet uses threshold signatures to split your key into three pieces.';
 
   @override
-  String get introBullet1h => '钥匙拆成三份';
+  String get introBullet1h => 'Key split into three';
 
   @override
-  String get introBullet1s => '手机一份、服务器一份、你自己保管一份。完整钥匙从不出现在任何地方。';
+  String get introBullet1s => 'One on your phone, one on server, one kept by you. The full key never exists anywhere.';
 
   @override
-  String get introBullet2h => '动钱需要两份';
+  String get introBullet2h => 'Two needed to transact';
 
   @override
-  String get introBullet2s => '任何单方(包括 CoWallet)都无法单独动你的钱。';
+  String get introBullet2s => 'No single party — including CoWallet — can move your money alone.';
 
   @override
-  String get introBullet3h => '没有助记词';
+  String get introBullet3h => 'No seed phrase';
 
   @override
-  String get introBullet3s => '不用抄 12 个单词。丢了手机,用你的备份 + 服务器就能恢复。';
+  String get introBullet3s => 'No 12 words to write down. Lose your phone, your backup + server recovers everything.';
 
   @override
-  String get introStart => '开始创建';
+  String get introStart => 'Start creating';
 
   @override
-  String get emailH1 => '绑定恢复邮箱';
+  String get emailH1 => 'Recovery Email';
 
   @override
-  String get emailSub => '用于账户恢复时验证身份,我们不会发送垃圾邮件。';
+  String get emailSub => 'Used to verify your identity during wallet recovery. We won\'t send spam.';
 
   @override
-  String get emailHint => '此邮箱仅用于钱包恢复验证';
+  String get emailHint => 'This email is only used for wallet recovery verification';
 
   @override
-  String get invalidEmail => '请输入有效的邮箱地址';
+  String get invalidEmail => 'Please enter a valid email address';
 
   @override
-  String get emailSendFailed => '发送验证码失败,请重试';
+  String get emailSendFailed => 'Failed to send code, please try again';
 
   @override
-  String get emailAlreadyRegistered => '该邮箱已注册';
+  String get emailAlreadyRegistered => 'Email already registered';
 
   @override
-  String get emailAlreadyRegisteredDesc => '该邮箱已关联钱包,是否前往恢复流程?';
+  String get emailAlreadyRegisteredDesc => 'This email is linked to an existing wallet. Go to recovery?';
 
   @override
-  String get goRecovery => '去恢复';
+  String get goRecovery => 'Recover';
 
   @override
-  String get reRegister => '重新注册';
+  String get reRegister => 'Re-register';
 
   @override
-  String get reRegisterDesc => '将创建新钱包,原钱包资产需通过恢复流程找回';
+  String get reRegisterDesc => 'This will create a new wallet. Original assets can only be recovered via the recovery flow.';
 
   @override
-  String get reRegisterConfirm => '确认重新注册';
+  String get reRegisterConfirm => 'Confirm Re-register';
 
   @override
-  String get otpH1 => '输入验证码';
+  String get otpH1 => 'Enter Verification Code';
 
   @override
   String otpSub(String email) {
-    return '验证码已发送至 $email';
+    return 'Code sent to $email';
   }
 
   @override
-  String get otpResend => '重新发送验证码';
+  String get otpResend => 'Resend code';
 
   @override
-  String get otpInvalid => '验证码错误或已过期';
+  String get otpInvalid => 'Invalid or expired code';
 
   @override
-  String get creatingH1 => '正在帮你把钥匙分成三份';
+  String get creatingH1 => 'Splitting your key into three pieces';
 
   @override
-  String get creatingSub => '动你的钱需要任意两份钥匙。三份分开存放,丢了一份还能恢复。完整的钥匙从不出现在任何地方。';
+  String get creatingSub => 'Moving your money requires any 2 of 3 keys. Stored separately — lose one, the other two still work. The full key never exists in one place.';
 
   @override
-  String get cl1 => '第 1 份:存在这台手机里';
+  String get cl1 => '1st key: stored on this phone';
 
   @override
-  String get cl2 => '第 2 份:存在服务器保险柜';
+  String get cl2 => '2nd key: stored in server vault';
 
   @override
-  String get cl3 => '第 3 份:由你自己保管';
+  String get cl3 => '3rd key: kept by you';
 
   @override
-  String get createError => '钱包创建失败,请重试。';
+  String get createError => 'Wallet creation failed. Please try again.';
 
   @override
-  String get retry => '重试';
+  String get retry => 'Retry';
 
   @override
-  String get bioH1 => '开启生物识别';
+  String get bioH1 => 'Enable biometric authentication';
 
   @override
-  String get bioSub => '就像手机解锁一样,用指纹或面容保护你的钱包。生物信息不会离开这台手机。';
+  String get bioSub => 'Just like unlocking your phone. Protect your wallet with fingerprint or face. Biometric data never leaves this device.';
 
   @override
-  String get bioActivate => '开启生物识别';
+  String get bioActivate => 'Turn on biometrics';
 
   @override
-  String get bioSkip => '改用密码';
+  String get bioSkip => 'Use a passcode instead';
 
   @override
-  String get bioVerifying => '正在验证...';
+  String get bioVerifying => 'Verifying...';
 
   @override
-  String get bioDone => '生物识别已开启';
+  String get bioDone => 'Biometrics ready';
 
   @override
-  String get pinH1 => '设置钱包密码';
+  String get pinH1 => 'Set wallet passcode';
 
   @override
-  String get pinSub => '6 位数字密码,每次交易时需要输入。';
+  String get pinSub => '6-digit passcode, required for every transaction.';
 
   @override
-  String get pinConfirmH1 => '再输入一次';
+  String get pinConfirmH1 => 'Confirm passcode';
 
   @override
-  String get pinConfirmSub => '请再输入一遍以确认。';
+  String get pinConfirmSub => 'Enter the same passcode again to confirm.';
 
   @override
-  String get pinMismatch => '两次输入不一致,请重新设置';
+  String get pinMismatch => 'Passcodes don\'t match. Try again.';
 
   @override
-  String get pinDone => '密码已设置';
+  String get pinDone => 'Passcode set';
 
   @override
-  String get nameH1 => '我该怎么叫你?';
+  String get nameH1 => 'What should I call you?';
 
   @override
-  String get nameSub => '起个名字就行,不用真名。';
+  String get nameSub => 'A nickname works. No real name needed.';
 
   @override
-  String get namePlaceholder => '比如 小明 / 老王 / Alice';
+  String get namePlaceholder => 'e.g. Alice, Mike, or a nickname';
 
   @override
-  String get nameTooShort => '名字太短';
+  String get nameTooShort => 'Name too short';
 
   @override
-  String get nameTooLong => '名字太长';
+  String get nameTooLong => 'Name too long';
 
   @override
-  String get settings => '设置';
+  String get settings => 'Settings';
 
   @override
-  String get security => '安全';
+  String get security => 'Security';
 
   @override
-  String get keySecurity => '密钥安全';
+  String get keySecurity => 'Key Security';
 
   @override
-  String get conversation => '对话';
+  String get conversation => 'Conversation';
 
   @override
-  String get general => '一般';
+  String get general => 'General';
 
   @override
-  String get biometricAuth => '生物识别';
+  String get biometricAuth => 'Biometric Authentication';
 
   @override
-  String get biometricAuthReason => '请验证身份以继续';
+  String get biometricAuthReason => 'Authenticate to proceed';
 
   @override
-  String get biometricNotAvailable => '此设备不支持';
+  String get biometricNotAvailable => 'Not available on this device';
 
   @override
-  String get biometricEnable => '开启';
+  String get biometricEnable => 'Enable';
 
   @override
-  String get biometricDisable => '关闭';
+  String get biometricDisable => 'Disable';
 
   @override
-  String get emergencyFreeze => '紧急冻结';
+  String get emergencyFreeze => 'Emergency Freeze';
 
   @override
-  String get emergencyFreezeSub => '暂时冻结所有交易';
+  String get emergencyFreezeSub => 'Temporarily freeze all transactions';
 
   @override
-  String get emergencyFreezeConfirmTitle => '冻结钱包?';
+  String get emergencyFreezeConfirmTitle => 'Freeze Wallet?';
 
   @override
-  String get emergencyFreezeConfirmBody => '所有交易将被阻止,直到你解冻。';
+  String get emergencyFreezeConfirmBody => 'All transactions will be blocked until you unfreeze.';
 
   @override
-  String get emergencyFreezeActivated => '钱包已冻结';
+  String get emergencyFreezeActivated => 'Wallet frozen';
 
   @override
-  String get emergencyFreezeDeactivated => '钱包已解冻';
+  String get emergencyFreezeDeactivated => 'Wallet unfrozen';
 
   @override
-  String get frozenBanner => '钱包已冻结,点「安全」可解冻';
+  String get frozenBanner => 'Wallet is frozen. Tap Security to unfreeze.';
 
   @override
-  String get emergencyContact => '紧急联系人';
+  String get emergencyContact => 'Emergency Contact';
 
   @override
-  String get emergencyContactSub => '设置可信联系人用于恢复';
+  String get emergencyContactSub => 'Set up trusted contacts for recovery';
 
   @override
-  String get riskGuard => '风险防护';
+  String get riskGuard => 'Risk Guard';
 
   @override
-  String get riskGuardSub => '自定义安全规则和限额';
+  String get riskGuardSub => 'Custom security rules and limits';
 
   @override
-  String get keysCheckup => '密钥检查';
+  String get keysCheckup => 'Keys Check-up';
 
   @override
-  String get keysCheckupSub => '检查密钥分片的健康状态';
+  String get keysCheckupSub => 'Check the health of your key shards';
 
   @override
-  String get onPhone => '手机上';
+  String get onPhone => 'On Phone';
 
   @override
-  String get inCloud => '云端';
+  String get inCloud => 'In Cloud';
 
   @override
-  String get recovery => '恢复';
+  String get recovery => 'Recovery';
 
   @override
-  String get allSafe => '全部安全';
+  String get allSafe => 'All Safe';
 
   @override
-  String get keyStatusError => '发现问题';
+  String get keyStatusError => 'Issues Found';
 
   @override
-  String get keyStatusWarning => '尽快检查';
+  String get keyStatusWarning => 'Check Soon';
 
   @override
-  String get rotateKeyShares => '轮换密钥分片';
+  String get rotateKeyShares => 'Rotate Key Shares';
 
   @override
-  String get presignatures => '预签名';
+  String get presignatures => 'Presignatures';
 
   @override
-  String get presignaturesSub => '离线签名实现快速交易';
+  String get presignaturesSub => 'Offline signing for faster transactions';
 
   @override
-  String get lastRotation => '上次轮换';
+  String get lastRotation => 'Last rotation';
 
   @override
-  String get never => '从未';
+  String get never => 'Never';
 
   @override
-  String get today => '今天';
+  String get today => 'Today';
 
   @override
-  String get voiceInput => '语音输入';
+  String get voiceInput => 'Voice Input';
 
   @override
-  String get voiceInputSub => '使用语音与 AI 助手交互';
+  String get voiceInputSub => 'Use voice to interact with AI assistant';
 
   @override
-  String get aiModel => 'AI 模型';
+  String get aiModel => 'AI Model';
 
   @override
-  String get aiModelSub => '选择你喜欢的 AI 助手';
+  String get aiModelSub => 'Choose your preferred AI assistant';
 
   @override
-  String get language => '语言';
+  String get language => 'Language';
 
   @override
-  String get weeklyReport => '周报';
+  String get weeklyReport => 'Weekly Report';
 
   @override
-  String get weeklyReportSub => '每周获取资产摘要';
+  String get weeklyReportSub => 'Get weekly portfolio summary';
 
   @override
-  String get redoOnboarding => '重新引导';
+  String get redoOnboarding => 'Redo Onboarding';
 
   @override
-  String get redoOnboardingSub => '重新开始钱包创建流程';
+  String get redoOnboardingSub => 'Start over with wallet creation';
 
   @override
-  String get on => '开启';
+  String get on => 'ON';
 
   @override
-  String get off => '关闭';
+  String get off => 'OFF';
 
   @override
-  String get resetWalletTitle => '钱包有余额';
+  String get resetWalletTitle => 'Wallet Has Balance';
 
   @override
-  String get resetWalletHasBalance => '重置前请先将资产转移到其他钱包。';
+  String get resetWalletHasBalance => 'Please transfer your assets to another wallet before resetting.';
 
   @override
-  String get resetWalletGoTransfer => '去转账';
+  String get resetWalletGoTransfer => 'Go Transfer';
 
   @override
-  String get resetWalletConfirmTitle => '重置钱包?';
+  String get resetWalletConfirmTitle => 'Reset Wallet?';
 
   @override
-  String get resetWalletConfirmBody => '这将删除你的钱包。你需要通过备份来恢复。';
+  String get resetWalletConfirmBody => 'This will delete your wallet. You\'ll need to recover from your backup.';
 
   @override
-  String get resetWalletConfirm => '重置';
+  String get resetWalletConfirm => 'Reset';
 
   @override
-  String get resetWalletChecking => '检查余额中...';
+  String get resetWalletChecking => 'Checking balance...';
 
   @override
   String get signoff1 => 'CoWallet · 2026';
@@ -385,169 +385,338 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get cancel => '取消';
+  String get cancel => 'Cancel';
 
   @override
-  String get confirm => '确认';
+  String get confirm => 'Confirm';
 
   @override
-  String get save => '保存';
+  String get save => 'Save';
 
   @override
-  String get delete => '删除';
+  String get delete => 'Delete';
 
   @override
-  String get copy => '复制';
+  String get copy => 'Copy';
 
   @override
-  String get copied => '已复制';
+  String get copied => 'Copied';
 
   @override
-  String get send => '发送';
+  String get send => 'Send';
 
   @override
-  String get receive => '接收';
+  String get receive => 'Receive';
 
   @override
-  String get swap => '兑换';
+  String get swap => 'Swap';
 
   @override
-  String get more => '更多';
+  String get more => 'More';
 
   @override
-  String get loading => '加载中...';
+  String get loading => 'Loading...';
 
   @override
-  String get error => '错误';
+  String get error => 'Error';
 
   @override
-  String get success => '成功';
+  String get success => 'Success';
 
   @override
-  String get failed => '失败';
+  String get failed => 'Failed';
 
   @override
-  String get retryLater => '请稍后重试';
+  String get retryLater => 'Please try again later';
 
   @override
-  String get wallet => '钱包';
+  String get wallet => 'Wallet';
 
   @override
-  String get home => '首页';
+  String get home => 'Home';
 
   @override
-  String get balance => '余额';
+  String get balance => 'Balance';
 
   @override
-  String get transactions => '交易记录';
+  String get transactions => 'Transactions';
 
   @override
-  String get contacts => '联系人';
+  String get contacts => 'Contacts';
 
   @override
-  String get scan => '扫码';
+  String get scan => 'Scan QR';
 
   @override
-  String get help => '帮助';
+  String get help => 'Help';
 
   @override
-  String get amount => '金额';
+  String get amount => 'Amount';
 
   @override
-  String get to => '接收方';
+  String get to => 'To';
 
   @override
-  String get from => '发送方';
+  String get from => 'From';
 
   @override
-  String get gas => 'Gas 费';
+  String get gas => 'Gas Fee';
 
   @override
-  String get total => '总计';
+  String get total => 'Total';
 
   @override
-  String get max => '最大';
+  String get max => 'Max';
 
   @override
-  String get memo => '备注';
+  String get memo => 'Memo';
 
   @override
-  String get optional => '可选';
+  String get optional => 'Optional';
 
   @override
-  String get sendConfirmTitle => '确认发送';
+  String get sendConfirmTitle => 'Confirm Send';
 
   @override
   String sendConfirmBody(String amount, String symbol, String address) {
-    return '发送 $amount $symbol 到 $address?';
+    return 'Send $amount $symbol to $address?';
   }
 
   @override
-  String get transactionSent => '交易已发送';
+  String get transactionSent => 'Transaction sent';
 
   @override
-  String get transactionFailed => '交易失败';
+  String get transactionFailed => 'Transaction failed';
 
   @override
-  String get insufficientBalance => '余额不足';
+  String get insufficientBalance => 'Insufficient balance';
 
   @override
-  String get contactName => '联系人名称';
+  String get contactName => 'Contact Name';
 
   @override
-  String get contactAddress => '钱包地址';
+  String get contactAddress => 'Wallet Address';
 
   @override
-  String get addContact => '添加联系人';
+  String get addContact => 'Add Contact';
 
   @override
-  String get editContact => '编辑联系人';
+  String get editContact => 'Edit Contact';
 
   @override
-  String get deleteContact => '删除联系人';
+  String get deleteContact => 'Delete Contact';
 
   @override
-  String get noContacts => '暂无联系人';
+  String get noContacts => 'No contacts yet';
 
   @override
-  String get addFirstContact => '添加第一个联系人';
+  String get addFirstContact => 'Add your first contact';
 
   @override
-  String get chatPlaceholder => '问我任何问题...';
+  String get chatPlaceholder => 'Ask me anything...';
 
   @override
-  String get newChat => '新对话';
+  String get newChat => 'New Chat';
 
   @override
-  String get chatHistory => '对话历史';
+  String get chatHistory => 'Chat History';
 
   @override
-  String get clearHistory => '清空历史';
+  String get clearHistory => 'Clear History';
 
   @override
-  String get clearHistoryConfirm => '清空所有对话历史?';
+  String get clearHistoryConfirm => 'Clear all chat history?';
 
   @override
-  String get yield => '理财';
+  String get yield => 'Yield';
 
   @override
-  String get pools => '资金池';
+  String get pools => 'Pools';
 
   @override
-  String get apr => '年化收益';
+  String get apr => 'APR';
 
   @override
-  String get deposit => '存入';
+  String get deposit => 'Deposit';
 
   @override
-  String get withdraw => '取出';
+  String get withdraw => 'Withdraw';
 
   @override
-  String get yourPosition => '你的持仓';
+  String get yourPosition => 'Your Position';
 
   @override
-  String get totalValue => '总价值';
+  String get totalValue => 'Total Value';
 
   @override
-  String get comingSoon => '即将推出';
+  String get comingSoon => 'Coming soon';
+
+  @override
+  String get quickSetup => 'Quick Setup';
+
+  @override
+  String get dailyLimit => 'Daily Limit';
+
+  @override
+  String dailyLimitDesc(String amount) {
+    return 'Daily transfer limit up to \$$amount';
+  }
+
+  @override
+  String get largeTransferConfirm => 'Large Transfer Confirm';
+
+  @override
+  String largeTransferDesc(String amount) {
+    return 'Single transfer over \$$amount requires confirmation';
+  }
+
+  @override
+  String get activePolicies => 'Active Policies';
+
+  @override
+  String get noPolicies => 'No policies. Use quick setup above.';
+
+  @override
+  String deletePolicyConfirm(String name) {
+    return 'Delete \"\$$name\"?';
+  }
+
+  @override
+  String get yesterday => 'Yesterday';
+
+  @override
+  String daysAgo(int days) {
+    return '\$$days days ago';
+  }
+
+  @override
+  String monthsAgo(int months) {
+    return '\$$months months ago';
+  }
+
+  @override
+  String get languageLabel => 'English';
+
+  @override
+  String contactSaved(String name) {
+    return '✅ Contact \"\$$name\" saved';
+  }
+
+  @override
+  String get releaseToCancel => 'Release to cancel';
+
+  @override
+  String get slideUpToSend => 'Slide up to cancel, release to send';
+
+  @override
+  String get saveContact => 'Save Contact';
+
+  @override
+  String get cautions => 'Cautions';
+
+  @override
+  String get passed => 'Passed';
+
+  @override
+  String get safetyAdvice => 'Safety Advice';
+
+  @override
+  String get riskLevelSafe => 'Safe';
+
+  @override
+  String get riskLevelMedium => 'Medium Risk';
+
+  @override
+  String get riskLevelHigh => 'High Risk';
+
+  @override
+  String get riskLevelUnknown => 'Unknown';
+
+  @override
+  String get securityAudit => 'Security audit';
+
+  @override
+  String get riskItems => 'Risk Items';
+
+  @override
+  String get allEvmChains => 'All EVM chains supported';
+
+  @override
+  String get addressCopied => 'Address copied';
+
+  @override
+  String get copyAddress => 'Copy Address';
+
+  @override
+  String get transferRejected => 'Transfer Rejected';
+
+  @override
+  String get transferExceedsLimit => 'Exceeds Transfer Limit';
+
+  @override
+  String limitLabel(String limit) {
+    return 'Limit: \$$limit';
+  }
+
+  @override
+  String get adjustLimitHint => 'Adjust the amount or modify your limit in Settings > Transfer Limits.';
+
+  @override
+  String get featureAiIntent => 'Tell me about AI intent recognition';
+
+  @override
+  String get featureProxyPay => 'Tell me about proxy payment';
+
+  @override
+  String get featureFamily => 'Tell me about family shared wallet';
+
+  @override
+  String get featureSkills => 'Tell me about skill extensions';
+
+  @override
+  String get checkBalance => 'Check balance';
+
+  @override
+  String chainBalance(String chain, String token) {
+    return 'Check \$$token balance on \$$chain';
+  }
+
+  @override
+  String get recentTransactions => 'Recent transactions';
+
+  @override
+  String get backupVerifyFailed => 'Backup verification failed. Please confirm you imported the correct backup file from registration.';
+
+  @override
+  String get backupFormatInvalid => 'Backup format is invalid. Please check if the file is complete.';
+
+  @override
+  String get noCloudBackup => 'No cloud backup found. Please try importing from a file.';
+
+  @override
+  String viewChainAssets(String chain) {
+    return 'View assets on \$$chain';
+  }
+
+  @override
+  String get aaveUsdc => 'USDC on Aave';
+
+  @override
+  String get baseAudited => 'Base Chain · Audited';
+
+  @override
+  String get agentRule1 => 'Read-only balance, \$500 daily limit, no staking';
+
+  @override
+  String agentSigned(int signed, int total) {
+    return 'Signed \$$signed/\$$total';
+  }
+
+  @override
+  String get agentRule2 => 'Team expense, auto-pay after approval';
+
+  @override
+  String pinError(int attempts) {
+    return 'Incorrect PIN. \$$attempts attempts remaining';
+  }
 }

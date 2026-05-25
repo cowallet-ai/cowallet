@@ -224,5 +224,125 @@
   "yourPosition": "Your Position",
   "totalValue": "Total Value",
 
-  "comingSoon": "Coming soon"
+  "comingSoon": "Coming soon",
+
+  "quickSetup": "Quick Setup",
+  "dailyLimit": "Daily Limit",
+  "dailyLimitDesc": "Daily transfer limit up to ${amount}",
+  "@dailyLimitDesc": {
+    "placeholders": {
+      "amount": {"type": "String"}
+    }
+  },
+  "largeTransferConfirm": "Large Transfer Confirm",
+  "largeTransferDesc": "Single transfer over ${amount} requires confirmation",
+  "@largeTransferDesc": {
+    "placeholders": {
+      "amount": {"type": "String"}
+    }
+  },
+  "activePolicies": "Active Policies",
+  "noPolicies": "No policies. Use quick setup above.",
+  "deletePolicyConfirm": "Delete \"${name}\"?",
+  "@deletePolicyConfirm": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+
+  "yesterday": "Yesterday",
+  "daysAgo": "${days} days ago",
+  "@daysAgo": {
+    "placeholders": {
+      "days": {"type": "int"}
+    }
+  },
+  "monthsAgo": "${months} months ago",
+  "@monthsAgo": {
+    "placeholders": {
+      "months": {"type": "int"}
+    }
+  },
+  "languageLabel": "English",
+
+  "contactSaved": "✅ Contact \"${name}\" saved",
+  "@contactSaved": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "releaseToCancel": "Release to cancel",
+  "slideUpToSend": "Slide up to cancel, release to send",
+
+  "saveContact": "Save Contact",
+
+  "cautions": "Cautions",
+  "passed": "Passed",
+  "safetyAdvice": "Safety Advice",
+  "riskLevelSafe": "Safe",
+  "riskLevelMedium": "Medium Risk",
+  "riskLevelHigh": "High Risk",
+  "riskLevelUnknown": "Unknown",
+  "securityAudit": "Security Audit Report",
+  "riskItems": "Risk Items",
+
+  "allEvmChains": "All EVM chains supported",
+  "addressCopied": "Address copied",
+  "copyAddress": "Copy Address",
+
+  "transferRejected": "Transfer Rejected",
+  "transferExceedsLimit": "Exceeds Transfer Limit",
+  "limitLabel": "Limit: ${limit}",
+  "@limitLabel": {
+    "placeholders": {
+      "limit": {"type": "String"}
+    }
+  },
+  "adjustLimitHint": "Adjust the amount or modify your limit in Settings > Transfer Limits.",
+
+  "featureAiIntent": "Tell me about AI intent recognition",
+  "featureProxyPay": "Tell me about proxy payment",
+  "featureFamily": "Tell me about family shared wallet",
+  "featureSkills": "Tell me about skill extensions",
+
+  "checkBalance": "Check balance",
+  "chainBalance": "Check ${token} balance on ${chain}",
+  "@chainBalance": {
+    "placeholders": {
+      "chain": {"type": "String"},
+      "token": {"type": "String"}
+    }
+  },
+  "recentTransactions": "Recent transactions",
+  "securityAudit": "Security audit",
+
+  "backupVerifyFailed": "Backup verification failed. Please confirm you imported the correct backup file from registration.",
+  "backupFormatInvalid": "Backup format is invalid. Please check if the file is complete.",
+  "noCloudBackup": "No cloud backup found. Please try importing from a file.",
+
+  "viewChainAssets": "View assets on ${chain}",
+  "@viewChainAssets": {
+    "placeholders": {
+      "chain": {"type": "String"}
+    }
+  },
+  "aaveUsdc": "USDC on Aave",
+  "baseAudited": "Base Chain · Audited",
+
+  "agentRule1": "Read-only balance, $500 daily limit, no staking",
+  "agentSigned": "Signed ${signed}/${total}",
+  "@agentSigned": {
+    "placeholders": {
+      "signed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "agentRule2": "Team expense, auto-pay after approval",
+
+  "pinError": "Incorrect PIN. ${attempts} attempts remaining",
+  "@pinError": {
+    "placeholders": {
+      "attempts": {"type": "int"}
+    }
+  }
 }

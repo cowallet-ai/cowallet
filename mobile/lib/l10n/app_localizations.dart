@@ -1168,6 +1168,300 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Coming soon'**
   String get comingSoon;
+
+  /// No description provided for @quickSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick Setup'**
+  String get quickSetup;
+
+  /// No description provided for @dailyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily Limit'**
+  String get dailyLimit;
+
+  /// No description provided for @dailyLimitDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily transfer limit up to \${amount}'**
+  String dailyLimitDesc(String amount);
+
+  /// No description provided for @largeTransferConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Large Transfer Confirm'**
+  String get largeTransferConfirm;
+
+  /// No description provided for @largeTransferDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Single transfer over \${amount} requires confirmation'**
+  String largeTransferDesc(String amount);
+
+  /// No description provided for @activePolicies.
+  ///
+  /// In en, this message translates to:
+  /// **'Active Policies'**
+  String get activePolicies;
+
+  /// No description provided for @noPolicies.
+  ///
+  /// In en, this message translates to:
+  /// **'No policies. Use quick setup above.'**
+  String get noPolicies;
+
+  /// No description provided for @deletePolicyConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"\${name}\"?'**
+  String deletePolicyConfirm(String name);
+
+  /// No description provided for @yesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get yesterday;
+
+  /// No description provided for @daysAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'\${days} days ago'**
+  String daysAgo(int days);
+
+  /// No description provided for @monthsAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'\${months} months ago'**
+  String monthsAgo(int months);
+
+  /// No description provided for @languageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'English'**
+  String get languageLabel;
+
+  /// No description provided for @contactSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'✅ Contact \"\${name}\" saved'**
+  String contactSaved(String name);
+
+  /// No description provided for @releaseToCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Release to cancel'**
+  String get releaseToCancel;
+
+  /// No description provided for @slideUpToSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Slide up to cancel, release to send'**
+  String get slideUpToSend;
+
+  /// No description provided for @saveContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Save Contact'**
+  String get saveContact;
+
+  /// No description provided for @cautions.
+  ///
+  /// In en, this message translates to:
+  /// **'Cautions'**
+  String get cautions;
+
+  /// No description provided for @passed.
+  ///
+  /// In en, this message translates to:
+  /// **'Passed'**
+  String get passed;
+
+  /// No description provided for @safetyAdvice.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety Advice'**
+  String get safetyAdvice;
+
+  /// No description provided for @riskLevelSafe.
+  ///
+  /// In en, this message translates to:
+  /// **'Safe'**
+  String get riskLevelSafe;
+
+  /// No description provided for @riskLevelMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium Risk'**
+  String get riskLevelMedium;
+
+  /// No description provided for @riskLevelHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High Risk'**
+  String get riskLevelHigh;
+
+  /// No description provided for @riskLevelUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get riskLevelUnknown;
+
+  /// No description provided for @securityAudit.
+  ///
+  /// In en, this message translates to:
+  /// **'Security audit'**
+  String get securityAudit;
+
+  /// No description provided for @riskItems.
+  ///
+  /// In en, this message translates to:
+  /// **'Risk Items'**
+  String get riskItems;
+
+  /// No description provided for @allEvmChains.
+  ///
+  /// In en, this message translates to:
+  /// **'All EVM chains supported'**
+  String get allEvmChains;
+
+  /// No description provided for @addressCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Address copied'**
+  String get addressCopied;
+
+  /// No description provided for @copyAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Address'**
+  String get copyAddress;
+
+  /// No description provided for @transferRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Rejected'**
+  String get transferRejected;
+
+  /// No description provided for @transferExceedsLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Exceeds Transfer Limit'**
+  String get transferExceedsLimit;
+
+  /// No description provided for @limitLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Limit: \${limit}'**
+  String limitLabel(String limit);
+
+  /// No description provided for @adjustLimitHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust the amount or modify your limit in Settings > Transfer Limits.'**
+  String get adjustLimitHint;
+
+  /// No description provided for @featureAiIntent.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell me about AI intent recognition'**
+  String get featureAiIntent;
+
+  /// No description provided for @featureProxyPay.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell me about proxy payment'**
+  String get featureProxyPay;
+
+  /// No description provided for @featureFamily.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell me about family shared wallet'**
+  String get featureFamily;
+
+  /// No description provided for @featureSkills.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell me about skill extensions'**
+  String get featureSkills;
+
+  /// No description provided for @checkBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Check balance'**
+  String get checkBalance;
+
+  /// No description provided for @chainBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Check \${token} balance on \${chain}'**
+  String chainBalance(String chain, String token);
+
+  /// No description provided for @recentTransactions.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent transactions'**
+  String get recentTransactions;
+
+  /// No description provided for @backupVerifyFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup verification failed. Please confirm you imported the correct backup file from registration.'**
+  String get backupVerifyFailed;
+
+  /// No description provided for @backupFormatInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup format is invalid. Please check if the file is complete.'**
+  String get backupFormatInvalid;
+
+  /// No description provided for @noCloudBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'No cloud backup found. Please try importing from a file.'**
+  String get noCloudBackup;
+
+  /// No description provided for @viewChainAssets.
+  ///
+  /// In en, this message translates to:
+  /// **'View assets on \${chain}'**
+  String viewChainAssets(String chain);
+
+  /// No description provided for @aaveUsdc.
+  ///
+  /// In en, this message translates to:
+  /// **'USDC on Aave'**
+  String get aaveUsdc;
+
+  /// No description provided for @baseAudited.
+  ///
+  /// In en, this message translates to:
+  /// **'Base Chain · Audited'**
+  String get baseAudited;
+
+  /// No description provided for @agentRule1.
+  ///
+  /// In en, this message translates to:
+  /// **'Read-only balance, \$500 daily limit, no staking'**
+  String get agentRule1;
+
+  /// No description provided for @agentSigned.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed \${signed}/\${total}'**
+  String agentSigned(int signed, int total);
+
+  /// No description provided for @agentRule2.
+  ///
+  /// In en, this message translates to:
+  /// **'Team expense, auto-pay after approval'**
+  String get agentRule2;
+
+  /// No description provided for @pinError.
+  ///
+  /// In en, this message translates to:
+  /// **'Incorrect PIN. \${attempts} attempts remaining'**
+  String pinError(int attempts);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -277,14 +277,14 @@ class _RecoveryViewState extends State<RecoveryView> {
   String _friendlyRecoveryError(String raw) {
     if (raw.contains('commitment verification failed') ||
         raw.contains('backup shard is incorrect')) {
-      return '备份密钥验证失败，请确认您导入的是注册时备份的正确密钥文件。';
+      return S.backupVerifyFailed;
     }
     if (raw.contains('not a valid scalar') ||
         raw.contains('invalid backup shard')) {
-      return '备份密钥格式无效，请检查文件是否完整。';
+      return S.backupFormatInvalid;
     }
     if (raw.contains('No backup shard found')) {
-      return '未找到云端备份，请尝试从文件导入。';
+      return S.noCloudBackup;
     }
     return raw;
   }

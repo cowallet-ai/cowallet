@@ -189,21 +189,21 @@ class _SearchViewState extends State<SearchView> {
           color: const Color(0xFF0EA5E9),
           label: S.totalBalance,
           keywords: ['余额', '资产', 'balance', 'portfolio'],
-          action: () => _goChat('查看余额'),
+          action: () => _goChat(S.checkBalance),
         ),
         _FeatureItem(
           icon: Icons.history,
           color: CwColors.ink2,
           label: S.recentTx,
           keywords: ['交易', '历史', 'history', 'transaction', '记录'],
-          action: () => _goChat('最近交易记录'),
+          action: () => _goChat(S.recentTransactions),
         ),
         _FeatureItem(
           icon: Icons.security,
           color: const Color(0xFFF59E0B),
           label: S.securityAudit,
           keywords: ['安全', '审计', 'security', 'audit'],
-          action: () => _goChat('安全审计'),
+          action: () => _goChat(S.securityAudit),
         ),
       ];
 

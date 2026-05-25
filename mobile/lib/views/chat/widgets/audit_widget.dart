@@ -1,6 +1,7 @@
 import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
+import '../../../l10n/strings.dart';
 
 class ChatAuditWidget extends StatelessWidget {
   final Map<String, dynamic> data;
@@ -39,14 +40,15 @@ class ChatAuditWidget extends StatelessWidget {
             children: [
               const Icon(Icons.shield_outlined, size: 16, color: CwColors.accent),
               const SizedBox(width: 6),
-              const Text(
-                '安全审计报告',
+              Text(
+                S.securityAudit,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink3,
                   letterSpacing: 0.5,
                 ),
+              ),
               ),
               const Spacer(),
               if (auditTime != null)
@@ -94,22 +96,19 @@ class ChatAuditWidget extends StatelessWidget {
           ),
           // High severity findings
           if (highFindings.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _sectionHeader('风险项', CwColors.danger),
+            _sectionHeader(S.riskItems, CwColors.danger),
             const SizedBox(height: 6),
             ...highFindings.map((f) => _buildFinding(f)),
           ],
           // Medium severity findings
           if (mediumFindings.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _sectionHeader('注意项', const Color(0xFFE5A100)),
+            _sectionHeader(S.cautions, const Color(0xFFE5A100)),
             const SizedBox(height: 6),
             ...mediumFindings.map((f) => _buildFinding(f)),
           ],
           // Info findings (passed checks)
           if (infoFindings.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _sectionHeader('已通过', CwColors.success),
+            _sectionHeader(S.passed, CwColors.success),
             const SizedBox(height: 6),
             ...infoFindings.map((f) => _buildFinding(f)),
           ],
@@ -118,7 +117,7 @@ class ChatAuditWidget extends StatelessWidget {
             const Divider(height: 1, color: CwColors.line),
             const SizedBox(height: 12),
             Text(
-              '安全建议',
+              S.safetyAdvice,
               style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, fontWeight: FontWeight.w600, color: CwColors.ink3),
             ),
             const SizedBox(height: 6),
@@ -245,13 +244,13 @@ class ChatAuditWidget extends StatelessWidget {
   String _riskLabel(String level) {
     switch (level) {
       case 'low':
-        return '安全';
+        return S.riskLevelSafe;
       case 'medium':
-        return '中等风险';
+        return S.riskLevelMedium;
       case 'high':
-        return '高风险';
+        return S.riskLevelHigh;
       default:
-        return '未知';
+        return S.riskLevelUnknown;
     }
   }
 
