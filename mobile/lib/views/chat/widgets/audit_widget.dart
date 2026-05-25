@@ -117,7 +117,7 @@ class ChatAuditWidget extends StatelessWidget {
             const SizedBox(height: 14),
             const Divider(height: 1, color: CwColors.line),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               '安全建议',
               style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, fontWeight: FontWeight.w600, color: CwColors.ink3),
             ),
@@ -127,7 +127,7 @@ class ChatAuditWidget extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('•  ', style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3)),
+                  Text('•  ', style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3)),
                   Expanded(
                     child: Text(
                       r.toString(),

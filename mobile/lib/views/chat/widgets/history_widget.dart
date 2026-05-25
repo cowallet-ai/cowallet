@@ -147,7 +147,7 @@ class ChatHistoryWidget extends StatelessWidget {
                           chainName,
                           style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.accent, fontWeight: FontWeight.w500),
                         ),
-                        const Text(' · ', style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4)),
+                        Text(' · ', style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4)),
                       ],
                       Text(
                         dateStr,

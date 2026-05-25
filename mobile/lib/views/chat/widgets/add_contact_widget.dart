@@ -64,7 +64,7 @@ class AddContactWidget extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       shortAddr,
-                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3, fontFamily: CwTypography.monoFamily),
+                      style: TextStyle(fontFamily: CwTypography.monoFamily, fontSize: 13, color: CwColors.ink3),
                     ),
                   ],
                 ),

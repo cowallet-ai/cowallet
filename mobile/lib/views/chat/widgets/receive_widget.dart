@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../theme/colors.dart';
+import '../../../theme/typography.dart';
 import '../../../widgets/top_toast.dart';
 
 class ChatReceiveWidget extends StatelessWidget {

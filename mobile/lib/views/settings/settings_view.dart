@@ -702,7 +702,7 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.bgSubtle,
           title: S.redoOnboarding,
           subtitle: S.redoOnboardingSub,
-          trailing: const Text(
+          trailing: Text(
             '↻',
             style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink3),
           ),

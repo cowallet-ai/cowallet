@@ -148,7 +148,7 @@ class ChatTxDetailWidget extends StatelessWidget {
                 },
                 child: Row(
                   children: [
-                    const Text(
+                    Text(
                       'Tx Hash',
                       style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink4),
                     ),
