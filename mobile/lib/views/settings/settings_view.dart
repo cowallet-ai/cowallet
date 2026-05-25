@@ -195,9 +195,7 @@ class _SettingsViewState extends State<SettingsView> {
   void _toggleLanguage() {
     final locale = Localizations.localeOf(context);
     final newLang = locale.languageCode == 'zh' ? 'en' : 'zh';
-    _settings.setLanguage(newLang);
-    // Trigger rebuild via setting listener
-    setState(() {});
+    CowalletApp.of(context).setLocale(Locale(newLang));
   }
 
 
