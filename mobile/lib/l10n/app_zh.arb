@@ -144,7 +144,7 @@
   "resetWalletConfirm": "重置",
   "resetWalletChecking": "检查余额中...",
 
-  "signoff1": "用 ❤️ 为未来的货币而建",
+  "signoff1": "CoWallet · 2026",
   "signoff2": "v{version}",
   "@signoff2": {
     "placeholders": {

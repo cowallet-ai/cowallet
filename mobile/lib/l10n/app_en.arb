@@ -144,7 +144,7 @@
   "resetWalletConfirm": "Reset",
   "resetWalletChecking": "Checking balance...",
 
-  "signoff1": "Built with ❤️ for the future of money",
+  "signoff1": "CoWallet · 2026",
   "signoff2": "v{version}",
   "@signoff2": {
     "placeholders": {

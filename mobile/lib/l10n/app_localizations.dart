@@ -830,7 +830,7 @@ abstract class AppLocalizations {
   /// No description provided for @signoff1.
   ///
   /// In en, this message translates to:
-  /// **'Built with ❤️ for the future of money'**
+  /// **'CoWallet · 2026'**
   String get signoff1;
 
   /// No description provided for @signoff2.

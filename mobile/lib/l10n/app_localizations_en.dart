@@ -377,7 +377,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resetWalletChecking => 'Checking balance...';
 
   @override
-  String get signoff1 => 'Built with ❤️ for the future of money';
+  String get signoff1 => 'CoWallet · 2026';
 
   @override
   String signoff2(String version) {

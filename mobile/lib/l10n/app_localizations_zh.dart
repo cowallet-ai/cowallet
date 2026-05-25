@@ -377,7 +377,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get resetWalletChecking => '检查余额中...';
 
   @override
-  String get signoff1 => '用 ❤️ 为未来的货币而建';
+  String get signoff1 => 'CoWallet · 2026';
 
   @override
   String signoff2(String version) {
