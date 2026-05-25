@@ -148,7 +148,7 @@ class ChatSwapConfirmWidget extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 10, color: CwColors.ink4),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 10, color: CwColors.ink4),
           ),
           const SizedBox(height: 4),
           Text(
@@ -162,7 +162,7 @@ class ChatSwapConfirmWidget extends StatelessWidget {
           ),
           Text(
             token,
-            style: const TextStyle(fontSize: 12, color: CwColors.ink3),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3),
           ),
         ],
       ),
@@ -174,11 +174,11 @@ class ChatSwapConfirmWidget extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: CwColors.ink4)),
+          Text(label, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink4)),
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(fontSize: 12, color: CwColors.ink2),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink2),
           ),
         ],
       ),

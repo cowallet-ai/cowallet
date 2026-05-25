@@ -563,7 +563,7 @@ class _SettingsViewState extends State<SettingsView> {
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: CwColors.ink3),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
             textAlign: TextAlign.center,
           ),
         ],
@@ -676,7 +676,7 @@ class _SettingsViewState extends State<SettingsView> {
           title: S.language,
           trailing: Text(
             langLabel,
-            style: const TextStyle(fontSize: 11, color: CwColors.ink3),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
           ),
           onTap: _toggleLanguage,
         ),
@@ -704,7 +704,7 @@ class _SettingsViewState extends State<SettingsView> {
           subtitle: S.redoOnboardingSub,
           trailing: const Text(
             '↻',
-            style: TextStyle(fontSize: 16, color: CwColors.ink3),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink3),
           ),
           onTap: () => _handleResetOnboarding(),
         ),

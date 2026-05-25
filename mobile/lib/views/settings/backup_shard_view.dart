@@ -179,7 +179,7 @@ class _ExportTabState extends State<_ExportTab> {
         // Description
         Text(
           S.backupExportSub,
-          style: const TextStyle(fontSize: 13, color: CwColors.ink3),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3),
         ),
         const SizedBox(height: 20),
 
@@ -225,7 +225,7 @@ class _ExportTabState extends State<_ExportTab> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               _error!,
-              style: const TextStyle(fontSize: 12, color: CwColors.danger),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.danger),
             ),
           ),
 
@@ -294,7 +294,7 @@ class _ExportTabState extends State<_ExportTab> {
                       child: OutlinedButton.icon(
                         onPressed: _copyToClipboard,
                         icon: const Icon(Icons.copy, size: 16),
-                        label: Text(S.backupCopyToClipboard, style: const TextStyle(fontSize: 12)),
+                        label: Text(S.backupCopyToClipboard, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -307,7 +307,7 @@ class _ExportTabState extends State<_ExportTab> {
                       child: OutlinedButton.icon(
                         onPressed: _saveToFile,
                         icon: const Icon(Icons.save_alt, size: 16),
-                        label: Text(S.backupSaveToFile, style: const TextStyle(fontSize: 12)),
+                        label: Text(S.backupSaveToFile, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -405,7 +405,7 @@ class _ImportTabState extends State<_ImportTab> {
         // Description
         Text(
           S.backupImportSub,
-          style: const TextStyle(fontSize: 13, color: CwColors.ink3),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3),
         ),
         const SizedBox(height: 20),
 
@@ -454,7 +454,7 @@ class _ImportTabState extends State<_ImportTab> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               _error!,
-              style: const TextStyle(fontSize: 12, color: CwColors.danger),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.danger),
             ),
           ),
 

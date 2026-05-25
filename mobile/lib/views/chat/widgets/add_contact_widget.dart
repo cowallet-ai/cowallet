@@ -59,12 +59,12 @@ class AddContactWidget extends StatelessWidget {
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CwColors.ink1),
+                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, fontWeight: FontWeight.w600, color: CwColors.ink1),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       shortAddr,
-                      style: TextStyle(fontSize: 13, color: CwColors.ink3, fontFamily: CwTypography.monoFamily),
+                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3, fontFamily: CwTypography.monoFamily),
                     ),
                   ],
                 ),
@@ -79,7 +79,7 @@ class AddContactWidget extends StatelessWidget {
               children: [
                 Icon(Icons.link, size: 14, color: CwColors.ink4),
                 const SizedBox(width: 4),
-                Text(chain!, style: TextStyle(fontSize: 12, color: CwColors.ink3)),
+                Text(chain!, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3)),
               ],
             ),
           ],
@@ -90,7 +90,7 @@ class AddContactWidget extends StatelessWidget {
                 Icon(Icons.note_outlined, size: 14, color: CwColors.ink4),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: Text(note!, style: TextStyle(fontSize: 12, color: CwColors.ink3)),
+                  child: Text(note!, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3)),
                 ),
               ],
             ),

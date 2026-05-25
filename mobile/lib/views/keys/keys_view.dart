@@ -243,7 +243,7 @@ class _KeysViewState extends State<KeysView> {
                   TextSpan(
                     text: S.keysH1em,
                     style: TextStyle(
-                      fontFamily: CwTypography.serifEnFamily,
+                      fontFamily: CwTypography.serifFamily,
                       fontSize: 26,
                       fontWeight: FontWeight.w600,
                       fontStyle: FontStyle.italic,
@@ -258,7 +258,7 @@ class _KeysViewState extends State<KeysView> {
             const SizedBox(height: 8),
             Text(
               S.keysSub,
-              style: const TextStyle(fontSize: 13, color: CwColors.ink3, height: 1.5),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3, height: 1.5),
             ),
             const SizedBox(height: 20),
 
@@ -322,7 +322,7 @@ class _KeysViewState extends State<KeysView> {
                   const SizedBox(height: 6),
                   Text(
                     S.keysExplainBody,
-                    style: const TextStyle(fontSize: 12, color: CwColors.ink3, height: 1.6),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3, height: 1.6),
                   ),
                 ],
               ),
@@ -362,7 +362,7 @@ class _KeysViewState extends State<KeysView> {
                   const SizedBox(height: 6),
                   Text(
                     S.keysTechBody,
-                    style: const TextStyle(fontSize: 12, color: CwColors.ink3, height: 1.6),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3, height: 1.6),
                   ),
                 ],
               ),
@@ -431,7 +431,7 @@ class _KeysViewState extends State<KeysView> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(where, style: const TextStyle(fontSize: 11, color: CwColors.ink3)),
+                      Text(where, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3)),
                     ],
                   ),
                 ),
@@ -477,7 +477,7 @@ class _KeysViewState extends State<KeysView> {
                     foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(40),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    textStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                   child: actionLoading
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

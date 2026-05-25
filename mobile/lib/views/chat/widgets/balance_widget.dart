@@ -182,7 +182,7 @@ class ChatBalanceWidget extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Text(symbol, style: const TextStyle(fontSize: 14, color: CwColors.ink2)),
+        Text(symbol, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink2)),
         const Spacer(),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -199,7 +199,7 @@ class ChatBalanceWidget extends StatelessWidget {
             if (usd != null && usd != '—' && usd != '0')
               Text(
                 '\$$usd',
-                style: const TextStyle(fontSize: 11, color: CwColors.ink4),
+                style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
               ),
           ],
         ),

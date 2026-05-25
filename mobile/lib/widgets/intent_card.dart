@@ -81,7 +81,7 @@ class IntentCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 13, color: CwColors.ink2, height: 1.55),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2, height: 1.55),
           ),
           const SizedBox(height: 12),
           Row(
@@ -92,7 +92,7 @@ class IntentCard extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(40),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    textStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12.5, fontWeight: FontWeight.w600),
                   ),
                   child: loading
                       ? const SizedBox(
@@ -113,7 +113,7 @@ class IntentCard extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(40),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 12.5),
+                    textStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12.5),
                   ),
                   child: Text(denyLabel),
                 ),

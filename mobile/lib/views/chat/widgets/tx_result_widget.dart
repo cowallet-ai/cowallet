@@ -138,7 +138,7 @@ class _ChatTxResultWidgetState extends State<ChatTxResultWidget> {
             const SizedBox(height: 8),
             Text(
               widget.errorMessage!,
-              style: const TextStyle(fontSize: 13, color: CwColors.ink2),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),

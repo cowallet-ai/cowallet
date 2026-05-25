@@ -290,7 +290,7 @@ class _ContactsViewState extends State<ContactsView> {
           if (contact.note != null && contact.note!.isNotEmpty)
             Text(
               contact.note!,
-              style: const TextStyle(fontSize: 11, color: CwColors.ink4),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

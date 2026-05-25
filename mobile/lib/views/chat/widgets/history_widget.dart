@@ -46,7 +46,7 @@ class ChatHistoryWidget extends StatelessWidget {
               const Spacer(),
               Text(
                 S.txCount(total),
-                style: const TextStyle(fontSize: 11, color: CwColors.ink4),
+                style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
               ),
             ],
           ),
@@ -57,7 +57,7 @@ class ChatHistoryWidget extends StatelessWidget {
               child: Center(
                 child: Text(
                   S.noTxHistory,
-                  style: TextStyle(fontSize: 13, color: CwColors.ink4),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink4),
                 ),
               ),
             )
@@ -69,7 +69,7 @@ class ChatHistoryWidget extends StatelessWidget {
               child: Center(
                 child: Text(
                   S.moreTxCount(transactions.length - 5),
-                  style: const TextStyle(fontSize: 11, color: CwColors.ink4),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
                 ),
               ),
             ),
@@ -137,7 +137,7 @@ class ChatHistoryWidget extends StatelessWidget {
                 children: [
                   Text(
                     S.sendTo(shortTo),
-                    style: const TextStyle(fontSize: 13, color: CwColors.ink1),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink1),
                   ),
                   const SizedBox(height: 2),
                   Row(
@@ -145,13 +145,13 @@ class ChatHistoryWidget extends StatelessWidget {
                       if (chainName != null) ...[
                         Text(
                           chainName,
-                          style: const TextStyle(fontSize: 11, color: CwColors.accent, fontWeight: FontWeight.w500),
+                          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.accent, fontWeight: FontWeight.w500),
                         ),
-                        const Text(' · ', style: TextStyle(fontSize: 11, color: CwColors.ink4)),
+                        const Text(' · ', style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4)),
                       ],
                       Text(
                         dateStr,
-                        style: const TextStyle(fontSize: 11, color: CwColors.ink4),
+                        style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
                       ),
                     ],
                   ),

@@ -72,10 +72,10 @@ class _SearchViewState extends State<SearchView> {
                 controller: _controller,
                 focusNode: _focusNode,
                 onChanged: _onChanged,
-                style: const TextStyle(fontSize: 14, color: CwColors.ink1),
+                style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink1),
                 decoration: InputDecoration(
                   hintText: S.searchHint,
-                  hintStyle: const TextStyle(fontSize: 14, color: CwColors.ink3),
+                  hintStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3),
                   prefixIcon: const Icon(Icons.search, size: 20, color: CwColors.ink3),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
@@ -88,7 +88,7 @@ class _SearchViewState extends State<SearchView> {
             onTap: () => Navigator.pop(context),
             child: Text(
               S.cancel,
-              style: const TextStyle(fontSize: 14, color: CwColors.accent),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.accent),
             ),
           ),
         ],
@@ -226,7 +226,7 @@ class _SearchViewState extends State<SearchView> {
             const SizedBox(width: 12),
             Text(
               f.label,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: CwColors.ink1),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 15, fontWeight: FontWeight.w500, color: CwColors.ink1),
             ),
             const Spacer(),
             const Icon(Icons.chevron_right, size: 18, color: CwColors.ink3),
@@ -272,12 +272,12 @@ class _SearchViewState extends State<SearchView> {
                 children: [
                   Text(
                     token.symbol,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: CwColors.ink1),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, fontWeight: FontWeight.w500, color: CwColors.ink1),
                   ),
                   if (chainName.isNotEmpty)
                     Text(
                       chainName,
-                      style: const TextStyle(fontSize: 11, color: CwColors.ink3),
+                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
                     ),
                 ],
               ),
@@ -287,11 +287,11 @@ class _SearchViewState extends State<SearchView> {
               children: [
                 Text(
                   token.balance,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: CwColors.ink1),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, fontWeight: FontWeight.w500, color: CwColors.ink1),
                 ),
                 Text(
                   '\$${token.usd}',
-                  style: const TextStyle(fontSize: 11, color: CwColors.ink3),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
                 ),
               ],
             ),
@@ -324,10 +324,10 @@ class _SearchViewState extends State<SearchView> {
           children: [
             const Icon(Icons.receipt_long, size: 18, color: CwColors.ink3),
             const SizedBox(width: 12),
-            Text(shortHash, style: const TextStyle(fontSize: 13, color: CwColors.ink2)),
+            Text(shortHash, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2)),
             if (tokenSymbol.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Text(tokenSymbol, style: const TextStyle(fontSize: 12, color: CwColors.ink3)),
+              Text(tokenSymbol, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3)),
             ],
           ],
         ),
@@ -368,7 +368,7 @@ class _SearchViewState extends State<SearchView> {
       child: Center(
         child: Text(
           symbol.substring(0, symbol.length > 3 ? 3 : symbol.length),
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: CwColors.ink2),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, fontWeight: FontWeight.w700, color: CwColors.ink2),
         ),
       ),
     );
@@ -377,7 +377,7 @@ class _SearchViewState extends State<SearchView> {
   Widget _sectionTitle(String text) {
     return Text(
       text,
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CwColors.ink3),
+      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, fontWeight: FontWeight.w600, color: CwColors.ink3),
     );
   }
 }

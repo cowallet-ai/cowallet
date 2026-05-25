@@ -344,7 +344,7 @@ class _HomeViewState extends State<HomeView> {
               children: [
                 Text(
                   '📊',
-                  style: const TextStyle(fontSize: 18),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 18),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -470,7 +470,7 @@ class _HomeViewState extends State<HomeView> {
         ),
         child: Row(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 24)),
+            Text(emoji, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 24)),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

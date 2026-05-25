@@ -311,7 +311,7 @@ class AgentsView extends StatelessWidget {
             children: [
               Text(
                 s.icon,
-                style: const TextStyle(fontSize: 30),
+                style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 30),
               ),
               const Spacer(),
               Text(

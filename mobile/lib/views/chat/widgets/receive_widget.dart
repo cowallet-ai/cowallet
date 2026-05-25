@@ -57,7 +57,7 @@ class ChatReceiveWidget extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '所有 EVM 链通用',
-            style: TextStyle(fontSize: 11, color: CwColors.ink4),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink4),
           ),
           const SizedBox(height: 4),
           Wrap(
@@ -104,7 +104,7 @@ class ChatReceiveWidget extends StatelessWidget {
       ),
       child: Text(
         name,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
+        style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 10, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }

@@ -509,7 +509,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       size: 16, color: CwColors.ink3),
                   const SizedBox(width: 4),
                   Text(S.back,
-                      style: TextStyle(fontSize: 14, color: CwColors.ink3)),
+                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3)),
                 ],
               ),
             )
@@ -827,13 +827,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             const SizedBox(height: 16),
             Text(
               S.emailAlreadyRegistered,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: CwColors.ink1),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 18, fontWeight: FontWeight.w600, color: CwColors.ink1),
             ),
             const SizedBox(height: 8),
             Text(
               S.emailAlreadyRegisteredDesc,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: CwColors.ink3),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -889,13 +889,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             const SizedBox(height: 16),
             Text(
               S.reRegister,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: CwColors.ink1),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 18, fontWeight: FontWeight.w600, color: CwColors.ink1),
             ),
             const SizedBox(height: 8),
             Text(
               S.reRegisterDesc,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: CwColors.ink3),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -994,7 +994,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 _subtitle(S.otpSub(_emailCtrl.text.trim())),
                 const SizedBox(height: 32),
                 if (_otpError != null) ...[
-                  Text(_otpError!, style: TextStyle(fontSize: 13, color: CwColors.danger)),
+                  Text(_otpError!, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.danger)),
                   const SizedBox(height: 12),
                 ],
                 Container(
@@ -1075,10 +1075,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
-                    style: const TextStyle(fontSize: 16, color: CwColors.ink1),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink1),
                     decoration: InputDecoration(
                       hintText: 'your@email.com',
-                      hintStyle: TextStyle(fontSize: 16, color: CwColors.ink4),
+                      hintStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink4),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 16),
                       border: InputBorder.none,
@@ -1094,7 +1094,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   const SizedBox(height: 8),
                   Text(
                     _emailError!,
-                    style: TextStyle(fontSize: 13, color: CwColors.danger),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.danger),
                   ),
                 ],
                 const SizedBox(height: 12),
@@ -1281,7 +1281,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   const SizedBox(height: 12),
                   Text(
                     S.bioVerifying,
-                    style: TextStyle(fontSize: 14, color: CwColors.ink3),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3),
                   ),
                 ],
               ],
@@ -1546,7 +1546,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         const SizedBox(width: 10),
                         Text(
                           S.backupSaved,
-                          style: TextStyle(fontSize: 15, color: CwColors.success, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 15, color: CwColors.success, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -1622,7 +1622,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                           color: CwColors.ink1)),
                   const SizedBox(height: 2),
                   Text(desc,
-                      style: TextStyle(fontSize: 13, color: CwColors.ink3)),
+                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3)),
                 ],
               ),
             ),

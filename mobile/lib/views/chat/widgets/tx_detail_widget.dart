@@ -150,7 +150,7 @@ class ChatTxDetailWidget extends StatelessWidget {
                   children: [
                     const Text(
                       'Tx Hash',
-                      style: TextStyle(fontSize: 12, color: CwColors.ink4),
+                      style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink4),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -187,7 +187,7 @@ class ChatTxDetailWidget extends StatelessWidget {
             : null,
         child: Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: CwColors.ink4)),
+            Text(label, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink4)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -235,7 +235,7 @@ class ChatTxDetailWidget extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }

@@ -1118,7 +1118,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 ),
                 child: Text(
                   _voiceText,
-                  style: const TextStyle(fontSize: 15, color: CwColors.ink1),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 15, color: CwColors.ink1),
                   textAlign: TextAlign.center,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
@@ -1239,7 +1239,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
         ),
         child: Text(
           s.text(_lang),
-          style: const TextStyle(fontSize: 13, color: CwColors.ink2, height: 1.3),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2, height: 1.3),
         ),
       ),
     );
@@ -1286,7 +1286,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
         ),
         child: SelectableText(
           msg.text,
-          style: const TextStyle(fontSize: 14, height: 1.5, color: Colors.white),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, height: 1.5, color: Colors.white),
         ),
       ),
     );
@@ -1334,13 +1334,13 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                     shrinkWrap: true,
                     selectable: true,
                     styleSheet: MarkdownStyleSheet(
-                      p: const TextStyle(fontSize: 14, height: 1.55, color: CwColors.ink1),
-                      strong: const TextStyle(fontSize: 14, height: 1.55, color: CwColors.ink1, fontWeight: FontWeight.w600),
-                      em: const TextStyle(fontSize: 14, height: 1.55, color: CwColors.ink1, fontStyle: FontStyle.italic),
-                      h1: const TextStyle(fontSize: 20, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w700),
-                      h2: const TextStyle(fontSize: 18, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w700),
-                      h3: const TextStyle(fontSize: 16, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w600),
-                      h4: const TextStyle(fontSize: 15, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w600),
+                      p: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, height: 1.55, color: CwColors.ink1),
+                      strong: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, height: 1.55, color: CwColors.ink1, fontWeight: FontWeight.w600),
+                      em: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, height: 1.55, color: CwColors.ink1, fontStyle: FontStyle.italic),
+                      h1: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 20, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w700),
+                      h2: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 18, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w700),
+                      h3: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w600),
+                      h4: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 15, height: 1.4, color: CwColors.ink1, fontWeight: FontWeight.w600),
                       code: TextStyle(
                         fontFamily: CwTypography.monoFamily,
                         fontSize: 13,
@@ -1353,8 +1353,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                         border: Border.all(color: CwColors.line),
                       ),
                       codeblockPadding: const EdgeInsets.all(12),
-                      a: const TextStyle(fontSize: 14, height: 1.55, color: CwColors.accent, decoration: TextDecoration.none),
-                      listBullet: const TextStyle(fontSize: 14, height: 1.55, color: CwColors.ink1),
+                      a: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, height: 1.55, color: CwColors.accent, decoration: TextDecoration.none),
+                      listBullet: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, height: 1.55, color: CwColors.ink1),
                       listIndent: 20.0,
                       blockSpacing: 10.0,
                       pPadding: EdgeInsets.zero,

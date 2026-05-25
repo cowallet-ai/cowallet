@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
+import '../theme/typography.dart';
 import '../utils/secure_storage.dart';
 
 /// Full-screen PIN verification dialog.
@@ -96,7 +97,7 @@ class _PinVerifyDialogState extends State<PinVerifyDialog> {
             const SizedBox(height: 20),
             Text(
               widget.reason,
-              style: const TextStyle(fontSize: 16, color: CwColors.ink2),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink2),
             ),
             const SizedBox(height: 24),
             Row(

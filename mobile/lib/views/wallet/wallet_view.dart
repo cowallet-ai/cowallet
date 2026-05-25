@@ -365,7 +365,7 @@ class _WalletViewState extends State<WalletView> {
       child: Center(
         child: Text(
           emoji,
-          style: const TextStyle(fontSize: 16),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16),
         ),
       ),
     );
@@ -414,7 +414,7 @@ class _WalletViewState extends State<WalletView> {
       child: OutlinedButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 18),
-        label: Text(label, style: const TextStyle(fontSize: 13)),
+        label: Text(label, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13)),
         style: OutlinedButton.styleFrom(
           foregroundColor: CwColors.ink1,
           side: const BorderSide(color: CwColors.lineStrong),

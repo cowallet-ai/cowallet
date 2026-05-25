@@ -13,6 +13,7 @@ import '../views/settings/policy_view.dart';
 import '../views/wallet/tx_history_view.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../theme/colors.dart';
+import '../theme/typography.dart';
 import '../l10n/strings.dart';
 
 class AppRouter {
@@ -147,13 +148,13 @@ class _AppShellState extends State<AppShell> {
                       color: CwColors.ink4,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text('TD', style: TextStyle(fontSize: 7, color: Colors.white, fontWeight: FontWeight.w600)),
+                    child: Text('TD', style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 7, color: Colors.white, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 2),
-            Text(label, style: const TextStyle(fontSize: 10, color: CwColors.ink4)),
+            Text(label, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 10, color: CwColors.ink4)),
           ],
         ),
       ),
@@ -172,7 +173,7 @@ class _AppShellState extends State<AppShell> {
           children: [
             Icon(active ? activeIcon : icon, size: 22, color: color),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 10, color: color)),
+            Text(label, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 10, color: color)),
           ],
         ),
       ),

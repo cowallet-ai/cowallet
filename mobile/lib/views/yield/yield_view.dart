@@ -254,7 +254,7 @@ class _YieldViewState extends State<YieldView> {
                 child: Center(
                   child: Text(
                     _protocolEmoji(opp.opportunityType),
-                    style: const TextStyle(fontSize: 18),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 18),
                   ),
                 ),
               ),
@@ -522,7 +522,7 @@ class _YieldViewState extends State<YieldView> {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: CwColors.ink3),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink3),
           ),
           const Spacer(),
           Text(
@@ -585,9 +585,9 @@ class _YieldViewState extends State<YieldView> {
       child: Center(
         child: Column(
           children: [
-            const Text(
+            Text(
               '📊',
-              style: TextStyle(fontSize: 40),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 40),
             ),
             const SizedBox(height: 12),
             Text(

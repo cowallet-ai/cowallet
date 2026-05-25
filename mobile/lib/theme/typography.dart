@@ -4,8 +4,6 @@ import 'colors.dart';
 
 abstract final class CwTypography {
   static final String serifFamily = GoogleFonts.notoSerifSc().fontFamily!;
-  static final String serifEnFamily = GoogleFonts.fraunces().fontFamily!;
-  static final String sansFamily = GoogleFonts.inter().fontFamily!;
   static final String monoFamily = GoogleFonts.jetBrainsMono().fontFamily!;
 
   static TextTheme get textTheme => GoogleFonts.notoSerifScTextTheme().copyWith(
@@ -122,34 +120,6 @@ abstract final class CwTypography {
     double? height,
   }) => TextStyle(
     fontFamily: serifFamily,
-    fontSize: fontSize,
-    fontWeight: fontWeight,
-    color: color ?? CwColors.ink1,
-    height: height,
-  );
-
-  // SerifEn: English display/brand text
-  static TextStyle serifEn({
-    double fontSize = 18,
-    FontWeight fontWeight = FontWeight.w500,
-    Color? color,
-    double? height,
-  }) => TextStyle(
-    fontFamily: serifEnFamily,
-    fontSize: fontSize,
-    fontWeight: fontWeight,
-    color: color ?? CwColors.ink1,
-    height: height,
-  );
-
-  // Sans: general UI text (default, usually not needed explicitly)
-  static TextStyle sans({
-    double fontSize = 14,
-    FontWeight fontWeight = FontWeight.w400,
-    Color? color,
-    double? height,
-  }) => TextStyle(
-    fontFamily: sansFamily,
     fontSize: fontSize,
     fontWeight: fontWeight,
     color: color ?? CwColors.ink1,

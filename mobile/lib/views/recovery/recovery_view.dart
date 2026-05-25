@@ -337,7 +337,7 @@ class _RecoveryViewState extends State<RecoveryView> {
                 children: [
                   Icon(Icons.arrow_back_ios_new, size: 16, color: CwColors.ink3),
                   const SizedBox(width: 4),
-                  Text(S.back, style: TextStyle(fontSize: 14, color: CwColors.ink3)),
+                  Text(S.back, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3)),
                 ],
               ),
             )
@@ -419,7 +419,7 @@ class _RecoveryViewState extends State<RecoveryView> {
           Expanded(
             child: Text(
               _error!,
-              style: TextStyle(fontSize: 13, color: CwColors.ink2),
+              style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2),
             ),
           ),
         ],
@@ -457,10 +457,10 @@ class _RecoveryViewState extends State<RecoveryView> {
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
-                    style: const TextStyle(fontSize: 16, color: CwColors.ink1),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink1),
                     decoration: InputDecoration(
                       hintText: S.recoveryEmailHint,
-                      hintStyle: TextStyle(fontSize: 16, color: CwColors.ink4),
+                      hintStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink4),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                       border: InputBorder.none,
                     ),
@@ -636,7 +636,7 @@ class _RecoveryViewState extends State<RecoveryView> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(desc, style: TextStyle(fontSize: 13, color: CwColors.ink3)),
+                  Text(desc, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink3)),
                 ],
               ),
             ),

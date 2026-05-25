@@ -66,9 +66,9 @@ class _SessionListSheetState extends State<SessionListSheet> {
       builder: (ctx) => AlertDialog(
         backgroundColor: CwColors.bgCard,
         title: Text(S.deleteSession,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CwColors.ink1)),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, fontWeight: FontWeight.w600, color: CwColors.ink1)),
         content: Text(S.deleteSessionConfirm,
-            style: const TextStyle(fontSize: 14, color: CwColors.ink2)),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink2)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -170,7 +170,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
                   const SizedBox(width: 4),
                   Text(
                     S.newChat,
-                    style: const TextStyle(fontSize: 13, color: CwColors.accent, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.accent, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -251,11 +251,11 @@ class _SessionListSheetState extends State<SessionListSheet> {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: CwColors.ink1),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, fontWeight: FontWeight.w500, color: CwColors.ink1),
         ),
         subtitle: Text(
           dateStr,
-          style: const TextStyle(fontSize: 12, color: CwColors.ink4),
+          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 12, color: CwColors.ink4),
         ),
         trailing: GestureDetector(
           onTap: () => _deleteSession(session),

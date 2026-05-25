@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
+import '../theme/typography.dart';
 
 class LoadingOverlay {
   static OverlayEntry? _entry;
@@ -54,7 +55,7 @@ class _LoadingWidget extends StatelessWidget {
                 const SizedBox(height: 14),
                 Text(
                   message!,
-                  style: const TextStyle(fontSize: 13, color: CwColors.ink2),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2),
                 ),
               ],
             ],

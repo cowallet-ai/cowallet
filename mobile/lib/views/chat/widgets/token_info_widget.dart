@@ -51,7 +51,7 @@ class ChatTokenInfoWidget extends StatelessWidget {
                 child: Center(
                   child: Text(
                     _emojiForSymbol(symbol),
-                    style: const TextStyle(fontSize: 18),
+                    style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 18),
                   ),
                 ),
               ),

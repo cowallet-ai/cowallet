@@ -248,7 +248,7 @@ class _PolicyViewState extends State<PolicyView> {
                       color: CwColors.ink1,
                     )),
                     const SizedBox(height: 2),
-                    Text(subtitle, style: const TextStyle(fontSize: 11, color: CwColors.ink3)),
+                    Text(subtitle, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3)),
                   ],
                 ),
               ),
@@ -276,7 +276,7 @@ class _PolicyViewState extends State<PolicyView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('\$${value.toInt()}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: CwColors.ink1)),
+                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, fontWeight: FontWeight.w600, color: CwColors.ink1)),
               TextButton(
                 onPressed: hasExisting ? null : onSave,
                 child: Text(
@@ -348,7 +348,7 @@ class _PolicyViewState extends State<PolicyView> {
                   color: CwColors.ink1,
                 )),
                 const SizedBox(height: 2),
-                Text(typeLabel, style: const TextStyle(fontSize: 11, color: CwColors.ink3)),
+                Text(typeLabel, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3)),
               ],
             ),
           ),
