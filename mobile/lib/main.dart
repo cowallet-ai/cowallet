@@ -38,6 +38,10 @@ class CowalletApp extends StatefulWidget {
   static AppState of(BuildContext context) =>
       context.findAncestorStateOfType<_CowalletAppState>()!.appState;
 
+  static void setLocale(BuildContext context, Locale locale) {
+    context.findAncestorStateOfType<_CowalletAppState>()?._setLocale(locale);
+  }
+
   @override
   State<CowalletApp> createState() => _CowalletAppState();
 }
@@ -78,7 +82,7 @@ class _CowalletAppState extends State<CowalletApp> {
   }
 
   /// Change language and persist preference
-  void setLocale(Locale locale) {
+  void _setLocale(Locale locale) {
     if (_locale?.languageCode == locale.languageCode) return;
     setState(() => _locale = locale);
     Services.settings.setLanguage(locale.languageCode);
