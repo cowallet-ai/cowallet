@@ -27,6 +27,15 @@ class _WalletViewState extends State<WalletView> {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
 
+    // Wait for balance service to be initialized
+    // Services.initEssential() initializes balance synchronously
+    // But we need to be defensive in case widget builds before init
+    try {
+      Services.balance.tokens;  // Test if initialized
+    } catch (e) {
+      return const Center(child: CircularProgressIndicator(color: CwColors.accent));
+    }
+
     return SafeArea(
       child: ListenableBuilder(
         listenable: Services.balance,

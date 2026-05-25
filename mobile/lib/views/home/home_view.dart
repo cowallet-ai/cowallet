@@ -326,6 +326,11 @@ class _HomeViewState extends State<HomeView> {
 
   Widget _balanceCard(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    try {
+      Services.balance.tokens;  // Test if initialized
+    } catch (e) {
+      return const SizedBox.shrink();  // Hide until initialized
+    }
     final bal = Services.balance;
     return ListenableBuilder(
       listenable: bal,
