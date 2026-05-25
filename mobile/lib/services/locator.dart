@@ -78,6 +78,8 @@ class Services {
       chain: chain,
     );
     policy = PolicyService();
+    push = PushService();
+    await push.init();
 
     print('[Services] Essential init complete');
   }
@@ -121,8 +123,6 @@ class Services {
     // Initialize notification services
     notifications = NotificationService();
     await notifications.init();
-    push = PushService();
-    await push.init();
 
     print('[Services] Deferred init complete');
   }

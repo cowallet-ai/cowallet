@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"sed -i '' '/theme\\\\/colors.dart/a\\\\import '\\\\''../../theme/typography.dart'\\\\'';' lib/views/recovery/recovery_view.dart && sed -i '' '/theme\\\\/colors.dart/a\\\\import '\\\\''../../theme/typogr...",
-  "error": "Exit code 1\nsed: 1: \"/theme\\/colors.dart/a\\i ...\": extra characters after \\ at the end of a command",
-  "timestamp": "2026-05-25T03:47:12.781Z",
+  "tool_input_preview": "{\"command\":\"flutter analyze lib/services/locator.dart 2>&1\",\"description\":\"Verify locator.dart\"}",
+  "error": "Exit code 1\nAnalyzing locator.dart...                                       \n\n   info • Don't invoke 'print' in production code • lib/services/locator.dart:84:5 • avoid_print\n   info • Don't invoke 'print' in production code • lib/services/locator.dart:95:7 • avoid_print\n   info • Don't invoke 'print' in production code • lib/services/locator.dart:101:5 • avoid_print\n   info • Don't invoke 'print' in production code • lib/services/locator.dart:127:5 • avoid_print\n   info • Don't invoke 'print' i...",
+  "timestamp": "2026-05-25T04:47:13.233Z",
   "retry_count": 1
 }
