@@ -1476,7 +1476,7 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
   bool isSupported(Locale locale) => <String>['en', 'zh'].contains(locale.languageCode);
 
   @override
-  bool shouldReload(_AppLocalizationsDelegate old) => false;
+  bool shouldReload(_AppLocalizationsDelegate old) => true;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
