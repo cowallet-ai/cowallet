@@ -1,7 +1,7 @@
 import 'package:cowallet/theme/typography.dart';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
-import '../../l10n/strings.dart';
+import '../../l10n/s.dart';
 import '../../widgets/cw_chip.dart';
 import '../../widgets/section_label.dart';
 import '../../widgets/top_toast.dart';
@@ -193,9 +193,11 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   void _toggleLanguage() {
-    final newLang = S.lang == Lang.zh ? Lang.en : Lang.zh;
-    _settings.setLanguage(newLang == Lang.zh ? 'zh' : 'en');
-    CowalletApp.of(context).setLang(newLang);
+    final locale = Localizations.localeOf(context);
+    final newLang = locale.languageCode == 'zh' ? 'en' : 'zh';
+    _settings.setLanguage(newLang);
+    // Trigger rebuild via setting listener
+    setState(() {});
   }
 
 
@@ -207,7 +209,7 @@ class _SettingsViewState extends State<SettingsView> {
     if (!_settings.weeklyReportEnabled) {
       showTopToast(
         context,
-        S.lang == Lang.zh ? '功能开发中，敬请期待' : 'Coming soon',
+        S.comingSoon,
         backgroundColor: CwColors.ink3,
       );
       return;
@@ -313,6 +315,9 @@ class _SettingsViewState extends State<SettingsView> {
   String _formatLastRotation() {
     if (_lastRotationDate == null) return S.never;
 
+    final locale = Localizations.localeOf(context);
+    final isZh = locale.languageCode == 'zh';
+
     try {
       final date = DateTime.parse(_lastRotationDate!);
       final now = DateTime.now();
@@ -321,12 +326,12 @@ class _SettingsViewState extends State<SettingsView> {
       if (diff.inDays == 0) {
         return S.today;
       } else if (diff.inDays == 1) {
-        return S.lang == Lang.zh ? '昨天' : 'Yesterday';
+        return isZh ? '昨天' : 'Yesterday';
       } else if (diff.inDays < 30) {
-        return S.lang == Lang.zh ? '${diff.inDays} 天前' : '${diff.inDays} days ago';
+        return isZh ? '${diff.inDays} 天前' : '${diff.inDays} days ago';
       } else {
         final months = (diff.inDays / 30).floor();
-        return S.lang == Lang.zh ? '$months 个月前' : '$months months ago';
+        return isZh ? '$months 个月前' : '$months months ago';
       }
     } catch (e) {
       return S.never;
@@ -406,7 +411,7 @@ class _SettingsViewState extends State<SettingsView> {
           const SizedBox(height: 2),
           Center(
             child: Text(
-              S.signoff2,
+              S.signoff2('1.0.0'),
               style: TextStyle(
                 fontFamily: CwTypography.monoFamily,
                 fontSize: 10,
@@ -659,7 +664,8 @@ class _SettingsViewState extends State<SettingsView> {
 
   // ── General settings list ──
   Widget _generalList(BuildContext context) {
-    final langLabel = S.lang == Lang.zh ? '中文' : 'English';
+    final locale = Localizations.localeOf(context);
+    final langLabel = locale.languageCode == 'zh' ? '中文' : 'English';
     return _settingsContainer(
       children: [
         _settingRow(
@@ -732,7 +738,7 @@ class _SettingsViewState extends State<SettingsView> {
           trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
           onTap: () => showTopToast(
             context,
-            S.lang == Lang.zh ? '功能开发中，敬请期待' : 'Coming soon',
+            S.comingSoon,
             backgroundColor: CwColors.ink3,
           ),
         ),
@@ -755,7 +761,7 @@ class _SettingsViewState extends State<SettingsView> {
           ),
           onTap: () => showTopToast(
             context,
-            S.lang == Lang.zh ? '功能开发中，敬请期待' : 'Coming soon',
+            S.comingSoon,
             backgroundColor: CwColors.ink3,
           ),
         ),

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import '../l10n/strings.dart';
 import '../config/api_config.dart';
 import '../utils/secure_storage.dart';
 
 class AppState extends ChangeNotifier {
-  Lang _lang = Lang.zh;
   String _userName = '';
   String _persona = 'daily';
   bool _onboardingComplete = false;
@@ -12,7 +10,6 @@ class AppState extends ChangeNotifier {
   bool _walletLoading = false;
   ChainConfig _selectedChain = ChainConfig.defaultChain;
 
-  Lang get lang => _lang;
   String get userName => _userName;
   String get persona => _persona;
   bool get onboardingComplete => _onboardingComplete;
@@ -27,12 +24,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     // Note: selectedChain is now only used for send/receive targeting
     // Balance refresh covers all chains, no need to re-fetch on chain change
-  }
-
-  void setLang(Lang l) {
-    _lang = l;
-    S.setLang(l);
-    notifyListeners();
   }
 
   void setUserName(String name) {

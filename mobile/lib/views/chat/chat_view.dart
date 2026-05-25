@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../theme/colors.dart';
-import '../../l10n/strings.dart';
+import '../../l10n/s.dart';
 import '../../widgets/cw_orb.dart';
 import '../../main.dart';
 import '../../services/locator.dart';
@@ -138,7 +138,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Lang get _lang => CowalletApp.of(context).lang;
+  Lang get _lang => S.lang;
   bool get _isEmpty => _messages.isEmpty;
 
   bool _voiceCancelled = false;

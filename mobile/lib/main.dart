@@ -1,5 +1,8 @@
+import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:cowallet/theme/theme.dart';
 import 'package:cowallet/router/app_router.dart';
@@ -8,6 +11,8 @@ import 'package:cowallet/services/locator.dart';
 import 'package:cowallet/services/push_service.dart';
 import 'package:cowallet/api/auth_api.dart';
 import 'package:cowallet/utils/secure_storage.dart';
+import 'package:cowallet/l10n/app_localizations.dart';
+import 'package:cowallet/l10n/s.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +44,7 @@ class CowalletApp extends StatefulWidget {
 
 class _CowalletAppState extends State<CowalletApp> {
   final appState = AppState();
+  Locale? _locale;
   final String _initialRoute = AppRouter.onboarding;  // Default to onboarding
 
   // Use shared navigator key from Services
@@ -48,6 +54,42 @@ class _CowalletAppState extends State<CowalletApp> {
   void initState() {
     super.initState();
     _initEssentialAndNavigate();
+    _initLocale();
+  }
+
+  /// Initialize locale: check saved preference or auto-detect from system
+  Future<void> _initLocale() async {
+    final savedLang = await Services.settings.language;
+    if (savedLang == 'zh' || savedLang == 'en') {
+      setState(() => _locale = Locale(savedLang));
+    } else {
+      // Auto-detect from system locale
+      final systemLocale = WidgetsBinding.instance.platformDispatcher.locale;
+      final locale = _detectLocale(systemLocale);
+      setState(() => _locale = locale);
+      await Services.settings.setLanguage(locale.languageCode);
+    }
+  }
+
+  /// Detect locale from system language code
+  Locale _detectLocale(Locale systemLocale) {
+    final lang = systemLocale.languageCode.toLowerCase();
+    return (lang == 'zh' || lang.startsWith('zh')) ? const Locale('zh') : const Locale('en');
+  }
+
+  /// Change language and persist preference
+  void setLocale(Locale locale) {
+    if (_locale?.languageCode == locale.languageCode) return;
+    setState(() => _locale = locale);
+    Services.settings.setLanguage(locale.languageCode);
+  }
+
+  @override
+  void dispose() {
+    Services.push.dispose();
+    Services.presignPool.dispose();
+    appState.dispose();
+    super.dispose();
   }
 
   Future<void> _initEssentialAndNavigate() async {
@@ -138,25 +180,30 @@ class _CowalletAppState extends State<CowalletApp> {
   }
 
   @override
-  void dispose() {
-    Services.push.dispose();
-    Services.presignPool.dispose();
-    appState.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: appState,
-      builder: (context, _) => MaterialApp(
-        navigatorKey: _navigatorKey,
-        title: 'CoWallet',
-        debugShowCheckedModeBanner: false,
-        theme: cwTheme(),
-        initialRoute: _initialRoute,
-        onGenerateRoute: AppRouter.onGenerateRoute,
-      ),
+    return MaterialApp(
+      navigatorKey: _navigatorKey,
+      title: 'CoWallet',
+      debugShowCheckedModeBanner: false,
+      theme: cwTheme(),
+      initialRoute: _initialRoute,
+      onGenerateRoute: AppRouter.onGenerateRoute,
+      locale: _locale,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('zh'),
+        Locale('en'),
+      ],
+      builder: (context, child) {
+        // Initialize S with context for backward compatibility
+        S.of(context);
+        return child!;
+      },
     );
   }
 }

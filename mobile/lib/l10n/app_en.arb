@@ -1,0 +1,228 @@
+{
+  "@@locale": "en",
+  "appName": "CoWallet",
+  "tagline": "the wallet that reads you back",
+
+  "tabHome": "Home",
+  "tabWallet": "Wallet",
+  "tabAsk": "ASK",
+  "tabAgents": "Agents",
+  "tabSettings": "Settings",
+  "tabDefi": "DeFi",
+
+  "heroKicker": "Digital wallet · speaks your language",
+  "heroH1a": "A wallet that",
+  "heroH1b": "actually",
+  "heroH1em": "listens",
+  "heroExplain": "Like hiring a butler for your money — say \"send $100 to Sarah\" and it does it. Don't feel like talking? Buttons work too.",
+  "heroFeat1h": "No crypto knowledge needed",
+  "heroFeat1s": "Send, receive, and earn just by saying so",
+  "heroFeat2h": "100+ financial networks",
+  "heroFeat2s": "Works worldwide",
+  "heroFeat3h": "AI does the errands",
+  "heroFeat3s": "Just say the word",
+  "getStarted": "Get started",
+  "heroLegal": "By continuing you agree to our Terms and Privacy Policy",
+
+  "introH1": "How your wallet protects you",
+  "introSub": "CoWallet uses threshold signatures to split your key into three pieces.",
+  "introBullet1h": "Key split into three",
+  "introBullet1s": "One on your phone, one on server, one kept by you. The full key never exists anywhere.",
+  "introBullet2h": "Two needed to transact",
+  "introBullet2s": "No single party — including CoWallet — can move your money alone.",
+  "introBullet3h": "No seed phrase",
+  "introBullet3s": "No 12 words to write down. Lose your phone, your backup + server recovers everything.",
+  "introStart": "Start creating",
+
+  "emailH1": "Recovery Email",
+  "emailSub": "Used to verify your identity during wallet recovery. We won't send spam.",
+  "emailHint": "This email is only used for wallet recovery verification",
+  "invalidEmail": "Please enter a valid email address",
+  "emailSendFailed": "Failed to send code, please try again",
+  "emailAlreadyRegistered": "Email already registered",
+  "emailAlreadyRegisteredDesc": "This email is linked to an existing wallet. Go to recovery?",
+  "goRecovery": "Recover",
+  "reRegister": "Re-register",
+  "reRegisterDesc": "This will create a new wallet. Original assets can only be recovered via the recovery flow.",
+  "reRegisterConfirm": "Confirm Re-register",
+
+  "otpH1": "Enter Verification Code",
+  "otpSub": "Code sent to {email}",
+  "otpResend": "Resend code",
+  "otpInvalid": "Invalid or expired code",
+  "@otpSub": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+
+  "creatingH1": "Splitting your key into three pieces",
+  "creatingSub": "Moving your money requires any 2 of 3 keys. Stored separately — lose one, the other two still work. The full key never exists in one place.",
+  "cl1": "1st key: stored on this phone",
+  "cl2": "2nd key: stored in server vault",
+  "cl3": "3rd key: kept by you",
+  "createError": "Wallet creation failed. Please try again.",
+  "retry": "Retry",
+
+  "bioH1": "Enable biometric authentication",
+  "bioSub": "Just like unlocking your phone. Protect your wallet with fingerprint or face. Biometric data never leaves this device.",
+  "bioActivate": "Turn on biometrics",
+  "bioSkip": "Use a passcode instead",
+  "bioVerifying": "Verifying...",
+  "bioDone": "Biometrics ready",
+
+  "pinH1": "Set wallet passcode",
+  "pinSub": "6-digit passcode, required for every transaction.",
+  "pinConfirmH1": "Confirm passcode",
+  "pinConfirmSub": "Enter the same passcode again to confirm.",
+  "pinMismatch": "Passcodes don't match. Try again.",
+  "pinDone": "Passcode set",
+
+  "nameH1": "What should I call you?",
+  "nameSub": "A nickname works. No real name needed.",
+  "namePlaceholder": "e.g. Alice, Mike, or a nickname",
+  "nameTooShort": "Name too short",
+  "nameTooLong": "Name too long",
+
+  "settings": "Settings",
+  "security": "Security",
+  "keySecurity": "Key Security",
+  "conversation": "Conversation",
+  "general": "General",
+
+  "biometricAuth": "Biometric Authentication",
+  "biometricAuthReason": "Authenticate to proceed",
+  "biometricNotAvailable": "Not available on this device",
+  "biometricEnable": "Enable",
+  "biometricDisable": "Disable",
+  "emergencyFreeze": "Emergency Freeze",
+  "emergencyFreezeSub": "Temporarily freeze all transactions",
+  "emergencyFreezeConfirmTitle": "Freeze Wallet?",
+  "emergencyFreezeConfirmBody": "All transactions will be blocked until you unfreeze.",
+  "emergencyFreezeActivated": "Wallet frozen",
+  "emergencyFreezeDeactivated": "Wallet unfrozen",
+  "frozenBanner": "Wallet is frozen. Tap Security to unfreeze.",
+  "emergencyContact": "Emergency Contact",
+  "emergencyContactSub": "Set up trusted contacts for recovery",
+  "riskGuard": "Risk Guard",
+  "riskGuardSub": "Custom security rules and limits",
+
+  "keysCheckup": "Keys Check-up",
+  "keysCheckupSub": "Check the health of your key shards",
+  "onPhone": "On Phone",
+  "inCloud": "In Cloud",
+  "recovery": "Recovery",
+  "allSafe": "All Safe",
+  "keyStatusError": "Issues Found",
+  "keyStatusWarning": "Check Soon",
+  "rotateKeyShares": "Rotate Key Shares",
+  "presignatures": "Presignatures",
+  "presignaturesSub": "Offline signing for faster transactions",
+  "lastRotation": "Last rotation",
+  "never": "Never",
+  "today": "Today",
+
+  "voiceInput": "Voice Input",
+  "voiceInputSub": "Use voice to interact with AI assistant",
+  "aiModel": "AI Model",
+  "aiModelSub": "Choose your preferred AI assistant",
+  "language": "Language",
+  "weeklyReport": "Weekly Report",
+  "weeklyReportSub": "Get weekly portfolio summary",
+  "redoOnboarding": "Redo Onboarding",
+  "redoOnboardingSub": "Start over with wallet creation",
+  "on": "ON",
+  "off": "OFF",
+
+  "resetWalletTitle": "Wallet Has Balance",
+  "resetWalletHasBalance": "Please transfer your assets to another wallet before resetting.",
+  "resetWalletGoTransfer": "Go Transfer",
+  "resetWalletConfirmTitle": "Reset Wallet?",
+  "resetWalletConfirmBody": "This will delete your wallet. You'll need to recover from your backup.",
+  "resetWalletConfirm": "Reset",
+  "resetWalletChecking": "Checking balance...",
+
+  "signoff1": "Built with ❤️ for the future of money",
+  "signoff2": "v{version}",
+  "@signoff2": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "save": "Save",
+  "delete": "Delete",
+  "copy": "Copy",
+  "copied": "Copied",
+  "send": "Send",
+  "receive": "Receive",
+  "swap": "Swap",
+  "more": "More",
+
+  "loading": "Loading...",
+  "error": "Error",
+  "success": "Success",
+  "failed": "Failed",
+  "retryLater": "Please try again later",
+
+  "wallet": "Wallet",
+  "home": "Home",
+  "balance": "Balance",
+  "transactions": "Transactions",
+  "contacts": "Contacts",
+  "scan": "Scan QR",
+  "help": "Help",
+
+  "amount": "Amount",
+  "to": "To",
+  "from": "From",
+  "gas": "Gas Fee",
+  "total": "Total",
+  "max": "Max",
+  "memo": "Memo",
+  "optional": "Optional",
+
+  "sendConfirmTitle": "Confirm Send",
+  "sendConfirmBody": "Send {amount} {symbol} to {address}?",
+  "@sendConfirmBody": {
+    "placeholders": {
+      "amount": {"type": "String"},
+      "symbol": {"type": "String"},
+      "address": {"type": "String"}
+    }
+  },
+
+  "transactionSent": "Transaction sent",
+  "transactionFailed": "Transaction failed",
+  "insufficientBalance": "Insufficient balance",
+
+  "contactName": "Contact Name",
+  "contactAddress": "Wallet Address",
+  "addContact": "Add Contact",
+  "editContact": "Edit Contact",
+  "deleteContact": "Delete Contact",
+  "noContacts": "No contacts yet",
+  "addFirstContact": "Add your first contact",
+
+  "chatPlaceholder": "Ask me anything...",
+  "newChat": "New Chat",
+  "chatHistory": "Chat History",
+  "clearHistory": "Clear History",
+  "clearHistoryConfirm": "Clear all chat history?",
+
+  "yield": "Yield",
+  "pools": "Pools",
+  "apr": "APR",
+  "deposit": "Deposit",
+  "withdraw": "Withdraw",
+  "yourPosition": "Your Position",
+  "totalValue": "Total Value",
+
+  "comingSoon": "Coming soon"
+}

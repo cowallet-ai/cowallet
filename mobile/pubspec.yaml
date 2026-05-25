@@ -24,7 +24,7 @@ dependencies:
   web_socket_channel: ^3.0.1
   flutter_localizations:
     sdk: flutter
-  intl: any
+  intl: ^0.20.2
   shared_preferences: ^2.3.3
   google_fonts: ^6.2.1
   speech_to_text: ^7.0.0
@@ -50,3 +50,4 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+  generate: true
