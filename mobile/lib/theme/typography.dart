@@ -8,7 +8,7 @@ abstract final class CwTypography {
   static final String sansFamily = GoogleFonts.inter().fontFamily!;
   static final String monoFamily = GoogleFonts.jetBrainsMono().fontFamily!;
 
-  static TextTheme get textTheme => GoogleFonts.interTextTheme().copyWith(
+  static TextTheme get textTheme => GoogleFonts.notoSerifScTextTheme().copyWith(
     displayLarge: GoogleFonts.notoSerifSc(
       fontSize: 32,
       fontWeight: FontWeight.w600,
@@ -21,42 +21,59 @@ abstract final class CwTypography {
       color: CwColors.ink1,
       height: 1.3,
     ),
+    displaySmall: GoogleFonts.notoSerifSc(
+      fontSize: 22,
+      fontWeight: FontWeight.w600,
+      color: CwColors.ink1,
+      height: 1.4,
+    ),
     headlineLarge: GoogleFonts.notoSerifSc(
       fontSize: 22,
       fontWeight: FontWeight.w600,
       color: CwColors.ink1,
       height: 1.4,
     ),
-    headlineMedium: GoogleFonts.fraunces(
+    headlineMedium: GoogleFonts.notoSerifSc(
       fontSize: 20,
       fontWeight: FontWeight.w500,
       color: CwColors.ink1,
       height: 1.4,
     ),
-    titleLarge: GoogleFonts.inter(
+    headlineSmall: GoogleFonts.notoSerifSc(
+      fontSize: 18,
+      fontWeight: FontWeight.w500,
+      color: CwColors.ink1,
+      height: 1.4,
+    ),
+    titleLarge: GoogleFonts.notoSerifSc(
       fontSize: 17,
       fontWeight: FontWeight.w600,
       color: CwColors.ink1,
     ),
-    titleMedium: GoogleFonts.inter(
+    titleMedium: GoogleFonts.notoSerifSc(
       fontSize: 15,
       fontWeight: FontWeight.w500,
       color: CwColors.ink2,
     ),
-    bodyLarge: GoogleFonts.inter(
+    titleSmall: GoogleFonts.notoSerifSc(
+      fontSize: 13.5,
+      fontWeight: FontWeight.w500,
+      color: CwColors.ink2,
+    ),
+    bodyLarge: GoogleFonts.notoSerifSc(
       fontSize: 15,
       fontWeight: FontWeight.w400,
       color: CwColors.ink1,
       height: 1.6,
     ),
-    bodyMedium: GoogleFonts.inter(
+    bodyMedium: GoogleFonts.notoSerifSc(
       fontSize: 13,
       fontWeight: FontWeight.w400,
       color: CwColors.ink2,
       height: 1.5,
     ),
-    bodySmall: GoogleFonts.inter(
-      fontSize: 12,
+    bodySmall: GoogleFonts.notoSerifSc(
+      fontSize: 11,
       fontWeight: FontWeight.w400,
       color: CwColors.ink3,
     ),

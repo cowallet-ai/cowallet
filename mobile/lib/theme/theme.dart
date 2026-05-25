@@ -7,7 +7,7 @@ ThemeData cwTheme() {
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
-    fontFamily: CwTypography.sansFamily,
+    fontFamily: CwTypography.serifFamily,
     scaffoldBackgroundColor: CwColors.bgPaper,
     colorScheme: const ColorScheme.light(
       primary: CwColors.accent,
@@ -50,7 +50,7 @@ ThemeData cwTheme() {
         minimumSize: const Size.fromHeight(52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         textStyle: TextStyle(
-          fontFamily: CwTypography.sansFamily,
+          fontFamily: CwTypography.serifFamily,
           fontSize: 15,
           fontWeight: FontWeight.w600,
         ),
