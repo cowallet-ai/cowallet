@@ -3,7 +3,7 @@
 //! Env vars:
 //! - `DEEPSEEK_API_KEY` — API key for DeepSeek
 //! - `DEEPSEEK_BASE_URL` — optional, defaults to https://api.deepseek.com
-//! - `DEEPSEEK_MODEL` — optional, defaults to deepseek-chat
+//! - `DEEPSEEK_MODEL` — optional, defaults to deepseek-v4-flash
 
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
@@ -172,7 +172,7 @@ impl AiClient {
             client,
             api_key,
             base_url: base_url.unwrap_or_else(|| "https://api.deepseek.com".into()),
-            model: model.unwrap_or_else(|| "deepseek-chat".into()),
+            model: model.unwrap_or_else(|| "deepseek-v4-flash".into()),
         })
     }
 
@@ -182,7 +182,7 @@ impl AiClient {
             .map_err(|_| "DEEPSEEK_API_KEY not set")?;
         let base_url = std::env::var("DEEPSEEK_BASE_URL").ok();
         let model = std::env::var("DEEPSEEK_MODEL").ok();
-        tracing::info!("Using DeepSeek AI (base={}, model={})", base_url.as_deref().unwrap_or("https://api.deepseek.com"), model.as_deref().unwrap_or("deepseek-chat"));
+        tracing::info!("Using DeepSeek AI (base={}, model={})", base_url.as_deref().unwrap_or("https://api.deepseek.com"), model.as_deref().unwrap_or("deepseek-v4-flash"));
         Self::new(api_key, base_url, model)
     }
 
