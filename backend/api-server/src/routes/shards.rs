@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
     Extension,
@@ -18,6 +18,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/shard", post(upload_shard))
         .route("/shard/{location}", get(get_shard))
+        .route("/backup-hash", post(store_backup_hash))
         .route("/status", get(shard_status))
 }
 
@@ -34,11 +35,18 @@ pub struct UploadShardResponse {
     shard_id: Uuid,
 }
 
+#[derive(Deserialize)]
+pub struct GetShardQuery {
+    client_ephemeral_key: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct GetShardResponse {
     location: String,
     party_index: i16,
-    shard_hex: String,
+    encrypted_shard_hex: String,
+    server_ephemeral_key_hex: String,
+    transport_nonce_hex: String,
     status: String,
 }
 
@@ -172,12 +180,13 @@ async fn upload_shard(
     }))
 }
 
-/// Retrieve an encrypted key shard
+/// Retrieve an encrypted key shard (envelope-encrypted for transport)
 async fn get_shard(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Extension(encryption): Extension<EncryptionService>,
     Path(location): Path<String>,
+    Query(query): Query<GetShardQuery>,
 ) -> Result<Json<GetShardResponse>, StatusCode> {
     let db = state
         .require_db()
@@ -185,6 +194,23 @@ async fn get_shard(
 
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Require client ephemeral key for envelope encryption
+    let client_key_hex = query.client_ephemeral_key.as_deref()
+        .ok_or_else(|| {
+            tracing::warn!("Shard retrieval without client_ephemeral_key rejected");
+            StatusCode::BAD_REQUEST
+        })?;
+
+    let client_key_bytes = hex::decode(client_key_hex)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Parse client's ephemeral public key (secp256k1)
+    let client_pk = k256::PublicKey::from_sec1_bytes(&client_key_bytes)
+        .map_err(|_| {
+            tracing::error!("Invalid client ephemeral public key");
+            StatusCode::BAD_REQUEST
+        })?;
 
     // Validate location
     let valid_locations = ["device", "server", "backup"];
@@ -242,10 +268,82 @@ async fn get_shard(
     .execute(db)
     .await;
 
+    // Envelope encryption: ECDH with client's ephemeral key, then AES-GCM
+    use k256::ecdh::EphemeralSecret;
+    use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+    use sha2::{Sha256, Digest as Sha256Digest};
+
+    let server_secret = EphemeralSecret::random(&mut rand::thread_rng());
+    let server_pk = server_secret.public_key();
+    let shared_secret = server_secret.diffie_hellman(&client_pk);
+
+    // Derive AES key from shared secret via SHA-256
+    let aes_key = Sha256::digest(shared_secret.raw_secret_bytes());
+    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let transport_nonce_bytes: [u8; 12] = rand::random();
+    let nonce_for_transport = aes_gcm::Nonce::from_slice(&transport_nonce_bytes);
+
+    let encrypted_for_transport = cipher.encrypt(nonce_for_transport, decrypted.as_slice())
+        .map_err(|_| {
+            tracing::error!("Transport encryption failed");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let server_pk_bytes = server_pk.to_sec1_bytes();
+
     Ok(Json(GetShardResponse {
         location,
         party_index,
-        shard_hex: hex::encode(decrypted),
+        encrypted_shard_hex: hex::encode(encrypted_for_transport),
+        server_ephemeral_key_hex: hex::encode(server_pk_bytes),
+        transport_nonce_hex: hex::encode(transport_nonce_bytes),
         status,
     }))
+}
+
+#[derive(Deserialize)]
+struct StoreBackupHashRequest {
+    backup_shard_hash_hex: String,
+}
+
+#[derive(Serialize)]
+struct StoreBackupHashResponse {
+    success: bool,
+}
+
+/// POST /api/v1/shards/backup-hash — store SHA-256(backup_shard) for future force re-register verification.
+/// Called by the client after DKG completes and backup shard is stored.
+async fn store_backup_hash(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<StoreBackupHashRequest>,
+) -> Result<Json<StoreBackupHashResponse>, StatusCode> {
+    let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    let hash_bytes = hex::decode(&body.backup_shard_hash_hex)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    if hash_bytes.len() != 32 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    sqlx::query(
+        "UPDATE shard_metadata SET backup_shard_hash = $1
+         WHERE user_id = $2 AND location = 'server'"
+    )
+    .bind(&hash_bytes)
+    .bind(user_id)
+    .execute(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to store backup shard hash: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    info!("Stored backup shard hash for user {}", user_id);
+
+    Ok(Json(StoreBackupHashResponse { success: true }))
 }

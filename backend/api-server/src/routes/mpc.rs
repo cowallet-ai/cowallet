@@ -274,13 +274,21 @@ pub async fn send_message(
     }
 
     // Verify HMAC if provided
-    let verified = if let Some(hmac) = &body.hmac {
-        let secret = session_id.to_string();
-        let mut mac = Sha256::new();
-        mac.update(secret.as_bytes());
+    let verified = if let Some(hmac_value) = &body.hmac {
+        use hmac::{Hmac, Mac};
+        type HmacSha256 = Hmac<Sha256>;
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if jwt_secret.is_empty() {
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        let mut mac = HmacSha256::new_from_slice(jwt_secret.as_bytes())
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        mac.update(session_id.to_string().as_bytes());
+        mac.update(&body.round.to_le_bytes());
         mac.update(&body.payload);
-        let expected = hex::encode(mac.finalize());
-        hmac == &expected
+        let expected = hex::encode(mac.finalize().into_bytes());
+        hmac_value == &expected
     } else {
         false
     };
@@ -332,13 +340,13 @@ pub async fn send_message(
                     // Publish response messages to NATS so the client's WS gets them in real-time.
                     // Messages are already stored in DB by the participant's store_outbound_message.
                     if let Some(nats) = &state.nats {
-                        for (from, to, payload) in responses {
+                        for (from, to, msg_round, payload) in responses {
                             // to == -1 means broadcast; send to the requesting party
                             let target_party = if to == -1 { body.from_party } else { to };
                             let response_msg = serde_json::json!({
                                 "from_party": from,
                                 "to_party": target_party,
-                                "round": body.round + 1,
+                                "round": msg_round,
                                 "payload": payload,
                             });
                             let subject = format!("cowallet.mpc.{}.{}", session_id, target_party);

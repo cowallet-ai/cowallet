@@ -26,7 +26,7 @@ class MpcWalletService implements WalletService {
   static const int _deviceParty = 0;
   static const int _serverParty = 1;
   static const int _backupParty = 2;
-  static const Duration _wsTimeout = Duration(seconds: 5);
+  static const Duration _wsTimeout = Duration(seconds: 30);
 
   /// 执行完整的 DKG 密钥生成协议
   /// [walletId] 可选，用于多钱包场景

@@ -1209,6 +1209,7 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
 // ---------------------------------------------------------------------------
 
 /// Legacy: Sign locally for testing (reconstructs full key — NOT for production).
+#[cfg(debug_assertions)]
 pub fn sign_hash(msg_hash: Vec<u8>) -> Result<Vec<u8>, String> {
     if msg_hash.len() != 32 {
         return Err("msg_hash must be 32 bytes".into());

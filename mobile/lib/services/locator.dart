@@ -7,6 +7,8 @@ import '../platform/cloud_backup.dart';
 import '../platform/secure_storage.dart';
 import '../platform/secure_storage_impl.dart';
 import '../api/mpc_api.dart';
+import '../api/shards_api.dart';
+import '../utils/secure_storage.dart' as app_storage;
 import 'backup_shard_service.dart';
 import 'contacts_service.dart';
 import 'settings_service.dart';
@@ -116,6 +118,9 @@ class Services {
     );
     presignPool = PresignPoolService();
 
+    // Retry pending backup shard hash upload if previous attempt failed
+    _retryPendingBackupHash();
+
     // Load cached data
     unawaited(txHistory.load());
     unawaited(contacts.load());
@@ -138,6 +143,19 @@ class Services {
   /// @deprecated Use initAll() for better performance
   static Future<void> init() async {
     await initAll();
+  }
+
+  static Future<void> _retryPendingBackupHash() async {
+    try {
+      final pendingHash = await app_storage.SecureStorage.get('pending_backup_hash');
+      if (pendingHash != null && pendingHash.isNotEmpty) {
+        final result = await ShardsApi.storeBackupHash(backupShardHashHex: pendingHash);
+        if (result.isSuccess) {
+          await app_storage.SecureStorage.delete('pending_backup_hash');
+          print('[Services] Retried pending backup hash upload — success');
+        }
+      }
+    } catch (_) {}
   }
 
   /// Unified authentication: biometric if user enabled it, otherwise app PIN.

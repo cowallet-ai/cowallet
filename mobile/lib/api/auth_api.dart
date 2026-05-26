@@ -8,10 +8,14 @@ class AuthApi {
   /// 发送邮箱验证码（注册前验证邮箱所有权）
   static Future<Result<Map<String, dynamic>>> sendEmailOtp({
     required String email,
+    bool force = false,
   }) async {
     return await DioClient.post(
       "/auth/email/send-otp",
-      data: {"email": email},
+      data: {
+        "email": email,
+        if (force) "force": true,
+      },
     );
   }
 
@@ -25,6 +29,7 @@ class AuthApi {
     required String email,
     required String otp,
     bool force = false,
+    String? backupShardHash,
   }) async {
     Result<Map<String, dynamic>> result = await DioClient.post(
       "/auth/register",
@@ -33,6 +38,7 @@ class AuthApi {
         "email": email,
         "otp": otp,
         if (force) "force": true,
+        if (backupShardHash != null) "backup_shard_hash": backupShardHash,
       },
     );
 

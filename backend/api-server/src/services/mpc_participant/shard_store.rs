@@ -130,6 +130,43 @@ impl ShardStore {
         Ok(())
     }
 
+    /// Store the server's KeyShare for a specific wallet within an existing transaction.
+    /// Used by DKG completion to atomically insert wallet + shard in one transaction.
+    pub async fn store_key_share_for_wallet_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+        wallet_id: Uuid,
+        share: &KeyShare,
+    ) -> Result<(), String> {
+        let plaintext = self.serialize_share(share)?;
+        let encrypted = self.encryption.encrypt(&plaintext)
+            .map_err(|e| format!("encryption failed: {}", e))?;
+
+        sqlx::query(
+            "INSERT INTO shard_metadata
+             (user_id, wallet_id, location, party_index, status, encrypted_shard, nonce, encryption_key_id)
+             VALUES ($1, $2, 'server', $3, 'healthy', $4, $5, $6)
+             ON CONFLICT (user_id, wallet_id, location) WHERE wallet_id IS NOT NULL DO UPDATE SET
+                 encrypted_shard = EXCLUDED.encrypted_shard,
+                 nonce = EXCLUDED.nonce,
+                 encryption_key_id = EXCLUDED.encryption_key_id,
+                 status = 'healthy',
+                 last_verified = NOW()"
+        )
+        .bind(user_id)
+        .bind(wallet_id)
+        .bind(SERVER_PARTY_INDEX as i16)
+        .bind(&encrypted.ciphertext)
+        .bind(encrypted.nonce.as_slice())
+        .bind(self.encryption.key_id())
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| format!("DB store failed: {}", e))?;
+
+        Ok(())
+    }
+
     /// Load the server's KeyShare for a specific wallet.
     /// Returns None if no shard exists for this user+wallet combination.
     pub async fn load_key_share_for_wallet(

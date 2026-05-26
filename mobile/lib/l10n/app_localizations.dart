@@ -1461,7 +1461,7 @@ abstract class AppLocalizations {
   ///
   /// In en, this message translates to:
   /// **'Incorrect PIN. \${attempts} attempts remaining'**
-  String pinError(int attempts);
+  String pinError(Object attempts);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

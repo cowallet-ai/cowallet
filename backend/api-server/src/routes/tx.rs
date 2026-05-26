@@ -59,6 +59,34 @@ async fn submit(
         body.from_addr, body.to_addr, body.value, body.token
     );
 
+    // Check wallet freeze status before broadcasting — a client holding a valid
+    // pre-freeze signature must not be able to submit it after the wallet is frozen.
+    let from_addr = body.from_addr.as_deref().ok_or_else(|| (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse { error: "from_addr is required".into() }),
+    ))?;
+    if let Some(db) = &state.db {
+        let addr_bytes = hex::decode(from_addr.strip_prefix("0x").unwrap_or(from_addr))
+            .unwrap_or_default();
+        if !addr_bytes.is_empty() {
+            let wallet_status: Option<String> = sqlx::query_scalar(
+                "SELECT status FROM wallets WHERE eth_address = $1 AND user_id = $2"
+            )
+            .bind(&addr_bytes)
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None);
+
+            if wallet_status.as_deref() == Some("frozen") {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse { error: "wallet is frozen".into() }),
+                ));
+            }
+        }
+    }
+
     // Query on-chain balance for diagnostics (best-effort, uses fallback)
     if let Some(from_addr) = &body.from_addr {
         let balance_body = serde_json::json!({
@@ -125,6 +153,13 @@ async fn submit(
         .and_then(|r| r.as_str())
         .unwrap_or("")
         .to_string();
+
+    // Validate tx_hash format (0x + 64 hex chars = 66 total)
+    if tx_hash.len() != 66 || !tx_hash.starts_with("0x") || !tx_hash[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+        let msg = "RPC returned invalid tx_hash";
+        tracing::error!("{}: {:?}", msg, tx_hash);
+        return Err(rpc_error(msg));
+    }
 
     if let Some(db) = &state.db {
         let from_bytes = body
@@ -317,13 +352,13 @@ async fn spending_summary(
     .map_err(|e| db_error(&e.to_string()))?;
 
     let mut total_transactions = 0i64;
-    let mut total_spend = 0u64;
+    let mut total_spend = 0u128;
     let mut by_token = Vec::new();
 
     for (token, value_str, count) in rows {
         total_transactions += count;
-        if let Ok(val) = value_str.parse::<u64>() {
-            total_spend += val;
+        if let Ok(val) = value_str.parse::<u128>() {
+            total_spend = total_spend.saturating_add(val);
         }
         by_token.push(TokenSpend {
             token: token.unwrap_or_else(|| "ETH".to_string()),
@@ -455,7 +490,10 @@ async fn estimate_gas(
                 Err(_) => {
                     match value.parse::<f64>() {
                         Ok(eth_amount) => {
-                            let wei = (eth_amount * 1e18) as u128;
+                            // Use integer arithmetic to avoid float truncation at large values
+                            let whole = eth_amount.trunc() as u128;
+                            let frac = ((eth_amount.fract().abs()) * 1_000_000_000_000_000_000.0) as u128;
+                            let wei = whole.saturating_mul(1_000_000_000_000_000_000).saturating_add(frac);
                             format!("0x{:x}", wei)
                         }
                         Err(_) => "0x0".to_string(),
@@ -585,6 +623,23 @@ async fn submit_userop(
     let call_data_str = body.call_data.strip_prefix("0x").unwrap_or(&body.call_data);
     let call_data_bytes = hex::decode(call_data_str)
         .map_err(|_| rpc_error("invalid call_data hex"))?;
+
+    // Check wallet freeze status before creating an MPC signing session.
+    let wallet_status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM wallets WHERE eth_address = $1 AND user_id = $2"
+    )
+    .bind(&sender_bytes)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .unwrap_or(None);
+
+    if wallet_status.as_deref() == Some("frozen") {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse { error: "wallet is frozen".into() }),
+        ));
+    }
 
     // Build UserOperation
     let user_op = chain_evm::userop::UserOperation::new(

@@ -716,7 +716,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get agentRule2 => 'Team expense, auto-pay after approval';
 
   @override
-  String pinError(int attempts) {
+  String pinError(Object attempts) {
     return 'Incorrect PIN. \$$attempts attempts remaining';
   }
 }

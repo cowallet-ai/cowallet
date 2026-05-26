@@ -147,7 +147,7 @@ class _PolicyViewState extends State<PolicyView> {
                 _quickSetupCard(
                   icon: Icons.today,
                   title: S.dailyLimit,
-                  subtitle: S.dailyLimitDesc(amount: '\$${_dailyLimit.toInt()}'),
+                  subtitle: S.dailyLimitDesc('\$${_dailyLimit.toInt()}'),
                   value: _dailyLimit,
                   onChanged: (v) => setState(() => _dailyLimit = v),
                   onSave: _createDailyLimit,
@@ -157,7 +157,7 @@ class _PolicyViewState extends State<PolicyView> {
                 _quickSetupCard(
                   icon: Icons.warning_amber_rounded,
                   title: S.largeTransferConfirm,
-                  subtitle: S.largeTransferDesc(amount: '\$${_singleLimit.toInt()}'),
+                  subtitle: S.largeTransferDesc('\$${_singleLimit.toInt()}'),
                   value: _singleLimit,
                   onChanged: (v) => setState(() => _singleLimit = v),
                   onSave: _createSingleLimit,
@@ -370,7 +370,7 @@ class _PolicyViewState extends State<PolicyView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(S.lang == Lang.zh ? '删除策略' : 'Delete Policy'),
-        content: Text(S.deletePolicyConfirm(name: policy.name)),
+        content: Text(S.deletePolicyConfirm(policy.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

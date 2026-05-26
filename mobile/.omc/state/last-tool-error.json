@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"flutter gen-l10n && echo \\\"Done\\\"\",\"description\":\"Regenerate l10n\"}",
-  "error": "Exit code 1\nThe arb file /Users/mac/cat/cowallet/mobile/lib/l10n/app_en.arb has the following formatting issue: \nFormatException: Unexpected character (at line 229, character 3)\n  // Policy\n  ^",
-  "timestamp": "2026-05-25T07:03:40.269Z",
+  "tool_input_preview": "{\"command\":\"flutter analyze lib/views/settings/policy_view.dart lib/views/settings/settings_view.dart lib/views/wallet/wallet_view.dart lib/widgets/pin_verify_dialog.dart 2>&1\",\"timeout\":60000}",
+  "error": "Exit code 1\nAnalyzing 4 items...                                            \n\nwarning • The value of the local variable 'isZh' isn't used • lib/views/settings/policy_view.dart:131:11 • unused_local_variable\n   info • Don't invoke 'print' in production code • lib/views/settings/settings_view.dart:93:5 • avoid_print\nwarning • The value of the local variable 'isZh' isn't used • lib/views/settings/settings_view.dart:317:11 • unused_local_variable\n   info • Unnecessary use of multiple underscores • l...",
+  "timestamp": "2026-05-26T01:31:33.013Z",
   "retry_count": 1
 }

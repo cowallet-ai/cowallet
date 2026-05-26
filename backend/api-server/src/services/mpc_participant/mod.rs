@@ -130,13 +130,14 @@ impl MpcParticipant {
 
     /// Called when a message addressed to Party 1 is stored.
     /// Processes the message and generates a response.
+    /// Returns a list of (from_party, to_party, round, payload) tuples.
     pub async fn on_message_received(
         &self,
         session_id: Uuid,
         from_party: i16,
         round: i16,
         payload: &[u8],
-    ) -> Result<Vec<(i16, i16, Vec<u8>)>, String> {
+    ) -> Result<Vec<(i16, i16, i16, Vec<u8>)>, String> {
         let meta = self.session_meta.get(&session_id)
             .ok_or_else(|| format!("no active session {}", session_id))?;
         let session_type = meta.session_type;
@@ -261,7 +262,7 @@ impl MpcParticipant {
         _from_party: i16,
         round: i16,
         payload: &[u8],
-    ) -> Result<Vec<(i16, i16, Vec<u8>)>, String> {
+    ) -> Result<Vec<(i16, i16, i16, Vec<u8>)>, String> {
         let mut dkg = self.dkg_sessions.get_mut(&session_id)
             .ok_or("DKG session not found")?;
 
@@ -285,10 +286,11 @@ impl MpcParticipant {
                 let round2_msgs = dkg.generate_round2()
                     .map_err(|e| format!("generate_round2 failed: {}", e))?;
 
+                let next_round = round + 1;
                 for msg in round2_msgs {
                     // Only send messages addressed to Party 0 (client)
                     if msg.to == 0 || msg.to == BROADCAST_PARTY {
-                        outbound.push((SERVER_PARTY_INDEX as i16, msg.to as i16, msg.payload));
+                        outbound.push((SERVER_PARTY_INDEX as i16, msg.to as i16, next_round, msg.payload));
                     }
                 }
 
@@ -333,7 +335,11 @@ impl MpcParticipant {
                 let wallet_name = format!("Wallet {}", wallet_count + 1);
                 let default_chain_ids: Vec<i64> = vec![1, 8453, 42161, 10, 56, 137];
 
-                // Create wallet entry in the wallets table
+                // Atomically create wallet entry and store server shard.
+                // If either step fails, both are rolled back — preventing a wallet without a shard.
+                let mut db_tx = self.db.begin().await
+                    .map_err(|e| format!("failed to begin transaction: {}", e))?;
+
                 let wallet_id: Uuid = sqlx::query_scalar(
                     "INSERT INTO wallets (user_id, name, public_key, eth_address, chain_ids, status)
                      VALUES ($1, $2, $3, $4, $5, 'active')
@@ -344,12 +350,15 @@ impl MpcParticipant {
                 .bind(&key_share.public_key)
                 .bind(&eth_addr.as_slice())
                 .bind(&default_chain_ids)
-                .fetch_one(&self.db)
+                .fetch_one(&mut *db_tx)
                 .await
                 .map_err(|e| format!("failed to create wallet entry: {}", e))?;
 
-                // Store the server's encrypted KeyShare with wallet_id association
-                self.shard_store.store_key_share_for_wallet(user_id, wallet_id, &key_share).await?;
+                // Store the server's encrypted KeyShare within the same transaction
+                self.shard_store.store_key_share_for_wallet_tx(&mut db_tx, user_id, wallet_id, &key_share).await?;
+
+                db_tx.commit().await
+                    .map_err(|e| format!("failed to commit wallet+shard transaction: {}", e))?;
 
                 if let Some(mut meta) = self.session_meta.get_mut(&session_id) {
                     meta.phase = SessionPhase::DkgComplete;
@@ -378,9 +387,9 @@ impl MpcParticipant {
             }
         }
 
-        // Store outbound messages in DB
-        for (from, to, ref payload) in &outbound {
-            self.store_outbound_message(session_id, *from, *to, round + 1, payload).await?;
+        // Store outbound messages in DB using the round embedded in each tuple
+        for (from, to, msg_round, ref payload) in &outbound {
+            self.store_outbound_message(session_id, *from, *to, *msg_round, payload).await?;
         }
 
         Ok(outbound)
@@ -398,7 +407,7 @@ impl MpcParticipant {
         _from_party: i16,
         round: i16,
         payload: &[u8],
-    ) -> Result<Vec<(i16, i16, Vec<u8>)>, String> {
+    ) -> Result<Vec<(i16, i16, i16, Vec<u8>)>, String> {
         let mut outbound = Vec::new();
 
         match round {
@@ -459,8 +468,9 @@ impl MpcParticipant {
                 sign.process_round1(vec![incoming])
                     .map_err(|e| format!("sign process_round1 failed: {}", e))?;
 
-                // Send R_1 back to client
-                outbound.push((SERVER_PARTY_INDEX as i16, 0i16, server_r1.payload));
+                // Send R_1 back to client (response round equals the incoming round)
+                let next_round = round;
+                outbound.push((SERVER_PARTY_INDEX as i16, 0i16, next_round, server_r1.payload));
 
                 // Store the session for round 2
                 self.sign_sessions.insert(session_id, sign);
@@ -493,7 +503,7 @@ impl MpcParticipant {
                     .ok_or_else(|| "server did not produce ServerSignature".to_string())?;
 
 
-                outbound.push((SERVER_PARTY_INDEX as i16, 0i16, server_sig_payload));
+                outbound.push((SERVER_PARTY_INDEX as i16, 0i16, round + 1, server_sig_payload));
 
                 if let Some(mut meta) = self.session_meta.get_mut(&session_id) {
                     meta.phase = SessionPhase::SignComplete;
@@ -523,10 +533,9 @@ impl MpcParticipant {
             }
         }
 
-        // Store outbound messages
-        for (i, (from, to, ref msg_payload)) in outbound.iter().enumerate() {
-            let out_round = round + i as i16;
-            self.store_outbound_message(session_id, *from, *to, out_round, msg_payload).await?;
+        // Store outbound messages using the round embedded in each tuple
+        for (from, to, msg_round, ref msg_payload) in &outbound {
+            self.store_outbound_message(session_id, *from, *to, *msg_round, msg_payload).await?;
         }
 
         Ok(outbound)
@@ -643,7 +652,7 @@ impl MpcParticipant {
         _from_party: i16,
         round: i16,
         payload: &[u8],
-    ) -> Result<Vec<(i16, i16, Vec<u8>)>, String> {
+    ) -> Result<Vec<(i16, i16, i16, Vec<u8>)>, String> {
         let outbound = Vec::new();
 
         match round {

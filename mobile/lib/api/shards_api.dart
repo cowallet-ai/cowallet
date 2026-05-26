@@ -48,4 +48,17 @@ class ShardsApi {
       }
     }
   }
+
+  /// Store SHA-256(backup_shard) on the server for future force re-register verification.
+  /// Called after DKG completes and backup shard is stored locally/cloud.
+  static Future<Result<Map<String, dynamic>>> storeBackupHash({
+    required String backupShardHashHex,
+  }) async {
+    return await DioClient.post(
+      "/shards/backup-hash",
+      data: {
+        "backup_shard_hash_hex": backupShardHashHex,
+      },
+    );
+  }
 }

@@ -1,7 +1,10 @@
 import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:pointycastle/digests/sha256.dart';
+import 'package:convert/convert.dart' as convert;
 import '../theme/colors.dart';
 import '../widgets/cw_orb.dart';
 import '../widgets/top_toast.dart';
@@ -9,6 +12,7 @@ import '../l10n/strings.dart';
 import '../main.dart';
 import '../services/locator.dart';
 import '../api/auth_api.dart';
+import '../api/shards_api.dart';
 import '../services/mpc_wallet_service.dart';
 import '../services/mpc_session_manager.dart';
 import '../platform/se_manager.dart';
@@ -16,6 +20,7 @@ import '../platform/sb_manager.dart';
 import '../utils/device_id.dart';
 import '../utils/secure_storage.dart';
 import '../services/backup_shard_service.dart';
+import '../platform/cloud_backup.dart';
 import '../router/app_router.dart';
 
 /// The onboarding stages of cowallet.
@@ -56,6 +61,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   String? _otpError;
   bool _otpVerifying = false;
   bool _forceRegister = false;
+  String? _backupShardHash;
 
   // --- Name stage state ---
   final _nameCtrl = TextEditingController();
@@ -367,6 +373,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       await SecureStorage.delete(SecureStorage.keyPendingBackupShard);
       await SecureStorage.delete(SecureStorage.keyPendingBackupCreatedAt);
       print('[OnboardingFlow] Deleted pending backup shard after successful backup');
+
+      // Store SHA-256(backup_shard) on server for future force re-register verification
+      final digest = SHA256Digest();
+      final hash = digest.process(Uint8List.fromList(backupBytes));
+      final hashHex = convert.hex.encode(hash);
+      final hashResult = await ShardsApi.storeBackupHash(backupShardHashHex: hashHex);
+      if (hashResult.isSuccess) {
+        print('[OnboardingFlow] Stored backup shard hash on server');
+      } else {
+        // Non-fatal: save hash locally for retry later
+        await SecureStorage.save('pending_backup_hash', hashHex);
+        print('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
+      }
 
       if (!mounted) return;
 
@@ -904,8 +923,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 style: FilledButton.styleFrom(backgroundColor: CwColors.danger),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  setState(() => _forceRegister = true);
-                  _goTo(_Stage.emailOtp);
+                  _verifyBackupShardForReRegister();
                 },
                 child: Text(S.reRegisterConfirm),
               ),
@@ -922,6 +940,36 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         ),
       ),
     );
+  }
+
+  Future<void> _verifyBackupShardForReRegister() async {
+    final backupService = BackupShardService(PlatformCloudBackup());
+    final shardBytes = await backupService.retrieveFromCloud();
+    if (!mounted) return;
+
+    if (shardBytes == null || shardBytes.isEmpty) {
+      showTopToast(context, S.backupShardRequired, backgroundColor: CwColors.danger);
+      return;
+    }
+
+    final digest = SHA256Digest();
+    final hash = digest.process(Uint8List.fromList(shardBytes));
+    _backupShardHash = convert.hex.encode(hash);
+
+    // Re-send OTP with force flag since the initial send was blocked
+    final result = await AuthApi.sendEmailOtp(
+      email: _emailCtrl.text.trim(),
+      force: true,
+    );
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      showTopToast(context, S.emailSendFailed, backgroundColor: CwColors.danger);
+      return;
+    }
+
+    setState(() => _forceRegister = true);
+    _goTo(_Stage.emailOtp);
   }
 
   // ===================== STAGE 2.6: EMAIL OTP =====================
@@ -944,6 +992,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         email: _emailCtrl.text.trim(),
         otp: _otpCtrl.text.trim(),
         force: _forceRegister,
+        backupShardHash: _backupShardHash,
       );
       if (!mounted) return;
 
@@ -1322,7 +1371,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     } else {
       if (pin == _pinFirst) {
         await SecureStorage.save('wallet_pin', pin);
-        setState(() => _pinDone = true);
+        setState(() {
+          _pinDone = true;
+          _pinFirst = null;
+          _pinInput = '';
+        });
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) _goTo(_Stage.name);
         });

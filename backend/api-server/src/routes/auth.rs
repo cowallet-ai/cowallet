@@ -35,6 +35,8 @@ pub struct AuditLogQuery {
 #[derive(Deserialize)]
 struct SendEmailOtpRequest {
     email: String,
+    #[serde(default)]
+    force: bool,
 }
 
 #[derive(Serialize)]
@@ -53,10 +55,11 @@ async fn send_email_otp(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    // Check if email has a completed wallet (user exists AND has at least one wallet with shard)
+    // Check if email has a completed wallet (user exists AND has server shard AND active wallet)
     let is_registered: bool = sqlx::query_as::<_, (uuid::Uuid,)>(
         "SELECT u.id FROM users u
-         INNER JOIN shard_metadata s ON s.user_id = u.id
+         INNER JOIN shard_metadata s ON s.user_id = u.id AND s.location = 'server'
+         INNER JOIN wallets w ON w.user_id = u.id AND w.status = 'active'
          WHERE u.email = $1
          LIMIT 1"
     )
@@ -67,12 +70,27 @@ async fn send_email_otp(
     .is_some();
 
     // If already registered with wallet, skip OTP — client should redirect to recovery flow
-    if is_registered {
+    // Unless force=true (user has verified backup shard possession on client side)
+    if is_registered && !body.force {
         return Ok(Json(SendEmailOtpResponse {
             sent: false,
             is_registered,
             message: "Account already registered. Please use recovery flow.".into(),
         }));
+    }
+
+    // Rate limit: max 3 OTP sends per email per hour
+    let recent_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM email_verifications
+         WHERE email = $1 AND created_at > NOW() - INTERVAL '1 hour'"
+    )
+    .bind(&body.email)
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    if recent_count >= 3 {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
     // Generate 6-digit OTP
@@ -128,6 +146,8 @@ struct RegisterRequest {
     device_id: String,
     #[serde(default)]
     force: bool,
+    /// SHA-256 hash of the user's backup shard (hex). Required when force=true.
+    backup_shard_hash: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -159,10 +179,10 @@ async fn register(
 
     // Verify email OTP
     let otp_hash = Sha256::digest(body.otp.as_bytes());
-    let verification: Option<(uuid::Uuid,)> = sqlx::query_as(
-        "SELECT id FROM email_verifications
+    let verification: Option<(uuid::Uuid, i32)> = sqlx::query_as(
+        "UPDATE email_verifications SET attempts = COALESCE(attempts, 0) + 1
          WHERE email = $1 AND otp_hash = $2 AND NOT verified AND expires_at > NOW()
-         ORDER BY created_at DESC LIMIT 1"
+         RETURNING id, attempts"
     )
     .bind(&body.email)
     .bind(otp_hash.as_slice())
@@ -170,7 +190,40 @@ async fn register(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let (verification_id,) = verification.ok_or(StatusCode::UNAUTHORIZED)?;
+    // If no matching OTP, check if there's a pending one that's been brute-forced
+    if verification.is_none() {
+        // Increment attempt counter on the latest pending verification for this email
+        let _: Option<(i32,)> = sqlx::query_as(
+            "UPDATE email_verifications SET attempts = COALESCE(attempts, 0) + 1
+             WHERE email = $1 AND NOT verified AND expires_at > NOW()
+             RETURNING attempts"
+        )
+        .bind(&body.email)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        // Check if locked out (5+ failed attempts)
+        let locked: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM email_verifications
+             WHERE email = $1 AND NOT verified AND expires_at > NOW() AND attempts >= 5)"
+        )
+        .bind(&body.email)
+        .fetch_one(db)
+        .await
+        .unwrap_or(false);
+
+        if locked {
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (verification_id, attempts) = verification.unwrap();
+
+    if attempts > 5 {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
 
     // Mark as verified
     sqlx::query("UPDATE email_verifications SET verified = TRUE WHERE id = $1")
@@ -189,9 +242,9 @@ async fn register(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user_id = if let Some((existing_id,)) = existing {
-        // User exists — check if they have a completed wallet
-        let has_wallet: bool = sqlx::query_as::<_, (uuid::Uuid,)>(
-            "SELECT id FROM shard_metadata WHERE user_id = $1 LIMIT 1"
+        // User exists — check if they have a completed wallet (shard + active wallet)
+        let has_shard: bool = sqlx::query_as::<_, (uuid::Uuid,)>(
+            "SELECT id FROM shard_metadata WHERE user_id = $1 AND location = 'server' LIMIT 1"
         )
         .bind(existing_id)
         .fetch_optional(db)
@@ -199,11 +252,81 @@ async fn register(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .is_some();
 
+        let has_active_wallet: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM wallets WHERE user_id = $1 AND status = 'active')"
+        )
+        .bind(existing_id)
+        .fetch_one(db)
+        .await
+        .unwrap_or(false);
+
+        // Orphaned DKG state: shard exists but no wallet — clean up and allow re-registration
+        if has_shard && !has_active_wallet {
+            sqlx::query("DELETE FROM shard_metadata WHERE user_id = $1")
+                .bind(existing_id)
+                .execute(db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            tracing::info!("Cleaned up orphaned shards for user {}", existing_id);
+        }
+
+        let has_wallet = has_shard && has_active_wallet;
+
         if has_wallet && !body.force {
             return Err(StatusCode::CONFLICT);
         }
 
         if has_wallet && body.force {
+            // Require backup shard proof: client must provide SHA-256(backup_shard)
+            let backup_hash_hex = body.backup_shard_hash.as_deref()
+                .ok_or(StatusCode::PRECONDITION_REQUIRED)?;
+
+            // Verify the backup shard hash matches what we have on record
+            let stored_backup_hash: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
+                "SELECT backup_shard_hash FROM shard_metadata
+                 WHERE user_id = $1 AND location = 'server' LIMIT 1"
+            )
+            .bind(existing_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            match stored_backup_hash {
+                Some((Some(stored_hash),)) => {
+                    let provided_hash = hex::decode(backup_hash_hex)
+                        .map_err(|_| StatusCode::BAD_REQUEST)?;
+                    if provided_hash != stored_hash {
+                        return Err(StatusCode::FORBIDDEN);
+                    }
+                }
+                _ => {
+                    // No backup hash on record — cannot verify, reject force re-register
+                    return Err(StatusCode::PRECONDITION_REQUIRED);
+                }
+            }
+
+            // Archive shards instead of deleting
+            sqlx::query(
+                "INSERT INTO shard_metadata_archive
+                    (original_id, user_id, location, party_index, encrypted_shard, nonce, public_key, archive_reason, created_at)
+                 SELECT id, user_id, location, party_index, encrypted_shard, nonce, public_key, 'force_reregister', created_at
+                 FROM shard_metadata WHERE user_id = $1"
+            )
+            .bind(existing_id)
+            .execute(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            // Archive old wallets
+            sqlx::query(
+                "UPDATE wallets SET status = 'archived' WHERE user_id = $1 AND status = 'active'"
+            )
+            .bind(existing_id)
+            .execute(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            // Now remove active shards
             sqlx::query("DELETE FROM shard_metadata WHERE user_id = $1")
                 .bind(existing_id)
                 .execute(db)

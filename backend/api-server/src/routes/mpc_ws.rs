@@ -335,7 +335,7 @@ async fn handle_client_message(
             ).await {
                 Ok(responses) => {
                     // Publish server responses via NATS for the requesting party
-                    for (from, to, payload) in responses {
+                    for (from, to, msg_round, payload) in responses {
                         // to == -1 means broadcast; deliver to the requesting party
                         let target_party = if to == -1 { ws_msg.from_party } else { to };
                         if let Some(nats) = &state.nats {
@@ -344,7 +344,7 @@ async fn handle_client_message(
                                 "session_id": session_id.to_string(),
                                 "from_party": from,
                                 "to_party": target_party,
-                                "round": ws_msg.round + 1,
+                                "round": msg_round,
                                 "payload": payload,
                                 "timestamp": std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)

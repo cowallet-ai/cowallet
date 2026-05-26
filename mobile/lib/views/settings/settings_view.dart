@@ -326,10 +326,10 @@ class _SettingsViewState extends State<SettingsView> {
       } else if (diff.inDays == 1) {
         return S.yesterday;
       } else if (diff.inDays < 30) {
-        return S.daysAgo(days: diff.inDays);
+        return S.daysAgo(diff.inDays);
       } else {
         final months = (diff.inDays / 30).floor();
-        return S.monthsAgo(months: months);
+        return S.monthsAgo(months);
       }
     } catch (e) {
       return S.never;

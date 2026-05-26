@@ -223,7 +223,7 @@ class _WalletViewState extends State<WalletView> {
       behavior: HitTestBehavior.opaque,
       onTap: () => AppShell.goToChatAndSend(
         context,
-        S.viewChainAssets(chain: chain.displayName),
+        S.viewChainAssets(chain.displayName),
       ),
       child: Container(
       padding: const EdgeInsets.all(14),

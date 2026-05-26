@@ -128,7 +128,7 @@ class _PinVerifyDialogState extends State<PinVerifyDialog> {
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
-                  S.pinError(attempts: _maxAttempts - _attempts),
+                  S.pinError(_maxAttempts - _attempts),
                   style: const TextStyle(color: CwColors.danger, fontSize: 13),
                 ),
               ),

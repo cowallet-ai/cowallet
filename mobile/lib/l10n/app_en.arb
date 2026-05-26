@@ -314,7 +314,6 @@
     }
   },
   "recentTransactions": "Recent transactions",
-  "securityAudit": "Security audit",
 
   "backupVerifyFailed": "Backup verification failed. Please confirm you imported the correct backup file from registration.",
   "backupFormatInvalid": "Backup format is invalid. Please check if the file is complete.",
@@ -341,8 +340,5 @@
 
   "pinError": "Incorrect PIN. ${attempts} attempts remaining",
   "@pinError": {
-    "placeholders": {
-      "attempts": {"type": "int"}
-    }
   }
 }

@@ -6,6 +6,7 @@ use axum::{
     Extension,
 };
 use chrono::{DateTime, Utc};
+use k256::elliptic_curve::sec1::ToEncodedPoint;
 use serde::{Deserialize, Serialize};
 use sha3::{Keccak256, Digest};
 use uuid::Uuid;
@@ -52,13 +53,18 @@ fn eth_address_from_pubkey(pubkey_hex: &str) -> Result<[u8; 20], StatusCode> {
     let pubkey_bytes = hex::decode(pubkey_hex)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Handle both compressed (33 bytes) and uncompressed (65 bytes with 04 prefix)
     let xy_bytes = if pubkey_bytes.len() == 65 && pubkey_bytes[0] == 0x04 {
-        // Uncompressed: skip the 04 prefix, use 64 bytes (x || y)
-        &pubkey_bytes[1..]
+        pubkey_bytes[1..].to_vec()
     } else if pubkey_bytes.len() == 64 {
-        // Already x || y without prefix
-        &pubkey_bytes[..]
+        pubkey_bytes.to_vec()
+    } else if pubkey_bytes.len() == 33 && (pubkey_bytes[0] == 0x02 || pubkey_bytes[0] == 0x03) {
+        let pk = k256::PublicKey::from_sec1_bytes(&pubkey_bytes)
+            .map_err(|_| {
+                tracing::error!("Failed to decompress public key");
+                StatusCode::BAD_REQUEST
+            })?;
+        let uncompressed = pk.to_encoded_point(false);
+        uncompressed.as_bytes()[1..].to_vec()
     } else {
         tracing::error!("Invalid public key length: {}", pubkey_bytes.len());
         return Err(StatusCode::BAD_REQUEST);
@@ -126,9 +132,12 @@ async fn create_wallet(
 
     let chain_ids = body.chain_ids.unwrap_or_else(|| vec![1, 8453, 42161, 10, 56, 137]);
 
-    let row: (Uuid, String, Vec<u8>, Vec<i64>, String, DateTime<Utc>) = sqlx::query_as(
+    // Atomic insert — reject if user already has an active wallet
+    // Uses a subquery to avoid check-then-insert race condition
+    let row: Option<(Uuid, String, Vec<u8>, Vec<i64>, String, DateTime<Utc>)> = sqlx::query_as(
         "INSERT INTO wallets (user_id, name, public_key, eth_address, chain_ids, status)
-         VALUES ($1, $2, $3, $4, $5, 'active')
+         SELECT $1, $2, $3, $4, $5, 'active'
+         WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE user_id = $1 AND status = 'active')
          RETURNING id, name, eth_address, chain_ids, status, created_at"
     )
     .bind(user_id)
@@ -136,16 +145,14 @@ async fn create_wallet(
     .bind(&public_key_bytes)
     .bind(&eth_addr.as_slice())
     .bind(&chain_ids)
-    .fetch_one(db)
+    .fetch_optional(db)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create wallet: {}", e);
-        if e.to_string().contains("duplicate key") {
-            StatusCode::CONFLICT
-        } else {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    let row = row.ok_or(StatusCode::CONFLICT)?;
 
     tracing::info!("Created wallet {} for user {}", row.0, user_id);
 

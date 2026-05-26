@@ -119,7 +119,7 @@ impl PresignManager {
         // Atomic reserve: find an available presignature and mark it reserved
         let row: Option<(Uuid, Vec<u8>)> = sqlx::query_as(
             "UPDATE presignatures
-             SET status = 'reserved', reserved_by = $2
+             SET status = 'reserved', reserved_by = $2, reserved_at = NOW()
              WHERE id = (
                  SELECT id FROM presignatures
                  WHERE wallet_id = $1 AND status = 'available' AND expires_at > NOW()
@@ -184,12 +184,14 @@ impl PresignManager {
 
     /// Also release presignatures that have been reserved too long (>10 min)
     /// without being consumed — likely from failed sessions.
+    /// Releases them back to 'available' so they can be reused.
     pub async fn cleanup_stale_reservations(&self) -> Result<u64, String> {
         let result = sqlx::query(
-            "UPDATE presignatures SET status = 'expired'
+            "UPDATE presignatures SET status = 'available', reserved_by = NULL, reserved_at = NULL
              WHERE status = 'reserved'
-             AND created_at < NOW() - INTERVAL '10 minutes'
-             AND consumed_at IS NULL"
+             AND reserved_at < NOW() - INTERVAL '10 minutes'
+             AND consumed_at IS NULL
+             AND expires_at > NOW()"
         )
         .execute(&self.db)
         .await
@@ -197,7 +199,7 @@ impl PresignManager {
 
         let count = result.rows_affected();
         if count > 0 {
-            tracing::info!("Expired {} stale reserved presignatures", count);
+            tracing::info!("Released {} stale reserved presignatures back to available", count);
         }
         Ok(count)
     }

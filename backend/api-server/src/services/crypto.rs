@@ -109,13 +109,13 @@ impl EncryptionService {
     /// This is atomic - either both decrypt and encrypt succeed, or neither does
     pub fn rotate_key(&self, encrypted: &EncryptedData, new_service: &EncryptionService) -> Result<EncryptedData, CryptoError> {
         // Decrypt with old key
-        let plaintext = self.decrypt(encrypted)?;
+        let mut plaintext = self.decrypt(encrypted)?;
 
         // Re-encrypt with new key
         let result = new_service.encrypt(&plaintext);
 
         // Zeroize plaintext from memory
-        drop(plaintext);
+        plaintext.zeroize();
 
         result
     }

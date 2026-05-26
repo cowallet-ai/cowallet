@@ -49,7 +49,6 @@ class ChatAuditWidget extends StatelessWidget {
                   letterSpacing: 0.5,
                 ),
               ),
-              ),
               const Spacer(),
               if (auditTime != null)
                 Text(

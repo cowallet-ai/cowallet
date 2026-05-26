@@ -113,14 +113,14 @@ class ChatSendConfirmWidget extends StatelessWidget {
                   if (policyLimit != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      S.limitLabel(limit: policyLimit ?? ''),
+                      S.limitLabel(policyLimit ?? ''),
                       style: const TextStyle(fontSize: 11, color: CwColors.ink3),
                     ),
                   ],
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     S.adjustLimitHint,
-                    style: TextStyle(fontSize: 11, color: CwColors.ink3),
+                    style: const TextStyle(fontSize: 11, color: CwColors.ink3),
                   ),
                 ],
               ),

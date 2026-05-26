@@ -1032,7 +1032,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     setState(() {
       msg.loading = false;
       msg.confirmed = true;
-      _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: S.contactSaved(name: contact.name)));
+      _messages.add(ChatMsg(kind: ChatMsgKind.ai, text: S.contactSaved(contact.name)));
     });
     _scrollToBottom();
   }
