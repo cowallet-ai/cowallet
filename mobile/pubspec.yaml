@@ -1,6 +1,7 @@
 name: cowallet
 description: "CoWallet - AI-native crypto wallet"
 publish_to: 'none'
+version: 1.0.0+3
 
 environment:
   sdk: ^3.11.5
