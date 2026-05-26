@@ -291,6 +291,15 @@ pub async fn build_swap_tx(
 
     let equipment_no = &from_address[..std::cmp::min(32, from_address.len())];
 
+    // Sanitize amounts: Bridgers requires integer strings (no decimals)
+    let clean_from_amount = sanitize_amount(from_token_amount);
+    let clean_amount_out_min = sanitize_amount(amount_out_min);
+
+    tracing::info!(
+        "[Bridgers] swap fromTokenAmount={} amountOutMin={} (raw inputs: {} / {})",
+        clean_from_amount, clean_amount_out_min, from_token_amount, amount_out_min
+    );
+
     let body = serde_json::json!({
         "fromTokenAddress": from_token_address,
         "toTokenAddress": to_token_address,
@@ -298,8 +307,8 @@ pub async fn build_swap_tx(
         "toAddress": to_address,
         "fromTokenChain": from_chain,
         "toTokenChain": to_chain,
-        "fromTokenAmount": from_token_amount,
-        "amountOutMin": amount_out_min,
+        "fromTokenAmount": clean_from_amount,
+        "amountOutMin": clean_amount_out_min,
         "fromCoinCode": from_coin_code,
         "toCoinCode": to_coin_code,
         "equipmentNo": equipment_no,
@@ -408,8 +417,8 @@ pub async fn upload_order_hash(
         "toAddress": to_address,
         "fromTokenChain": from_chain,
         "toTokenChain": to_chain,
-        "fromTokenAmount": from_token_amount,
-        "amountOutMin": amount_out_min,
+        "fromTokenAmount": sanitize_amount(from_token_amount),
+        "amountOutMin": sanitize_amount(amount_out_min),
         "fromCoinCode": from_coin_code,
         "toCoinCode": to_coin_code,
         "equipmentNo": equipment_no,
@@ -471,14 +480,52 @@ pub async fn get_order_status(
 // ─── Utility functions ─────────────────────────────────────────────────────
 
 pub fn amount_to_raw(amount: &str, decimals: u32) -> Result<String, String> {
-    let amt: f64 = amount.parse().map_err(|_| format!("Invalid amount: {}", amount))?;
-    if amt <= 0.0 { return Err("Amount must be positive".to_string()); }
-    let raw = amt * 10f64.powi(decimals as i32);
-    Ok(format!("{:.0}", raw))
+    let amt = amount.trim();
+    if amt.is_empty() || amt == "0" {
+        return Err("Amount must be positive".to_string());
+    }
+    let negative = amt.starts_with('-');
+    if negative { return Err("Amount must be positive".to_string()); }
+
+    let (integer, fraction) = match amt.split_once('.') {
+        Some((i, f)) => (i, f.trim_end_matches('0')),
+        None => (amt, ""),
+    };
+
+    let frac_len = fraction.len() as u32;
+    let mut result = String::with_capacity(integer.len() + decimals as usize);
+    result.push_str(integer);
+    if frac_len <= decimals {
+        result.push_str(fraction);
+        for _ in 0..(decimals - frac_len) {
+            result.push('0');
+        }
+    } else {
+        result.push_str(&fraction[..decimals as usize]);
+    }
+    let trimmed = result.trim_start_matches('0');
+    if trimmed.is_empty() {
+        return Err("Amount must be positive".to_string());
+    }
+    Ok(trimmed.to_string())
 }
 
 pub fn raw_to_amount(raw: &str, decimals: u32) -> String {
     let value: f64 = raw.parse().unwrap_or(0.0);
     let amount = value / 10f64.powi(decimals as i32);
     if decimals <= 6 { format!("{:.2}", amount) } else { format!("{:.6}", amount) }
+}
+
+fn sanitize_amount(s: &str) -> String {
+    let s = s.trim();
+    match s.split_once('.') {
+        Some((int, _)) => {
+            let t = int.trim_start_matches('0');
+            if t.is_empty() { "0".to_string() } else { t.to_string() }
+        }
+        None => {
+            let t = s.trim_start_matches('0');
+            if t.is_empty() { "0".to_string() } else { t.to_string() }
+        }
+    }
 }
