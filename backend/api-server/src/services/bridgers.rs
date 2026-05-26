@@ -95,20 +95,20 @@ struct BridgersResponse<T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QuoteData {
-    amount_out_min: Option<String>,
-    to_token_amount: Option<String>,
-    chain_fee: Option<String>,
+    amount_out_min: Option<Value>,
+    to_token_amount: Option<Value>,
+    chain_fee: Option<Value>,
     fee: Option<Value>,
     contract_address: Option<String>,
-    deposit_min: Option<String>,
-    deposit_max: Option<String>,
+    deposit_min: Option<Value>,
+    deposit_max: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct SwapData {
     data: Option<String>,
     to: Option<String>,
-    value: Option<String>,
+    value: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,15 +233,17 @@ pub async fn get_quote(
         "bridgers_get_quote",
     ).await?;
 
-    let code = resp.res_code.as_ref().and_then(|v| v.as_str().or_else(|| v.as_i64().map(|_| "")).or(Some("")));
-    if code != Some("100") && resp.res_code != Some(Value::Number(100.into())) {
+    if !is_success_code(&resp.res_code) {
         let msg = resp.res_msg.unwrap_or_else(|| "Unknown error".into());
         return Err(format!("Bridgers quote error: {}", msg));
     }
 
     let data = resp.data.ok_or("Bridgers returned empty quote data")?;
-    let buy_amount = data.to_token_amount.unwrap_or_else(|| "0".into());
-    let buy_amount_min = data.amount_out_min.unwrap_or_else(|| buy_amount.clone());
+
+    tracing::debug!("[Bridgers] quote raw data: {:?}", data);
+
+    let buy_amount = value_to_string(&data.to_token_amount).unwrap_or_else(|| "0".into());
+    let buy_amount_min = value_to_string(&data.amount_out_min).unwrap_or_else(|| buy_amount.clone());
     let sell_f: f64 = from_token_amount.parse().unwrap_or(1.0);
     let buy_f: f64 = buy_amount.parse().unwrap_or(0.0);
     let price = if sell_f > 0.0 { format!("{:.10}", buy_f / sell_f) } else { "0".into() };
@@ -250,6 +252,7 @@ pub async fn get_quote(
         Value::String(s) => s,
         _ => "0.002".into(),
     }).unwrap_or_else(|| "0.002".into());
+    let chain_fee = value_to_string(&data.chain_fee).unwrap_or_else(|| "0".into());
 
     Ok(SwapQuote {
         sell_token: from_token_address.to_string(),
@@ -260,12 +263,12 @@ pub async fn get_quote(
         price,
         estimated_gas: "200000".into(),
         fee_rate,
-        chain_fee: data.chain_fee.unwrap_or_else(|| "0".into()),
+        chain_fee,
         contract_address: data.contract_address.unwrap_or_default(),
         from_chain: from_chain.to_string(),
         to_chain: to_chain.to_string(),
-        deposit_min: data.deposit_min,
-        deposit_max: data.deposit_max,
+        deposit_min: value_to_string(&data.deposit_min),
+        deposit_max: value_to_string(&data.deposit_max),
     })
 }
 
@@ -300,7 +303,7 @@ pub async fn build_swap_tx(
         clean_from_amount, clean_amount_out_min, from_token_amount, amount_out_min
     );
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "fromTokenAddress": from_token_address,
         "toTokenAddress": to_token_address,
         "fromAddress": from_address,
@@ -308,13 +311,15 @@ pub async fn build_swap_tx(
         "fromTokenChain": from_chain,
         "toTokenChain": to_chain,
         "fromTokenAmount": clean_from_amount,
-        "amountOutMin": clean_amount_out_min,
         "fromCoinCode": from_coin_code,
         "toCoinCode": to_coin_code,
         "equipmentNo": equipment_no,
         "sourceFlag": source_flag,
         "slippage": format!("{}", slippage),
     });
+    if clean_amount_out_min != "0" && !clean_amount_out_min.is_empty() {
+        body["amountOutMin"] = Value::String(clean_amount_out_min);
+    }
 
     let http_c = http.clone();
     let body_c = body.clone();
@@ -341,8 +346,7 @@ pub async fn build_swap_tx(
         "bridgers_build_swap",
     ).await?;
 
-    let code = resp.res_code.as_ref().and_then(|v| v.as_str().or_else(|| v.as_i64().map(|_| "")).or(Some("")));
-    if code != Some("100") && resp.res_code != Some(Value::Number(100.into())) {
+    if !is_success_code(&resp.res_code) {
         let msg = resp.res_msg.unwrap_or_else(|| "Unknown error".into());
         return Err(format!("Bridgers swap error: {}", msg));
     }
@@ -353,7 +357,7 @@ pub async fn build_swap_tx(
     Ok(SwapTransaction {
         to: data.to.unwrap_or_default(),
         data: data.data.unwrap_or_default(),
-        value: data.value.unwrap_or_else(|| "0".into()),
+        value: value_to_string(&data.value).unwrap_or_else(|| "0".into()),
         gas_estimate: "200000".into(),
         sell_token: from_token_address.to_string(),
         buy_token: to_token_address.to_string(),
@@ -527,5 +531,31 @@ fn sanitize_amount(s: &str) -> String {
             let t = s.trim_start_matches('0');
             if t.is_empty() { "0".to_string() } else { t.to_string() }
         }
+    }
+}
+
+fn is_success_code(code: &Option<Value>) -> bool {
+    match code {
+        Some(Value::String(s)) => s == "100",
+        Some(Value::Number(n)) => n.as_i64() == Some(100) || n.as_u64() == Some(100),
+        _ => false,
+    }
+}
+
+fn value_to_string(v: &Option<Value>) -> Option<String> {
+    match v {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Number(n)) => {
+            if let Some(i) = n.as_i64() {
+                Some(i.to_string())
+            } else if let Some(u) = n.as_u64() {
+                Some(u.to_string())
+            } else if let Some(f) = n.as_f64() {
+                Some(format!("{:.0}", f))
+            } else {
+                Some(n.to_string())
+            }
+        }
+        _ => None,
     }
 }
