@@ -58,18 +58,11 @@ class ChatMsg {
 // Suggestion pills
 // ---------------------------------------------------------------------------
 
-class _Suggestion {
-  final String zhText;
-  final String enText;
-  const _Suggestion({required this.zhText, required this.enText});
-  String text(Lang lang) => lang == Lang.zh ? zhText : enText;
-}
-
-List<_Suggestion> get _suggestions => [
-  _Suggestion(zhText: S.suggestBalance.split('\'').join(''), enText: S.suggestBalance),
-  _Suggestion(zhText: S.suggestRecentTx, enText: S.suggestRecentTx),
-  _Suggestion(zhText: S.suggestSecurityAudit, enText: S.suggestSecurityAudit),
-  _Suggestion(zhText: S.suggestAddress, enText: S.suggestAddress),
+List<String> get _suggestions => [
+  S.suggestBalance,
+  S.suggestRecentTx,
+  S.suggestSecurityAudit,
+  S.suggestAddress,
 ];
 
 // ---------------------------------------------------------------------------
@@ -138,7 +131,6 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Lang get _lang => S.lang;
   bool get _isEmpty => _messages.isEmpty;
 
   bool _voiceCancelled = false;
@@ -375,6 +367,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       portfolioContext: portfolioContext,
       contacts: contactsList,
       authMethod: authMethod,
+      lang: S.lang == Lang.zh ? 'zh' : 'en',
     );
 
     _streamSub?.cancel();
@@ -748,17 +741,17 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(S.lang == Lang.zh ? '风险提示' : 'Risk Warning'),
+        title: Text(S.riskWarning),
         content: Text(reason),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(S.lang == Lang.zh ? '取消' : 'Cancel'),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: CwColors.accent),
-            child: Text(S.lang == Lang.zh ? '确认继续' : 'Continue'),
+            child: Text(S.confirmContinue),
           ),
         ],
       ),
@@ -1087,7 +1080,6 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   }
 
   Widget _buildVoiceOverlay() {
-    final isZh = S.lang == Lang.zh;
     return Positioned.fill(
       child: Container(
         color: Colors.black54,
@@ -1227,9 +1219,9 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     );
   }
 
-  Widget _suggestionPill(_Suggestion s) {
+  Widget _suggestionPill(String text) {
     return GestureDetector(
-      onTap: () => _send(s.text(_lang)),
+      onTap: () => _send(text),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -1238,7 +1230,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
-          s.text(_lang),
+          text,
           style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2, height: 1.3),
         ),
       ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import '../network/dio_client.dart';
 import '../network/result.dart';
+import '../l10n/s.dart';
 
 /// SSE event from AI chat stream
 class AiStreamEvent {
@@ -45,6 +46,7 @@ class AiApi {
     Map<String, dynamic>? portfolioContext,
     List<Map<String, dynamic>>? contacts,
     String? authMethod,
+    String? lang,
   }) async* {
     final response = await DioClient.postStream(
       "/ai/chat",
@@ -57,11 +59,12 @@ class AiApi {
         if (portfolioContext != null) "portfolio": portfolioContext,
         if (contacts != null && contacts.isNotEmpty) "contacts": contacts,
         if (authMethod != null) "auth_method": authMethod,
+        if (lang != null) "lang": lang,
       },
     );
 
     if (response == null) {
-      yield AiStreamEvent(event: "error", data: {"message": "请求失败"});
+      yield AiStreamEvent(event: "error", data: {"message": S.requestFailed});
       return;
     }
 

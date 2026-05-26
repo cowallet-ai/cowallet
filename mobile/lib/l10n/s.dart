@@ -301,6 +301,8 @@ class S {
   static String get thinking => _p('正在思考', 'Thinking');
   static String get transferCancelled => _p('已取消转账', 'Transfer cancelled');
   static String get swapCancelled => _p('已取消兑换', 'Swap cancelled');
+  static String get riskWarning => _p('风险提示', 'Risk Warning');
+  static String get confirmContinue => _p('确认继续', 'Confirm & Continue');
 
   // Transfer
   static String get sendAll => _p('全部', 'All');

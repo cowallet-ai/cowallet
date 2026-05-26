@@ -553,6 +553,8 @@ pub struct ChatRequest {
     pub contacts: Option<Vec<serde_json::Value>>,
     #[serde(default)]
     pub auth_method: Option<String>,
+    #[serde(default)]
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -772,9 +774,14 @@ async fn chat_stream(
             }
         };
 
-        // Build context messages
+        // Build context messages with language directive
+        let system_content = if req.lang.as_deref() == Some("en") {
+            format!("{}\n\n## Language\nIMPORTANT: You MUST respond in English. All your replies, clarify options, and descriptions must be in English.", SYSTEM_PROMPT)
+        } else {
+            SYSTEM_PROMPT.to_string()
+        };
         let mut messages: Vec<Message> = vec![
-            Message { role: "system".into(), content: Some(SYSTEM_PROMPT.into()), reasoning_content: None, tool_calls: None, tool_call_id: None },
+            Message { role: "system".into(), content: Some(system_content), reasoning_content: None, tool_calls: None, tool_call_id: None },
         ];
 
         // Load history from DB
