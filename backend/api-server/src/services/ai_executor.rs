@@ -1965,12 +1965,13 @@ impl ToolContext {
                 };
             }
         };
+        let to_chain_id: u64 = parse_param(&params, "to_chain_id").unwrap_or(chain_id);
 
         let from_upper = from_token.to_uppercase();
         let to_upper = to_token.to_uppercase();
 
-        // Resolve token addresses for 0x API
-        let sell_addr = match crate::services::dex::token_address(&from_upper, chain_id) {
+        // Resolve token addresses for Bridgers API
+        let sell_addr = match crate::services::bridgers::token_address(&from_upper, chain_id) {
             Some(addr) => addr.to_string(),
             None => {
                 return ToolExecutionResult {
@@ -1982,7 +1983,7 @@ impl ToolContext {
                 };
             }
         };
-        let buy_addr = match crate::services::dex::token_address(&to_upper, chain_id) {
+        let buy_addr = match crate::services::bridgers::token_address(&to_upper, to_chain_id) {
             Some(addr) => addr.to_string(),
             None => {
                 return ToolExecutionResult {
@@ -1990,14 +1991,14 @@ impl ToolContext {
                     tool_name: "swap_token".into(),
                     success: false,
                     result: Value::Null,
-                    error: Some(format!("不支持的代币: {} (chain {})", to_upper, chain_id)),
+                    error: Some(format!("不支持的代币: {} (chain {})", to_upper, to_chain_id)),
                 };
             }
         };
 
         // Convert amount to raw units
-        let sell_decimals = crate::services::dex::token_decimals(&from_upper);
-        let raw_amount = match crate::services::dex::amount_to_raw(&amount, sell_decimals) {
+        let sell_decimals = crate::services::bridgers::token_decimals(&from_upper);
+        let raw_amount = match crate::services::bridgers::amount_to_raw(&amount, sell_decimals) {
             Ok(raw) => raw,
             Err(e) => {
                 return ToolExecutionResult {
@@ -2010,31 +2011,35 @@ impl ToolContext {
             }
         };
 
-        // Try to get a real quote from 0x API
-        let buy_decimals = crate::services::dex::token_decimals(&to_upper);
+        // Try to get a real quote from Bridgers API
+        let buy_decimals = crate::services::bridgers::token_decimals(&to_upper);
         let (estimated_output, exchange_rate, price_impact, gas_estimate, sources) =
-            match crate::services::dex::get_quote(
+            match crate::services::bridgers::get_quote(
                 &self.app_state.http,
-                self.app_state.zerox_api_key.as_deref(),
+                &self.app_state.bridgers_source_flag,
                 chain_id,
+                to_chain_id,
                 &sell_addr,
                 &buy_addr,
                 &raw_amount,
+                &from_upper,
+                &to_upper,
+                None,
             )
             .await
             {
                 Ok(quote) => {
-                    let output_formatted = crate::services::dex::raw_to_amount(&quote.buy_amount, buy_decimals);
+                    let output_formatted = crate::services::bridgers::raw_to_amount(&quote.buy_amount, buy_decimals);
                     (
                         output_formatted,
                         quote.price.clone(),
-                        quote.price_impact.clone(),
+                        None::<String>,
                         quote.estimated_gas.clone(),
-                        quote.sources.clone(),
+                        vec!["bridgers".to_string()],
                     )
                 }
                 Err(e) => {
-                    tracing::warn!("[DEX] 0x quote failed, falling back to price estimate: {}", e);
+                    tracing::warn!("[Bridgers] quote failed, falling back to price estimate: {}", e);
                     // Fallback to price-based estimation
                     let from_price = self.app_state.price_cache
                         .get_usd_price(&self.app_state.http, &from_upper)

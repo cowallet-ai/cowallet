@@ -34,7 +34,7 @@ pub struct AppState {
     pub mpc_participant: Option<Arc<MpcParticipant>>,
     pub presign_manager: Option<Arc<PresignManager>>,
     pub covalent_api_key: Option<String>,
-    pub zerox_api_key: Option<String>,
+    pub bridgers_source_flag: String,
     pub bundler_url: Option<String>,
     pub paymaster_url: Option<String>,
     pub tx_tracker: Option<Arc<TxTracker>>,
@@ -140,14 +140,9 @@ impl AppState {
             tracing::warn!("COVALENT_API_KEY not set — balance and tx-history endpoints will return 503");
         }
 
-        let zerox_api_key = std::env::var("ZEROX_API_KEY")
-            .ok()
-            .filter(|s| !s.is_empty());
-        if zerox_api_key.is_some() {
-            tracing::info!("0x API key configured for DEX swaps");
-        } else {
-            tracing::info!("ZEROX_API_KEY not set — swap quotes will use free tier (rate limited)");
-        }
+        let bridgers_source_flag = std::env::var("BRIDGERS_SOURCE_FLAG")
+            .unwrap_or_else(|_| "cowallet".to_string());
+        tracing::info!("Bridgers source_flag: {}", bridgers_source_flag);
 
         let bundler_url = std::env::var("BUNDLER_URL")
             .ok()
@@ -198,7 +193,7 @@ impl AppState {
             mpc_participant: Some(participant),
             presign_manager: Some(presign_manager),
             covalent_api_key,
-            zerox_api_key,
+            bridgers_source_flag,
             bundler_url,
             paymaster_url,
             tx_tracker: Some(tx_tracker),

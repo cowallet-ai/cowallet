@@ -289,6 +289,7 @@ class IntentExecutor {
       final toToken = (params['to_token'] ?? '').toUpperCase();
       final amountStr = params['amount'] ?? '0';
       final chainIdStr = params['chain_id'];
+      final toChainIdStr = params['to_chain_id'];
       final slippageStr = params['slippage'];
 
       if (fromToken.isEmpty || toToken.isEmpty) {
@@ -308,6 +309,10 @@ class IntentExecutor {
       if (address.isEmpty) return ActionResult.fail(S.noWallet);
 
       final chainId = swapChainId;
+      final toChainId = toChainIdStr != null
+          ? (int.tryParse(toChainIdStr) ?? chainId)
+          : chainId;
+      final isCrossChain = toChainId != chainId;
       final slippage = slippageStr != null
           ? (double.tryParse(slippageStr) ?? 0.5)
           : 0.5;
@@ -335,9 +340,10 @@ class IntentExecutor {
         }
       }
 
-      // Build swap transaction via backend (0x aggregator)
+      // Build swap transaction via backend (Bridgers aggregator)
       final buildResult = await SwapApi.buildSwapTx(
-        chainId: chainId,
+        fromChainId: chainId,
+        toChainId: toChainId,
         sellToken: fromToken,
         buyToken: toToken,
         sellAmount: amountStr,
@@ -373,7 +379,7 @@ class IntentExecutor {
       final gasLimit = BigInt.tryParse(gasEstimateStr) ?? BigInt.from(200000);
 
       // TODO: If selling ERC-20, may need approval tx first.
-      // The 0x API's allowance_target field tells us which contract needs approval.
+      // The Bridgers contract_address from quote tells us which contract needs approval.
       // For now, the backend handles this check and returns an error if approval is needed.
 
       // Sign and send the swap transaction
@@ -394,6 +400,22 @@ class IntentExecutor {
         timestamp: DateTime.now(),
       ));
 
+      // For cross-chain swaps, upload hash to Bridgers for order tracking
+      if (isCrossChain) {
+        final buyAmountMin = swapData['buy_amount_min'] as String? ?? buyAmount;
+        await SwapApi.uploadOrderHash(
+          hash: txHash,
+          fromChainId: chainId,
+          toChainId: toChainId,
+          sellToken: fromToken,
+          buyToken: toToken,
+          sellAmount: amountStr,
+          buyAmountMin: buyAmountMin,
+          fromAddress: address,
+          toAddress: address,
+        );
+      }
+
       // Notification
       Services.notifications.showTxConfirmed(txHash, amountStr, '$fromToken>$toToken');
 
@@ -407,13 +429,16 @@ class IntentExecutor {
       final buyDisplayAmount = _formatBuyAmount(buyAmount, toToken);
 
       return ActionResult.ok(
-        S.swapSuccess(amountStr, fromToken, buyDisplayAmount, toToken, shortHash),
+        isCrossChain
+            ? 'Cross-chain swap submitted: $amountStr $fromToken → $toToken. Tx: $shortHash. Use "check swap status" to track progress.'
+            : S.swapSuccess(amountStr, fromToken, buyDisplayAmount, toToken, shortHash),
         data: {
           'txHash': txHash,
           'fromToken': fromToken,
           'toToken': toToken,
           'sellAmount': amountStr,
           'buyAmount': buyDisplayAmount,
+          if (isCrossChain) 'crossChain': 'true',
         },
       );
     } catch (e) {
