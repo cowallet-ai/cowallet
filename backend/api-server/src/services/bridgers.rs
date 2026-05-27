@@ -28,11 +28,11 @@ pub fn chain_name(chain_id: u64) -> Option<&'static str> {
     match chain_id {
         1 => Some("ETH"),
         8453 => Some("BASE"),
-        42161 => Some("ARB"),
+        42161 => Some("ARBITRUM"),
         10 => Some("OPTIMISM"),
         56 => Some("BSC"),
         137 => Some("POLYGON"),
-        43114 => Some("AVAXC"),
+        43114 => Some("AVALANCHE"),
         250 => Some("FTM"),
         324 => Some("ZKSYNC"),
         59144 => Some("LINEA"),
@@ -44,13 +44,13 @@ pub fn chain_name(chain_id: u64) -> Option<&'static str> {
 /// Map chain ID to coin code chain suffix (for fromCoinCode/toCoinCode SYMBOL(CHAIN) format)
 pub fn coin_code_chain(chain_id: u64) -> Option<&'static str> {
     match chain_id {
-        1 => Some("ETH"),
+        1 => Some("ERC20"),
         8453 => Some("BASE"),
         42161 => Some("ARB"),
-        10 => Some("OP"),
+        10 => Some("Optimism"),
         56 => Some("BSC"),
         137 => Some("POL"),
-        43114 => Some("AVAX"),
+        43114 => Some("C-Chain"),
         250 => Some("FTM"),
         324 => Some("ZKSYNC"),
         59144 => Some("LINEA"),
@@ -61,8 +61,11 @@ pub fn coin_code_chain(chain_id: u64) -> Option<&'static str> {
 
 /// Build coin code in SYMBOL(CHAIN) format required by Bridgers
 pub fn build_coin_code(symbol: &str, chain_id: u64) -> String {
-    let chain = coin_code_chain(chain_id).unwrap_or("ETH");
     let sym = symbol.to_uppercase();
+    if chain_id == 1 && sym == "ETH" {
+        return "ETH".to_string();
+    }
+    let chain = coin_code_chain(chain_id).unwrap_or("ERC20");
     format!("{}({})", sym, chain)
 }
 
@@ -431,10 +434,15 @@ pub async fn get_tokens(
         return Err(format!("Bridgers getToken error: {}", t));
     }
 
-    let parsed: BridgersResponse<Vec<BridgersToken>> = resp.json().await
+    let parsed: BridgersResponse<Value> = resp.json().await
         .map_err(|e| format!("Bridgers getToken parse error: {}", e))?;
 
-    Ok(parsed.data.unwrap_or_default())
+    let data = parsed.data.unwrap_or(Value::Object(Default::default()));
+    let tokens_val = data.get("tokens").cloned().unwrap_or(Value::Array(vec![]));
+    let tokens: Vec<BridgersToken> = serde_json::from_value(tokens_val)
+        .unwrap_or_default();
+
+    Ok(tokens)
 }
 
 pub async fn upload_order_hash(
