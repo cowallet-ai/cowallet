@@ -312,6 +312,11 @@ fn resolve_token_address(token: &str, chain_id: u64) -> Result<String> {
 }
 
 /// Get coin code from token string (symbol or address -> symbol)
+/// Maps to Bridgers-expected coin codes
 fn token_code(token: &str) -> &str {
-    if token.starts_with("0x") { "UNKNOWN" } else { token }
+    if token.starts_with("0x") { return "UNKNOWN"; }
+    match token.to_uppercase().as_str() {
+        "POL" => "MATIC",
+        _ => token,
+    }
 }
