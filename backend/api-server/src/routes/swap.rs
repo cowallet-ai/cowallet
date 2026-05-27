@@ -175,8 +175,8 @@ async fn build_swap_tx(
     let raw_amount = bridgers::amount_to_raw(&req.sell_amount, sell_decimals)
         .map_err(|e| ApiError::bad_request(&e))?;
 
-    // Convert slippage from percent to decimal (0.5% -> 0.005)
-    let slippage = req.slippage.unwrap_or(0.5) / 100.0;
+    // Bridgers expects slippage as percentage (e.g. 0.5 means 0.5%)
+    let slippage = req.slippage.unwrap_or(0.5);
 
     if !req.taker_address.starts_with("0x") || req.taker_address.len() != 42 {
         return Err(ApiError::bad_request("Invalid taker_address format"));

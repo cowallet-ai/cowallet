@@ -297,13 +297,19 @@ pub async fn build_swap_tx(
     // Sanitize amounts: Bridgers requires integer strings (no decimals)
     let clean_from_amount = sanitize_amount(from_token_amount);
     let clean_amount_out_min = sanitize_amount(amount_out_min);
+    // If amountOutMin is "0" or empty, use "1" (accept any positive output)
+    let final_amount_out_min = if clean_amount_out_min == "0" || clean_amount_out_min.is_empty() {
+        "1".to_string()
+    } else {
+        clean_amount_out_min.clone()
+    };
 
     tracing::info!(
-        "[Bridgers] swap fromTokenAmount={} amountOutMin={} (raw inputs: {} / {})",
-        clean_from_amount, clean_amount_out_min, from_token_amount, amount_out_min
+        "[Bridgers] swap fromTokenAmount={} amountOutMin={} slippage={} (raw inputs: {} / {})",
+        clean_from_amount, final_amount_out_min, slippage, from_token_amount, amount_out_min
     );
 
-    let mut body = serde_json::json!({
+    let body = serde_json::json!({
         "fromTokenAddress": from_token_address,
         "toTokenAddress": to_token_address,
         "fromAddress": from_address,
@@ -311,15 +317,13 @@ pub async fn build_swap_tx(
         "fromTokenChain": from_chain,
         "toTokenChain": to_chain,
         "fromTokenAmount": clean_from_amount,
+        "amountOutMin": final_amount_out_min,
         "fromCoinCode": from_coin_code,
         "toCoinCode": to_coin_code,
         "equipmentNo": equipment_no,
         "sourceFlag": source_flag,
         "slippage": format!("{}", slippage),
     });
-    if clean_amount_out_min != "0" && !clean_amount_out_min.is_empty() {
-        body["amountOutMin"] = Value::String(clean_amount_out_min);
-    }
 
     let http_c = http.clone();
     let body_c = body.clone();
