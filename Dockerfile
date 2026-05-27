@@ -1,5 +1,5 @@
 # 多阶段构建 - 使用 bookworm 基础镜像确保 GLIBC 兼容
-FROM rust:1.92-bookworm AS builder
+FROM rust:1.95-bookworm AS builder
 
 WORKDIR /app
 
