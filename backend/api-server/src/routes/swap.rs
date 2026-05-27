@@ -120,8 +120,8 @@ async fn get_swap_quote(
     let raw_amount = bridgers::amount_to_raw(&req.sell_amount, sell_decimals)
         .map_err(|e| ApiError::bad_request(&e))?;
 
-    let sell_code = token_code(&req.sell_token);
-    let buy_code = token_code(&req.buy_token);
+    let sell_code = bridgers::build_coin_code(&req.sell_token, from_chain_id);
+    let buy_code = bridgers::build_coin_code(&req.buy_token, to_chain_id);
 
     let quote = bridgers::get_quote(
         &state.http,
@@ -131,15 +131,20 @@ async fn get_swap_quote(
         &sell_addr,
         &buy_addr,
         &raw_amount,
-        sell_code,
-        buy_code,
+        &sell_code,
+        &buy_code,
         req.taker_address.as_deref(),
     )
     .await
     .map_err(|e| ApiError::external_service(&e))?;
 
     let buy_decimals = bridgers::token_decimals(&req.buy_token);
-    let buy_formatted = bridgers::raw_to_amount(&quote.buy_amount, buy_decimals);
+    // toTokenAmount from Bridgers is already human-readable, use it directly
+    let buy_formatted = if quote.buy_amount.contains('.') {
+        quote.buy_amount.clone()
+    } else {
+        bridgers::raw_to_amount(&quote.buy_amount, buy_decimals)
+    };
 
     Ok(Json(QuoteResponse {
         sell_token: req.sell_token,
@@ -175,16 +180,16 @@ async fn build_swap_tx(
     let raw_amount = bridgers::amount_to_raw(&req.sell_amount, sell_decimals)
         .map_err(|e| ApiError::bad_request(&e))?;
 
-    // Bridgers expects slippage as percentage (e.g. 0.5 means 0.5%)
-    let slippage = req.slippage.unwrap_or(0.5);
+    // Bridgers expects slippage as decimal fraction (0.5% = 0.005)
+    let slippage = req.slippage.unwrap_or(0.5) / 100.0;
 
     if !req.taker_address.starts_with("0x") || req.taker_address.len() != 42 {
         return Err(ApiError::bad_request("Invalid taker_address format"));
     }
 
     let to_addr = req.to_address.as_deref().unwrap_or(&req.taker_address);
-    let sell_code = token_code(&req.sell_token);
-    let buy_code = token_code(&req.buy_token);
+    let sell_code = bridgers::build_coin_code(&req.sell_token, from_chain_id);
+    let buy_code = bridgers::build_coin_code(&req.buy_token, to_chain_id);
 
     // Get quote first to determine amount_out_min
     let quote = bridgers::get_quote(
@@ -195,8 +200,8 @@ async fn build_swap_tx(
         &sell_addr,
         &buy_addr,
         &raw_amount,
-        sell_code,
-        buy_code,
+        &sell_code,
+        &buy_code,
         Some(&req.taker_address),
     )
     .await
@@ -213,8 +218,8 @@ async fn build_swap_tx(
         to_addr,
         &raw_amount,
         &quote.buy_amount_min,
-        sell_code,
-        buy_code,
+        &sell_code,
+        &buy_code,
         slippage,
     )
     .await
@@ -254,8 +259,8 @@ async fn upload_order(
 ) -> Result<Json<serde_json::Value>> {
     let sell_addr = resolve_token_address(&req.sell_token, req.from_chain_id)?;
     let buy_addr = resolve_token_address(&req.buy_token, req.to_chain_id)?;
-    let sell_code = token_code(&req.sell_token);
-    let buy_code = token_code(&req.buy_token);
+    let sell_code = bridgers::build_coin_code(&req.sell_token, req.from_chain_id);
+    let buy_code = bridgers::build_coin_code(&req.buy_token, req.to_chain_id);
 
     let sell_decimals = bridgers::token_decimals(&req.sell_token);
     let raw_amount = bridgers::amount_to_raw(&req.sell_amount, sell_decimals)
@@ -276,8 +281,8 @@ async fn upload_order(
         req.to_chain_id,
         &raw_amount,
         &raw_min,
-        sell_code,
-        buy_code,
+        &sell_code,
+        &buy_code,
     )
     .await
     .map_err(|e| ApiError::external_service(&e))?;
@@ -309,14 +314,4 @@ fn resolve_token_address(token: &str, chain_id: u64) -> Result<String> {
             "Unknown token '{}' on chain {}. Provide a contract address instead.",
             token, chain_id
         )))
-}
-
-/// Get coin code from token string (symbol or address -> symbol)
-/// Maps to Bridgers-expected coin codes
-fn token_code(token: &str) -> &str {
-    if token.starts_with("0x") { return "UNKNOWN"; }
-    match token.to_uppercase().as_str() {
-        "POL" => "MATIC",
-        _ => token,
-    }
 }

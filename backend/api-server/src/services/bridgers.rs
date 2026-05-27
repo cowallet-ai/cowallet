@@ -23,13 +23,13 @@ fn is_retryable_error(err: &String) -> bool {
         || err.contains("777")
 }
 
-/// Map chain ID to Bridgers chain name
+/// Map chain ID to Bridgers chain name (for fromTokenChain/toTokenChain)
 pub fn chain_name(chain_id: u64) -> Option<&'static str> {
     match chain_id {
         1 => Some("ETH"),
         8453 => Some("BASE"),
         42161 => Some("ARB"),
-        10 => Some("Optimism"),
+        10 => Some("OPTIMISM"),
         56 => Some("BSC"),
         137 => Some("POLYGON"),
         43114 => Some("AVAXC"),
@@ -39,6 +39,31 @@ pub fn chain_name(chain_id: u64) -> Option<&'static str> {
         534352 => Some("SCROLL"),
         _ => None,
     }
+}
+
+/// Map chain ID to coin code chain suffix (for fromCoinCode/toCoinCode SYMBOL(CHAIN) format)
+pub fn coin_code_chain(chain_id: u64) -> Option<&'static str> {
+    match chain_id {
+        1 => Some("ETH"),
+        8453 => Some("BASE"),
+        42161 => Some("ARB"),
+        10 => Some("OP"),
+        56 => Some("BSC"),
+        137 => Some("POL"),
+        43114 => Some("AVAX"),
+        250 => Some("FTM"),
+        324 => Some("ZKSYNC"),
+        59144 => Some("LINEA"),
+        534352 => Some("SCROLL"),
+        _ => None,
+    }
+}
+
+/// Build coin code in SYMBOL(CHAIN) format required by Bridgers
+pub fn build_coin_code(symbol: &str, chain_id: u64) -> String {
+    let chain = coin_code_chain(chain_id).unwrap_or("ETH");
+    let sym = symbol.to_uppercase();
+    format!("{}({})", sym, chain)
 }
 
 /// Get token decimals for a known symbol
@@ -94,6 +119,12 @@ struct BridgersResponse<T> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct QuoteDataWrapper {
+    tx_data: Option<QuoteData>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct QuoteData {
     amount_out_min: Option<Value>,
     to_token_amount: Option<Value>,
@@ -105,7 +136,13 @@ struct QuoteData {
 }
 
 #[derive(Debug, Deserialize)]
-struct SwapData {
+#[serde(rename_all = "camelCase")]
+struct SwapDataWrapper {
+    tx_data: Option<SwapTxData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SwapTxData {
     data: Option<String>,
     to: Option<String>,
     value: Option<Value>,
@@ -211,7 +248,7 @@ pub async fn get_quote(
     let http_c = http.clone();
     let body_c = body.clone();
 
-    let resp: BridgersResponse<QuoteData> = retry_with_backoff(
+    let resp: BridgersResponse<QuoteDataWrapper> = retry_with_backoff(
         RetryConfig::conservative(),
         || {
             let h = http_c.clone();
@@ -225,7 +262,7 @@ pub async fn get_quote(
                     let t = r.text().await.unwrap_or_default();
                     return Err(format!("Bridgers API returned {}: {}", status, t));
                 }
-                r.json::<BridgersResponse<QuoteData>>().await
+                r.json::<BridgersResponse<QuoteDataWrapper>>().await
                     .map_err(|e| format!("Bridgers quote parse error: {}", e))
             }
         },
@@ -238,7 +275,8 @@ pub async fn get_quote(
         return Err(format!("Bridgers quote error: {}", msg));
     }
 
-    let data = resp.data.ok_or("Bridgers returned empty quote data")?;
+    let wrapper = resp.data.ok_or("Bridgers returned empty quote data")?;
+    let data = wrapper.tx_data.ok_or("Bridgers returned empty txData in quote")?;
 
     tracing::debug!("[Bridgers] quote raw data: {:?}", data);
 
@@ -328,7 +366,7 @@ pub async fn build_swap_tx(
     let http_c = http.clone();
     let body_c = body.clone();
 
-    let resp: BridgersResponse<SwapData> = retry_with_backoff(
+    let resp: BridgersResponse<SwapDataWrapper> = retry_with_backoff(
         RetryConfig::conservative(),
         || {
             let h = http_c.clone();
@@ -342,7 +380,7 @@ pub async fn build_swap_tx(
                     let t = r.text().await.unwrap_or_default();
                     return Err(format!("Bridgers API returned {}: {}", status, t));
                 }
-                r.json::<BridgersResponse<SwapData>>().await
+                r.json::<BridgersResponse<SwapDataWrapper>>().await
                     .map_err(|e| format!("Bridgers swap parse error: {}", e))
             }
         },
@@ -355,13 +393,17 @@ pub async fn build_swap_tx(
         return Err(format!("Bridgers swap error: {}", msg));
     }
 
-    let data = resp.data.ok_or("Bridgers returned empty swap data")?;
+    let wrapper = resp.data.ok_or("Bridgers returned empty swap data")?;
+    let tx_data = wrapper.tx_data.ok_or("Bridgers returned empty txData")?;
     let sell_f: f64 = from_token_amount.parse().unwrap_or(1.0);
 
+    let raw_value = value_to_string(&tx_data.value).unwrap_or_else(|| "0".into());
+    let decimal_value = hex_to_decimal(&raw_value);
+
     Ok(SwapTransaction {
-        to: data.to.unwrap_or_default(),
-        data: data.data.unwrap_or_default(),
-        value: value_to_string(&data.value).unwrap_or_else(|| "0".into()),
+        to: tx_data.to.unwrap_or_default(),
+        data: tx_data.data.unwrap_or_default(),
+        value: decimal_value,
         gas_estimate: "200000".into(),
         sell_token: from_token_address.to_string(),
         buy_token: to_token_address.to_string(),
@@ -561,5 +603,15 @@ fn value_to_string(v: &Option<Value>) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+fn hex_to_decimal(s: &str) -> String {
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u128::from_str_radix(hex, 16)
+            .map(|v| v.to_string())
+            .unwrap_or_else(|_| s.to_string())
+    } else {
+        s.to_string()
     }
 }
