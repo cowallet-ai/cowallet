@@ -157,12 +157,16 @@ pub struct BridgersToken {
     pub chain: Option<String>,
     pub symbol: Option<String>,
     pub name: Option<String>,
+    #[serde(alias = "nickName")]
+    pub nick_name: Option<String>,
     pub address: Option<String>,
     pub decimals: Option<u32>,
     #[serde(alias = "logoURI")]
     pub logo_uri: Option<String>,
     #[serde(alias = "isCrossEnable")]
-    pub is_cross_enable: Option<String>,
+    pub is_cross_enable: Option<Value>,
+    #[serde(alias = "chainId")]
+    pub chain_id: Option<Value>,
 }
 
 // ─── Public output types ────────────────────────────────────────────────────
@@ -533,6 +537,37 @@ pub async fn get_order_status(
         from_hash,
         to_hash,
     })
+}
+
+pub async fn query_records(
+    http: &Client,
+    source_flag: &str,
+    from_address: &str,
+    equipment_no: &str,
+    page_no: u32,
+    page_size: u32,
+) -> Result<Value, String> {
+    let body = serde_json::json!({
+        "equipmentNo": equipment_no,
+        "sourceFlag": source_flag,
+        "pageNo": page_no,
+        "pageSize": page_size,
+        "fromAddress": from_address,
+    });
+
+    let resp = http.post(format!("{}/api/exchangeRecord/getTransData", BRIDGERS_API_BASE))
+        .json(&body).send().await
+        .map_err(|e| format!("Bridgers queryRecords request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let t = resp.text().await.unwrap_or_default();
+        return Err(format!("Bridgers queryRecords error: {}", t));
+    }
+
+    let parsed: BridgersResponse<Value> = resp.json().await
+        .map_err(|e| format!("Bridgers queryRecords parse error: {}", e))?;
+
+    Ok(parsed.data.unwrap_or(Value::Array(vec![])))
 }
 
 // ─── Utility functions ─────────────────────────────────────────────────────

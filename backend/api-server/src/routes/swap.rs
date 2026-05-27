@@ -5,6 +5,7 @@
 //! GET  /api/v1/swap/tokens      — List supported tokens
 //! POST /api/v1/swap/order       — Upload order tx hash
 //! GET  /api/v1/swap/order/{id}  — Get order status
+//! GET  /api/v1/swap/history     — Query transaction history
 
 use axum::{
     extract::{Path, Query, State},
@@ -24,6 +25,7 @@ pub fn router() -> Router<AppState> {
         .route("/tokens", get(get_tokens))
         .route("/order", post(upload_order))
         .route("/order/{id}", get(get_order_status))
+        .route("/history", get(get_history))
 }
 
 // ─── Request / Response types ───────────────────────────────────────────────
@@ -101,6 +103,13 @@ struct OrderRequest {
     buy_amount_min: String,
     from_address: String,
     to_address: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HistoryQuery {
+    from_address: String,
+    page_no: Option<u32>,
+    page_size: Option<u32>,
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
@@ -299,6 +308,25 @@ async fn get_order_status(
         .await
         .map_err(|e| ApiError::external_service(&e))?;
     Ok(Json(status))
+}
+
+/// GET /swap/history?from_address=0x...&page_no=1&page_size=10
+async fn get_history(
+    State(state): State<AppState>,
+    Query(query): Query<HistoryQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let equipment_no = &query.from_address[..std::cmp::min(32, query.from_address.len())];
+    let records = bridgers::query_records(
+        &state.http,
+        &state.bridgers_source_flag,
+        &query.from_address,
+        equipment_no,
+        query.page_no.unwrap_or(1),
+        query.page_size.unwrap_or(10),
+    )
+    .await
+    .map_err(|e| ApiError::external_service(&e))?;
+    Ok(Json(records))
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
