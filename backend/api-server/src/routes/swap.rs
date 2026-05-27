@@ -81,6 +81,7 @@ struct BuildResponse {
     buy_token: String,
     sell_amount: String,
     buy_amount: String,
+    buy_amount_min: String,
     price: String,
     allowance_target: Option<String>,
     from_chain_id: u64,
@@ -216,6 +217,18 @@ async fn build_swap_tx(
     .await
     .map_err(|e| ApiError::external_service(&e))?;
 
+    // Reject if amount is below deposit minimum
+    if let Some(ref min_str) = quote.deposit_min {
+        if let (Ok(min_val), Ok(sell_val)) = (min_str.parse::<f64>(), req.sell_amount.parse::<f64>()) {
+            if sell_val < min_val {
+                return Err(ApiError::bad_request(&format!(
+                    "Amount too small. Minimum: {} {}",
+                    min_str, req.sell_token
+                )));
+            }
+        }
+    }
+
     let tx = bridgers::build_swap_tx(
         &state.http,
         &state.bridgers_source_flag,
@@ -243,8 +256,9 @@ async fn build_swap_tx(
         buy_token: req.buy_token,
         sell_amount: req.sell_amount,
         buy_amount: tx.buy_amount,
+        buy_amount_min: quote.buy_amount_min,
         price: tx.price,
-        allowance_target: tx.allowance_target,
+        allowance_target: Some(quote.contract_address),
         from_chain_id,
         to_chain_id,
     }))

@@ -94,4 +94,19 @@ class SwapApi {
   }) async {
     return await DioClient.get("/swap/order/$orderId");
   }
+
+  static Future<Result<dynamic>> getHistory({
+    required String fromAddress,
+    int pageNo = 1,
+    int pageSize = 10,
+  }) async {
+    return await DioClient.get(
+      "/swap/history",
+      queryParameters: {
+        "from_address": fromAddress,
+        "page_no": pageNo,
+        "page_size": pageSize,
+      },
+    );
+  }
 }
