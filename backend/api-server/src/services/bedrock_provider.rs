@@ -1,4 +1,5 @@
 use crate::services::ai_provider::*;
+use base64::Engine;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -249,7 +250,10 @@ impl AiProvider for BedrockProvider {
     }
 }
 
-// -- SSE stream parser --
+// -- AWS Event Stream parser --
+// Bedrock returns binary event stream frames, each containing:
+// - Binary headers (event-type, content-type, message-type)
+// - JSON body: {"bytes":"<base64-encoded-event-json>","p":"..."}
 
 fn parse_bedrock_sse(resp: reqwest::Response) -> impl futures::Stream<Item = StreamEvent> {
     use futures::stream;
@@ -257,45 +261,55 @@ fn parse_bedrock_sse(resp: reqwest::Response) -> impl futures::Stream<Item = Str
     let byte_stream = resp.bytes_stream();
 
     stream::unfold(
-        (byte_stream, String::new(), StreamState::default()),
+        (byte_stream, Vec::<u8>::new(), StreamState::default()),
         |(mut bytes, mut buffer, mut state)| async move {
             use futures::StreamExt;
             loop {
-                if let Some(pos) = buffer.find("\n\n") {
-                    let chunk = buffer[..pos].to_string();
-                    buffer = buffer[pos + 2..].to_string();
-                    if let Some(evt) = parse_sse_event(&chunk, &mut state) {
-                        return Some((evt, (bytes, buffer, state)));
-                    }
-                    continue;
+                let events = extract_events_from_buffer(&mut buffer, &mut state);
+                if let Some(evt) = events {
+                    return Some((evt, (bytes, buffer, state)));
                 }
                 match bytes.next().await {
                     Some(Ok(data)) => {
-                        let text = String::from_utf8_lossy(&data);
-                        tracing::debug!("Bedrock raw bytes ({}): {:?}", data.len(), &text[..text.len().min(200)]);
-                        buffer.push_str(&text);
+                        buffer.extend_from_slice(&data);
                     }
                     Some(Err(e)) => {
                         tracing::error!("Bedrock stream read error: {}", e);
                         return None;
                     }
-                    None => {
-                        tracing::debug!("Bedrock stream ended, buffer remaining: {:?}", &buffer[..buffer.len().min(200)]);
-                        if !buffer.is_empty() {
-                            if let Some(evt) = parse_sse_event(&buffer, &mut state) {
-                                buffer.clear();
-                                return Some((evt, (bytes, buffer, state)));
-                            }
-                        }
-                        return None;
-                    }
+                    None => return None,
                 }
             }
         },
     )
 }
 
-// -- SSE event types for parsing --
+fn extract_events_from_buffer(
+    buffer: &mut Vec<u8>,
+    state: &mut StreamState,
+) -> Option<StreamEvent> {
+    let text = String::from_utf8_lossy(buffer);
+    let json_start = text.find("{\"bytes\":\"")?;
+    let after_key = json_start + 10; // skip {"bytes":"
+    let b64_end = text[after_key..].find('"')?;
+    let b64_str = &text[after_key..after_key + b64_end];
+
+    // Find the closing } of the JSON object after the base64 string
+    let after_b64 = after_key + b64_end + 1; // skip closing quote
+    let frame_end = text[after_b64..].find('}')? + after_b64 + 1;
+
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(b64_str)
+        .ok()?;
+    let event_json = String::from_utf8(decoded).ok()?;
+
+    // Consume everything up to and including this frame
+    *buffer = buffer[frame_end..].to_vec();
+
+    parse_event_json(&event_json, state)
+}
+
+// -- Event JSON types --
 
 #[derive(Default)]
 struct StreamState {
@@ -305,7 +319,7 @@ struct StreamState {
 }
 
 #[derive(Deserialize)]
-struct SseData {
+struct EventData {
     #[serde(rename = "type")]
     event_type: String,
     #[serde(default)]
@@ -336,22 +350,8 @@ struct ContentBlockStart {
     name: Option<String>,
 }
 
-fn parse_sse_event(chunk: &str, state: &mut StreamState) -> Option<StreamEvent> {
-    let data = chunk.lines()
-        .find(|l| l.starts_with("data: "))
-        .map(|l| &l[6..])?;
-
-    tracing::debug!("Bedrock SSE raw: {}", data);
-
-    let parsed: SseData = match serde_json::from_str(data) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("Bedrock SSE parse error: {} for data: {}", e, data);
-            return None;
-        }
-    };
-
-    tracing::debug!("Bedrock SSE event_type: {}", parsed.event_type);
+fn parse_event_json(json: &str, state: &mut StreamState) -> Option<StreamEvent> {
+    let parsed: EventData = serde_json::from_str(json).ok()?;
 
     match parsed.event_type.as_str() {
         "content_block_start" => {
@@ -395,9 +395,6 @@ fn parse_sse_event(chunk: &str, state: &mut StreamState) -> Option<StreamEvent> 
             }
         }
         "message_stop" => Some(StreamEvent::Done),
-        "error" => {
-            Some(StreamEvent::Token(format!("[error] {}", data)))
-        }
         _ => None,
     }
 }
