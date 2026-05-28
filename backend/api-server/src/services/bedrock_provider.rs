@@ -271,9 +271,16 @@ fn parse_bedrock_sse(resp: reqwest::Response) -> impl futures::Stream<Item = Str
                 }
                 match bytes.next().await {
                     Some(Ok(data)) => {
-                        buffer.push_str(&String::from_utf8_lossy(&data));
+                        let text = String::from_utf8_lossy(&data);
+                        tracing::debug!("Bedrock raw bytes ({}): {:?}", data.len(), &text[..text.len().min(200)]);
+                        buffer.push_str(&text);
                     }
-                    _ => {
+                    Some(Err(e)) => {
+                        tracing::error!("Bedrock stream read error: {}", e);
+                        return None;
+                    }
+                    None => {
+                        tracing::debug!("Bedrock stream ended, buffer remaining: {:?}", &buffer[..buffer.len().min(200)]);
                         if !buffer.is_empty() {
                             if let Some(evt) = parse_sse_event(&buffer, &mut state) {
                                 buffer.clear();
