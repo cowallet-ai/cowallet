@@ -378,9 +378,37 @@ class IntentExecutor {
 
       final gasLimit = BigInt.tryParse(gasEstimateStr) ?? BigInt.from(200000);
 
-      // TODO: If selling ERC-20, may need approval tx first.
-      // The Bridgers contract_address from quote tells us which contract needs approval.
-      // For now, the backend handles this check and returns an error if approval is needed.
+      // ERC-20 approval: check allowance and approve if needed
+      final allowanceTarget = swapData['allowance_target'] as String? ?? '';
+      if (!_isNativeToken(fromToken, chainId) && allowanceTarget.isNotEmpty) {
+        final config = ChainConfig.byId(chainId);
+        final tokenContract = config.tokenContract(fromToken);
+        if (tokenContract.isNotEmpty) {
+          final currentAllowance = await _chain.getTokenAllowance(
+            address, allowanceTarget, tokenContract,
+          );
+          if (currentAllowance < amount) {
+            // Send unlimited approval (MaxUint256)
+            final maxUint256 = BigInt.parse(
+              'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+              radix: 16,
+            );
+            final spenderStripped = allowanceTarget.toLowerCase().replaceFirst('0x', '');
+            final amountHex = maxUint256.toRadixString(16).padLeft(64, '0');
+            final approveData = '0x095ea7b3${spenderStripped.padLeft(64, '0')}$amountHex';
+
+            await _tx.signAndSend(
+              to: tokenContract,
+              value: BigInt.zero,
+              data: approveData,
+              gasLimit: BigInt.from(60000),
+              chainId: chainId,
+            );
+            // Brief wait for approval to be mined
+            await Future.delayed(const Duration(seconds: 3));
+          }
+        }
+      }
 
       // Sign and send the swap transaction
       final txHash = await _tx.signAndSend(
@@ -400,20 +428,23 @@ class IntentExecutor {
         timestamp: DateTime.now(),
       ));
 
-      // For cross-chain swaps, upload hash to Bridgers for order tracking
+      // Upload order hash to Bridgers for tracking (both same-chain and cross-chain)
+      final buyAmountMin = swapData['buy_amount_min'] as String? ?? buyAmount;
+      SwapApi.uploadOrderHash(
+        hash: txHash,
+        fromChainId: chainId,
+        toChainId: toChainId,
+        sellToken: fromToken,
+        buyToken: toToken,
+        sellAmount: amountStr,
+        buyAmountMin: buyAmountMin,
+        fromAddress: address,
+        toAddress: address,
+      );
+
+      // For cross-chain swaps, start background status polling
       if (isCrossChain) {
-        final buyAmountMin = swapData['buy_amount_min'] as String? ?? buyAmount;
-        await SwapApi.uploadOrderHash(
-          hash: txHash,
-          fromChainId: chainId,
-          toChainId: toChainId,
-          sellToken: fromToken,
-          buyToken: toToken,
-          sellAmount: amountStr,
-          buyAmountMin: buyAmountMin,
-          fromAddress: address,
-          toAddress: address,
-        );
+        _pollCrossChainStatus(txHash);
       }
 
       // Notification
@@ -592,5 +623,29 @@ class IntentExecutor {
       return S.transferCancelled;
     }
     return S.txErrorUnknown;
+  }
+
+  void _pollCrossChainStatus(String txHash) async {
+    const maxAttempts = 30;
+    const interval = Duration(seconds: 10);
+    for (var i = 0; i < maxAttempts; i++) {
+      await Future.delayed(interval);
+      try {
+        final result = await SwapApi.getOrderStatus(orderId: txHash);
+        if (result.isSuccess && result.data != null) {
+          final status = result.data!['status']?.toString() ?? '';
+          if (status == 'receive_complete') {
+            Services.notifications.showTxConfirmed(txHash, '', 'Cross-chain swap');
+            final address = await _wallet.getAddress();
+            if (address.isNotEmpty) await _balance.refresh(address);
+            return;
+          }
+          if (status == 'failed' || status == 'refunded') {
+            Services.notifications.showTxFailed(txHash, S.swapFailed(status));
+            return;
+          }
+        }
+      } catch (_) {}
+    }
   }
 }

@@ -245,6 +245,8 @@ pub async fn get_quote(
         "fromTokenAmount": from_token_amount,
         "fromTokenChain": from_chain,
         "toTokenChain": to_chain,
+        "fromCoinCode": from_coin_code,
+        "toCoinCode": to_coin_code,
         "equipmentNo": equipment_no,
         "sourceFlag": source_flag,
     });
@@ -640,7 +642,11 @@ fn value_to_string(v: &Option<Value>) -> Option<String> {
             } else if let Some(u) = n.as_u64() {
                 Some(u.to_string())
             } else if let Some(f) = n.as_f64() {
-                Some(format!("{:.0}", f))
+                if f.fract() == 0.0 {
+                    Some(format!("{:.0}", f))
+                } else {
+                    Some(format!("{}", f))
+                }
             } else {
                 Some(n.to_string())
             }

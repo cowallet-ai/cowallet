@@ -118,6 +118,7 @@ class RpcException implements Exception {
 abstract class ChainService {
   Future<BigInt> getEthBalance(String address);
   Future<BigInt> getTokenBalance(String address, String tokenContract);
+  Future<BigInt> getTokenAllowance(String owner, String spender, String tokenContract);
   Future<String> sendRawTransaction(String signedTxHex);
   Future<int> getTransactionCount(String address);
   Future<BigInt> getGasPrice();
@@ -191,6 +192,24 @@ class JsonRpcChainService implements ChainService {
     // balanceOf(address) selector = 0x70a08231
     final addrStripped = address.toLowerCase().replaceFirst('0x', '');
     final calldata = '0x70a08231${addrStripped.padLeft(64, '0')}';
+
+    final result = await _call('eth_call', [
+      {'to': tokenContract, 'data': calldata},
+      'latest',
+    ]);
+    final hexStr = result as String;
+    if (hexStr == '0x' || hexStr.isEmpty) return BigInt.zero;
+    return BigInt.parse(hexStr);
+  }
+
+  @override
+  Future<BigInt> getTokenAllowance(
+      String owner, String spender, String tokenContract) async {
+    // allowance(address,address) selector = 0xdd62ed3e
+    final ownerStripped = owner.toLowerCase().replaceFirst('0x', '');
+    final spenderStripped = spender.toLowerCase().replaceFirst('0x', '');
+    final calldata =
+        '0xdd62ed3e${ownerStripped.padLeft(64, '0')}${spenderStripped.padLeft(64, '0')}';
 
     final result = await _call('eth_call', [
       {'to': tokenContract, 'data': calldata},

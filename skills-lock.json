@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "bridgers-api": {
+      "source": "bridgers-skills/bridgers-api-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "a9fd2d326d8700f75cac20c4ccdc0e2f2f6b1350758fbb134015a594f9d91b58"
+    }
+  }
+}
