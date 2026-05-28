@@ -251,9 +251,10 @@ impl AiProvider for BedrockProvider {
 }
 
 // -- AWS Event Stream parser --
-// Bedrock returns binary event stream frames, each containing:
-// - Binary headers (event-type, content-type, message-type)
-// - JSON body: {"bytes":"<base64-encoded-event-json>","p":"..."}
+// Bedrock returns binary event stream frames. Each frame:
+// [4B total_len][4B headers_len][4B prelude_crc][headers...][payload...][4B msg_crc]
+// The payload is JSON like: {"bytes":"<base64-encoded-event-json>"}
+// The base64 decodes to the actual Anthropic streaming event.
 
 fn parse_bedrock_sse(resp: reqwest::Response) -> impl futures::Stream<Item = StreamEvent> {
     use futures::stream;
@@ -265,8 +266,7 @@ fn parse_bedrock_sse(resp: reqwest::Response) -> impl futures::Stream<Item = Str
         |(mut bytes, mut buffer, mut state)| async move {
             use futures::StreamExt;
             loop {
-                let events = extract_events_from_buffer(&mut buffer, &mut state);
-                if let Some(evt) = events {
+                if let Some(evt) = extract_events_from_buffer(&mut buffer, &mut state) {
                     return Some((evt, (bytes, buffer, state)));
                 }
                 match bytes.next().await {
@@ -289,42 +289,67 @@ fn extract_events_from_buffer(
     state: &mut StreamState,
 ) -> Option<StreamEvent> {
     loop {
-        let text = String::from_utf8_lossy(buffer);
-        let json_start = match text.find("{\"bytes\":\"") {
-            Some(pos) => pos,
-            None => return None,
-        };
-        let after_key = json_start + 10; // skip {"bytes":"
-        let b64_end = match text[after_key..].find('"') {
-            Some(pos) => pos,
-            None => return None,
-        };
-        let b64_str = text[after_key..after_key + b64_end].to_string();
+        // AWS Event Stream frame: min 16 bytes (prelude + CRCs)
+        if buffer.len() < 16 {
+            return None;
+        }
 
-        // Find the closing } of the JSON object after the base64 string
-        let after_b64 = after_key + b64_end + 1;
-        let frame_end = match text[after_b64..].find('}') {
-            Some(pos) => pos + after_b64 + 1,
-            None => return None,
-        };
+        // Read total length (4 bytes, big-endian)
+        let total_len = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]) as usize;
 
-        // Consume this frame from buffer regardless of whether we produce an event
-        *buffer = buffer[frame_end..].to_vec();
+        // Sanity check: valid frame is 16..16MB
+        if total_len < 16 || total_len > 16 * 1024 * 1024 {
+            // Skip one garbage byte and retry
+            buffer.remove(0);
+            continue;
+        }
 
-        let decoded = match base64::engine::general_purpose::STANDARD.decode(&b64_str) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        let event_json = match String::from_utf8(decoded) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
+        // Wait for the complete frame
+        if buffer.len() < total_len {
+            return None;
+        }
 
-        if let Some(evt) = parse_event_json(&event_json, state) {
+        // Read headers length (bytes 4..8, big-endian)
+        let headers_len = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]) as usize;
+
+        // Payload sits after: 12 (prelude) + headers, before: total - 4 (msg CRC)
+        let payload_start = 12 + headers_len;
+        let payload_end = total_len - 4;
+
+        // Extract and consume the frame
+        let payload = if payload_end > payload_start && payload_end <= total_len {
+            buffer[payload_start..payload_end].to_vec()
+        } else {
+            Vec::new()
+        };
+        *buffer = buffer[total_len..].to_vec();
+
+        if payload.is_empty() {
+            continue;
+        }
+
+        // Parse the payload JSON: {"bytes":"<base64>"} or error
+        if let Some(evt) = decode_frame_payload(&payload, state) {
             return Some(evt);
         }
-        // No meaningful event from this frame, try next frame in buffer
     }
+}
+
+fn decode_frame_payload(payload: &[u8], state: &mut StreamState) -> Option<StreamEvent> {
+    let payload_str = std::str::from_utf8(payload).ok()?;
+    let wrapper: serde_json::Value = serde_json::from_str(payload_str).ok()?;
+
+    if let Some(bytes_b64) = wrapper.get("bytes").and_then(|v| v.as_str()) {
+        let decoded = base64::engine::general_purpose::STANDARD.decode(bytes_b64).ok()?;
+        let event_json = String::from_utf8(decoded).ok()?;
+        return parse_event_json(&event_json, state);
+    }
+
+    // Error frame from Bedrock
+    if let Some(msg) = wrapper.get("message").and_then(|v| v.as_str()) {
+        tracing::warn!("Bedrock stream error frame: {}", msg);
+    }
+    None
 }
 
 // -- Event JSON types --

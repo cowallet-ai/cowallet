@@ -1,8 +1,43 @@
 # CoWallet 功能清单
 
-> 更新日期: 2026-05-22 | 项目阶段: Alpha
+> 更新日期: 2026-05-28 | 项目阶段: Alpha
 >
 > 状态说明: ✅ 已实现 | 🔧 部分实现 | ❌ 未实现 | 🧪 已验证（真机/生产环境实测通过）
+
+## 项目进度说明（大白话版）
+
+**项目是什么：** 一个用 AI 对话操作的 MPC 加密钱包，支持多条 EVM 链，用阈值签名保护资产安全。
+
+**目前到哪了：** Alpha 阶段，完成度大约 80-85%。核心功能都写完了，关键链路真机验证过，但安全和测试方面还有硬伤。
+
+### 能用的（真机验证过）
+
+- 密钥生成、签名、转账这条最核心的路已经跑通，签名速度 <100ms
+- 六条 EVM 链（ETH/Base/Arbitrum/Optimism/BSC/Polygon）都能转账、查余额、看历史
+- AI 聊天助手能用自然语言查余额、发起转账、查代币信息，双引擎（Bedrock Claude + DeepSeek）
+- 移动端所有主要页面都能用，生物识别、语音输入、中英双语都没问题
+- 分片加密存储、备份导出、WebSocket 实时通信都验证过
+
+### 写完了但没验证的（有风险）
+
+- 预签名池自动补充 — 后台任务，边界情况没测过
+- 密钥轮换备份 — 出错可能丢钱，但没在真实环境跑过
+- ERC-4337 账户抽象 — 链路复杂，等于没用
+- DEX 兑换（Bridgers API）— 刚从 0x 切过来，还在修 bug
+- EIP-712 结构化签名 — 目前没有 DApp 场景用到
+
+### 还没做的（上线拦路虎）
+
+- 集成测试覆盖率不够 — 改一行代码可能悄悄搞坏签名流程
+- 没做第三方安全审计 — 自己写的密码学没人验证过
+- 端到端恢复没跑通 — 用户真丢了手机，钱可能找不回来
+- 推送签名审批流程没做 — 多方签名时只能同时在线
+
+### 当前适合什么
+
+内部测试和演示。距离公开发布还需要补齐安全审计、集成测试、恢复流程验证，预计 2-3 个月。
+
+---
 
 ## 一、核心功能
 
@@ -59,7 +94,7 @@
 ### 2.1 AI 对话系统
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 自然语言聊天 | ✅ 已实现 | 🧪 已验证 | DeepSeek LLM，SSE 流式响应 |
+| 自然语言聊天 | ✅ 已实现 | 🧪 已验证 | 双 Provider：Bedrock Claude（默认）+ DeepSeek，客户端可切换，SSE 流式响应 |
 | 会话管理 | ✅ 已实现 | 🧪 已验证 | 多会话切换、新建、历史加载 |
 | 上下文记忆 | ✅ 已实现 | 🧪 已验证 | 聊天历史持久化到 PostgreSQL |
 | 工具调用 (Function Calling) | ✅ 已实现 | 🧪 已验证 | AI 自动选择并执行钱包操作 |
@@ -261,5 +296,5 @@
 - **密码学**: DKLS23 (自研), secp256k1, AES-GCM, Noise Protocol
 - **区块链**: Alloy (EVM), Covalent API, 0x API
 - **移动端**: Flutter/Dart, flutter_rust_bridge v2
-- **AI**: Claude + DeepSeek (OpenAI-compatible), SSE streaming, Function Calling
+- **AI**: Bedrock Claude (默认) + DeepSeek (备选), AiProvider trait 抽象, AWS Event Stream 流式, Function Calling
 - **部署**: Docker, GitHub Actions, AWS Cloud ECS
