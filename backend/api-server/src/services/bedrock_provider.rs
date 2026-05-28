@@ -288,25 +288,43 @@ fn extract_events_from_buffer(
     buffer: &mut Vec<u8>,
     state: &mut StreamState,
 ) -> Option<StreamEvent> {
-    let text = String::from_utf8_lossy(buffer);
-    let json_start = text.find("{\"bytes\":\"")?;
-    let after_key = json_start + 10; // skip {"bytes":"
-    let b64_end = text[after_key..].find('"')?;
-    let b64_str = &text[after_key..after_key + b64_end];
+    loop {
+        let text = String::from_utf8_lossy(buffer);
+        let json_start = match text.find("{\"bytes\":\"") {
+            Some(pos) => pos,
+            None => return None,
+        };
+        let after_key = json_start + 10; // skip {"bytes":"
+        let b64_end = match text[after_key..].find('"') {
+            Some(pos) => pos,
+            None => return None,
+        };
+        let b64_str = text[after_key..after_key + b64_end].to_string();
 
-    // Find the closing } of the JSON object after the base64 string
-    let after_b64 = after_key + b64_end + 1; // skip closing quote
-    let frame_end = text[after_b64..].find('}')? + after_b64 + 1;
+        // Find the closing } of the JSON object after the base64 string
+        let after_b64 = after_key + b64_end + 1;
+        let frame_end = match text[after_b64..].find('}') {
+            Some(pos) => pos + after_b64 + 1,
+            None => return None,
+        };
 
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(b64_str)
-        .ok()?;
-    let event_json = String::from_utf8(decoded).ok()?;
+        // Consume this frame from buffer regardless of whether we produce an event
+        *buffer = buffer[frame_end..].to_vec();
 
-    // Consume everything up to and including this frame
-    *buffer = buffer[frame_end..].to_vec();
+        let decoded = match base64::engine::general_purpose::STANDARD.decode(&b64_str) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let event_json = match String::from_utf8(decoded) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
 
-    parse_event_json(&event_json, state)
+        if let Some(evt) = parse_event_json(&event_json, state) {
+            return Some(evt);
+        }
+        // No meaningful event from this frame, try next frame in buffer
+    }
 }
 
 // -- Event JSON types --
