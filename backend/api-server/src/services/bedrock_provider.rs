@@ -334,7 +334,17 @@ fn parse_sse_event(chunk: &str, state: &mut StreamState) -> Option<StreamEvent> 
         .find(|l| l.starts_with("data: "))
         .map(|l| &l[6..])?;
 
-    let parsed: SseData = serde_json::from_str(data).ok()?;
+    tracing::debug!("Bedrock SSE raw: {}", data);
+
+    let parsed: SseData = match serde_json::from_str(data) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Bedrock SSE parse error: {} for data: {}", e, data);
+            return None;
+        }
+    };
+
+    tracing::debug!("Bedrock SSE event_type: {}", parsed.event_type);
 
     match parsed.event_type.as_str() {
         "content_block_start" => {
