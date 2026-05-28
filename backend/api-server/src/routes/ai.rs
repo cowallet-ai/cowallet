@@ -1,6 +1,6 @@
-use crate::services::claude::{
-    AiClient, Message, ToolDefinition, FunctionDefinition,
-    extract_text, extract_tool_calls,
+use crate::services::ai_provider::{
+    ChatMessage, ChatRole, ToolDef,
+    ToolCallInfo as ProviderToolCallInfo, StreamEvent, ProviderKind,
 };
 use crate::services::ai_executor::{ToolContext, ToolExecutionResult};
 use crate::services::chat_store::ChatStore;
@@ -17,6 +17,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn router() -> Router<AppState> {
@@ -45,7 +46,7 @@ pub enum ToolKind {
 
 /// Extended tool info with kind and widget hint
 struct ToolMeta {
-    definition: ToolDefinition,
+    definition: ToolDef,
     kind: ToolKind,
     widget_type: Option<&'static str>,
 }
@@ -53,204 +54,174 @@ struct ToolMeta {
 fn wallet_tools_meta() -> Vec<ToolMeta> {
     vec![
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "get_balance".into(),
-                    description: "Get wallet token balances across all supported chains. Optionally filter by chain_id or token symbol. Returns per-chain breakdown when no chain_id is specified.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "token": { "type": "string", "description": "Token symbol (ETH, USDC, etc.)" },
-                            "chain_id": { "type": "integer", "description": "Optional chain ID to filter results. If omitted, returns balances from all supported chains." }
-                        },
-                        "required": []
-                    }),
-                },
+            definition: ToolDef {
+                name: "get_balance".into(),
+                description: "Get wallet token balances across all supported chains. Optionally filter by chain_id or token symbol. Returns per-chain breakdown when no chain_id is specified.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token": { "type": "string", "description": "Token symbol (ETH, USDC, etc.)" },
+                        "chain_id": { "type": "integer", "description": "Optional chain ID to filter results. If omitted, returns balances from all supported chains." }
+                    },
+                    "required": []
+                }),
             },
             kind: ToolKind::Read,
             widget_type: Some("balance"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "get_wallet_address".into(),
-                    description: "Get the user's wallet public address for receiving funds".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }),
-                },
+            definition: ToolDef {
+                name: "get_wallet_address".into(),
+                description: "Get the user's wallet public address for receiving funds".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
             },
             kind: ToolKind::Read,
             widget_type: Some("receive"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "get_transaction_history".into(),
-                    description: "Get recent transaction history for the wallet across multiple chains. Optionally filter by chain_id. Returns transactions with chain_name included.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "limit": { "type": "integer", "description": "Max results (1-50). Default: 10." },
-                            "offset": { "type": "integer", "description": "Pagination offset. Default: 0." },
-                            "chain_id": { "type": "integer", "description": "Optional chain ID to filter results. If omitted, returns transactions from all supported chains." }
-                        },
-                        "required": []
-                    }),
-                },
+            definition: ToolDef {
+                name: "get_transaction_history".into(),
+                description: "Get recent transaction history for the wallet across multiple chains. Optionally filter by chain_id. Returns transactions with chain_name included.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "description": "Max results (1-50). Default: 10." },
+                        "offset": { "type": "integer", "description": "Pagination offset. Default: 0." },
+                        "chain_id": { "type": "integer", "description": "Optional chain ID to filter results. If omitted, returns transactions from all supported chains." }
+                    },
+                    "required": []
+                }),
             },
             kind: ToolKind::Read,
             widget_type: Some("history"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "get_supported_chains".into(),
-                    description: "Get the list of blockchain networks supported by this wallet, including their chain IDs and display names.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }),
-                },
+            definition: ToolDef {
+                name: "get_supported_chains".into(),
+                description: "Get the list of blockchain networks supported by this wallet, including their chain IDs and display names.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
             },
             kind: ToolKind::Read,
             widget_type: None,
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "get_token_info".into(),
-                    description: "Get detailed token information including contract address, price, balance, and basic market data for a specific token in the user's wallet. MUST set chain_id for non-Base tokens.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "token": { "type": "string", "description": "Token symbol (ETH, USDC, USDT, POL, BNB, etc.)" },
-                            "chain_id": { "type": "integer", "description": "Chain ID matching the token's native chain: ETH→1 or 8453, POL/MATIC→137, BNB→56. Default: 8453" }
-                        },
-                        "required": ["token"]
-                    }),
-                },
+            definition: ToolDef {
+                name: "get_token_info".into(),
+                description: "Get detailed token information including contract address, price, balance, and basic market data for a specific token in the user's wallet. MUST set chain_id for non-Base tokens.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token": { "type": "string", "description": "Token symbol (ETH, USDC, USDT, POL, BNB, etc.)" },
+                        "chain_id": { "type": "integer", "description": "Chain ID matching the token's native chain: ETH→1 or 8453, POL/MATIC→137, BNB→56. Default: 8453" }
+                    },
+                    "required": ["token"]
+                }),
             },
             kind: ToolKind::Read,
             widget_type: Some("token_info"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "security_audit".into(),
-                    description: "Run a security audit on the wallet. Checks approval exposure, recent suspicious activity, and provides a security score.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }),
-                },
+            definition: ToolDef {
+                name: "security_audit".into(),
+                description: "Run a security audit on the wallet. Checks approval exposure, recent suspicious activity, and provides a security score.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
             },
             kind: ToolKind::Read,
             widget_type: Some("audit"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "send_transaction".into(),
-                    description: "Prepare a token or ETH transfer. Requires user confirmation before signing. IMPORTANT: You MUST set chain_id based on the token. POL/MATIC → 137 (Polygon), ETH → 1 or 8453 (Base), BNB → 56 (BSC). Never default to Base for non-Base tokens. When user says '全部转出'/'send all'/'transfer all', set send_all=true and value to '0'.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "to_address": { "type": "string", "description": "Recipient 0x address" },
-                            "value": { "type": "string", "description": "Amount to send (human readable, e.g. '0.1'). Set '0' when send_all is true." },
-                            "token": { "type": "string", "description": "Token symbol: ETH, USDC, POL, BNB, etc. Default: ETH" },
-                            "chain_id": { "type": "integer", "description": "Target chain ID. MUST match the token's native chain: ETH→1, Base ETH→8453, POL/MATIC→137, BNB→56, ARB ETH→42161, OP ETH→10. REQUIRED — you must ask the user if you cannot determine the chain." },
-                            "contract_address": { "type": "string", "description": "ERC-20 token contract address (0x-prefixed). REQUIRED for all non-native token transfers. Native tokens (ETH/POL/BNB) must NOT set this field. For well-known tokens use: USDC on Ethereum=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, USDC on Base=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, USDC on Polygon=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359, USDT on Ethereum=0xdAC17F958D2ee523a2206206994597C13D831ec7, USDT on Polygon=0xc2132D05D31c914a87C6611C10748AEb04B58e8F, USDT on BSC=0x55d398326f99059fF775485246999027B3197955. If you don't know the contract address for a token, use clarify to ask the user." },
-                            "decimals": { "type": "integer", "description": "Token decimals. Default: 18 for ETH/POL/BNB/DAI/WETH, 6 for USDC/USDT. Only set if you know the token's decimal precision." },
-                            "send_all": { "type": "boolean", "description": "Set true when user wants to send entire balance. Client will auto-deduct gas fees." }
-                        },
-                        "required": ["to_address", "value", "chain_id"]
-                    }),
-                },
+            definition: ToolDef {
+                name: "send_transaction".into(),
+                description: "Prepare a token or ETH transfer. Requires user confirmation before signing. IMPORTANT: You MUST set chain_id based on the token. POL/MATIC → 137 (Polygon), ETH → 1 or 8453 (Base), BNB → 56 (BSC). Never default to Base for non-Base tokens. When user says '全部转出'/'send all'/'transfer all', set send_all=true and value to '0'.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "to_address": { "type": "string", "description": "Recipient 0x address" },
+                        "value": { "type": "string", "description": "Amount to send (human readable, e.g. '0.1'). Set '0' when send_all is true." },
+                        "token": { "type": "string", "description": "Token symbol: ETH, USDC, POL, BNB, etc. Default: ETH" },
+                        "chain_id": { "type": "integer", "description": "Target chain ID. MUST match the token's native chain: ETH→1, Base ETH→8453, POL/MATIC→137, BNB→56, ARB ETH→42161, OP ETH→10. REQUIRED — you must ask the user if you cannot determine the chain." },
+                        "contract_address": { "type": "string", "description": "ERC-20 token contract address (0x-prefixed). REQUIRED for all non-native token transfers. Native tokens (ETH/POL/BNB) must NOT set this field. For well-known tokens use: USDC on Ethereum=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, USDC on Base=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, USDC on Polygon=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359, USDT on Ethereum=0xdAC17F958D2ee523a2206206994597C13D831ec7, USDT on Polygon=0xc2132D05D31c914a87C6611C10748AEb04B58e8F, USDT on BSC=0x55d398326f99059fF775485246999027B3197955. If you don't know the contract address for a token, use clarify to ask the user." },
+                        "decimals": { "type": "integer", "description": "Token decimals. Default: 18 for ETH/POL/BNB/DAI/WETH, 6 for USDC/USDT. Only set if you know the token's decimal precision." },
+                        "send_all": { "type": "boolean", "description": "Set true when user wants to send entire balance. Client will auto-deduct gas fees." }
+                    },
+                    "required": ["to_address", "value", "chain_id"]
+                }),
             },
             kind: ToolKind::Write,
             widget_type: Some("send_confirm"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "swap_token".into(),
-                    description: "Swap one token for another via DEX. Requires user confirmation. MUST set chain_id based on the source token's native chain.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "from_token": { "type": "string", "description": "Source token symbol (ETH, USDC, POL, BNB, etc.)" },
-                            "to_token": { "type": "string", "description": "Destination token symbol" },
-                            "amount": { "type": "string", "description": "Amount of from_token to swap (human readable)" },
-                            "slippage": { "type": "number", "description": "Max slippage tolerance in percent. Default: 0.5" },
-                            "chain_id": { "type": "integer", "description": "Target chain ID for the swap. ETH→1 or 8453, POL/MATIC→137, BNB→56, ARB→42161, OP→10. REQUIRED — you must ask the user if you cannot determine the chain." }
-                        },
-                        "required": ["from_token", "to_token", "amount", "chain_id"]
-                    }),
-                },
+            definition: ToolDef {
+                name: "swap_token".into(),
+                description: "Swap one token for another via DEX. Requires user confirmation. MUST set chain_id based on the source token's native chain.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "from_token": { "type": "string", "description": "Source token symbol (ETH, USDC, POL, BNB, etc.)" },
+                        "to_token": { "type": "string", "description": "Destination token symbol" },
+                        "amount": { "type": "string", "description": "Amount of from_token to swap (human readable)" },
+                        "slippage": { "type": "number", "description": "Max slippage tolerance in percent. Default: 0.5" },
+                        "chain_id": { "type": "integer", "description": "Target chain ID for the swap. ETH→1 or 8453, POL/MATIC→137, BNB→56, ARB→42161, OP→10. REQUIRED — you must ask the user if you cannot determine the chain." }
+                    },
+                    "required": ["from_token", "to_token", "amount", "chain_id"]
+                }),
             },
             kind: ToolKind::Write,
             widget_type: Some("swap_confirm"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "add_contact".into(),
-                    description: "Save a wallet address to the user's contact list for quick access later. Use this when the user wants to remember or save an address with a name.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string", "description": "Contact display name" },
-                            "address": { "type": "string", "description": "Wallet address (0x...)" },
-                            "chain": { "type": "string", "description": "Blockchain network (ethereum, base, polygon, etc.)" },
-                            "note": { "type": "string", "description": "Optional note about this contact" }
-                        },
-                        "required": ["name", "address"]
-                    }),
-                },
+            definition: ToolDef {
+                name: "add_contact".into(),
+                description: "Save a wallet address to the user's contact list for quick access later. Use this when the user wants to remember or save an address with a name.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Contact display name" },
+                        "address": { "type": "string", "description": "Wallet address (0x...)" },
+                        "chain": { "type": "string", "description": "Blockchain network (ethereum, base, polygon, etc.)" },
+                        "note": { "type": "string", "description": "Optional note about this contact" }
+                    },
+                    "required": ["name", "address"]
+                }),
             },
             kind: ToolKind::Write,
             widget_type: Some("add_contact"),
         },
         ToolMeta {
-            definition: ToolDefinition {
-                tool_type: "function".into(),
-                function: FunctionDefinition {
-                    name: "clarify".into(),
-                    description: "When the user's intent is ambiguous, present options for them to choose from. Use this instead of guessing what the user wants.".into(),
-                    parameters: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "question": { "type": "string", "description": "The clarifying question to ask" },
-                            "options": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "label": { "type": "string", "description": "Short button label" },
-                                        "prompt": { "type": "string", "description": "The full prompt to send if user picks this" }
-                                    },
-                                    "required": ["label", "prompt"]
+            definition: ToolDef {
+                name: "clarify".into(),
+                description: "When the user's intent is ambiguous, present options for them to choose from. Use this instead of guessing what the user wants.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "question": { "type": "string", "description": "The clarifying question to ask" },
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": { "type": "string", "description": "Short button label" },
+                                    "prompt": { "type": "string", "description": "The full prompt to send if user picks this" }
                                 },
-                                "description": "2-4 options for the user to choose from"
-                            }
-                        },
-                        "required": ["question", "options"]
-                    }),
-                },
+                                "required": ["label", "prompt"]
+                            },
+                            "description": "2-4 options for the user to choose from"
+                        }
+                    },
+                    "required": ["question", "options"]
+                }),
             },
             kind: ToolKind::Meta,
             widget_type: Some("clarify"),
@@ -258,14 +229,14 @@ fn wallet_tools_meta() -> Vec<ToolMeta> {
     ]
 }
 
-fn wallet_tools() -> Vec<ToolDefinition> {
+fn wallet_tools() -> Vec<ToolDef> {
     wallet_tools_meta().into_iter().map(|m| m.definition).collect()
 }
 
 fn tool_kind(name: &str) -> ToolKind {
     wallet_tools_meta()
         .iter()
-        .find(|m| m.definition.function.name == name)
+        .find(|m| m.definition.name == name)
         .map(|m| m.kind)
         .unwrap_or(ToolKind::Read)
 }
@@ -273,7 +244,7 @@ fn tool_kind(name: &str) -> ToolKind {
 fn tool_widget_type(name: &str) -> Option<&'static str> {
     wallet_tools_meta()
         .iter()
-        .find(|m| m.definition.function.name == name)
+        .find(|m| m.definition.name == name)
         .and_then(|m| m.widget_type)
 }
 
@@ -555,6 +526,8 @@ pub struct ChatRequest {
     pub auth_method: Option<String>,
     #[serde(default)]
     pub lang: Option<String>,
+    #[serde(default)]
+    pub model: Option<ProviderKind>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -661,7 +634,9 @@ async fn ai_action(
     }
 
     // Fall back to AI chat if confidence is low or entities insufficient
-    let ai = state.claude.as_ref().ok_or_else(|| {
+    let ai = state.ai_bedrock.as_ref()
+        .or(state.ai_deepseek.as_ref())
+        .ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({"error": "AI service not configured"})),
@@ -669,17 +644,15 @@ async fn ai_action(
     })?;
 
     let messages = vec![
-        Message {
-            role: "system".into(),
+        ChatMessage {
+            role: ChatRole::System,
             content: Some("You are CoWallet, an AI crypto wallet assistant. Answer the user's question concisely.".into()),
-            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
         },
-        Message {
-            role: "user".into(),
+        ChatMessage {
+            role: ChatRole::User,
             content: Some(req.message.clone()),
-            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
         },
@@ -694,7 +667,7 @@ async fn ai_action(
         )
     })?;
 
-    let text = extract_text(&response);
+    let text = response.content.unwrap_or_default();
     let message = if text.is_empty() {
         "Sorry, I couldn't process that request.".to_string()
     } else {
@@ -765,8 +738,13 @@ async fn chat_stream(
             return;
         }
 
-        let ai = match &state.claude {
-            Some(c) => c.clone(),
+        let provider_kind = req.model.unwrap_or_default();
+        let ai = match provider_kind {
+            ProviderKind::Bedrock => state.ai_bedrock.as_ref().or(state.ai_deepseek.as_ref()),
+            ProviderKind::DeepSeek => state.ai_deepseek.as_ref().or(state.ai_bedrock.as_ref()),
+        };
+        let ai = match ai {
+            Some(c) => Arc::clone(c),
             None => {
                 yield sse_event("error", &serde_json::json!({"message": "AI 服务未配置"}));
                 yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
@@ -780,8 +758,8 @@ async fn chat_stream(
         } else {
             SYSTEM_PROMPT.to_string()
         };
-        let mut messages: Vec<Message> = vec![
-            Message { role: "system".into(), content: Some(system_content), reasoning_content: None, tool_calls: None, tool_call_id: None },
+        let mut messages: Vec<ChatMessage> = vec![
+            ChatMessage { role: ChatRole::System, content: Some(system_content), tool_calls: None, tool_call_id: None },
         ];
 
         // Load history from DB
@@ -794,10 +772,15 @@ async fn chat_stream(
                     if row.role == "user" && row.content.as_deref() == Some(user_message.as_str()) {
                         continue;
                     }
-                    messages.push(Message {
-                        role: row.role,
+                    let role = match row.role.as_str() {
+                        "system" => ChatRole::System,
+                        "assistant" => ChatRole::Assistant,
+                        "tool" => ChatRole::Tool,
+                        _ => ChatRole::User,
+                    };
+                    messages.push(ChatMessage {
+                        role,
                         content: row.content,
-                        reasoning_content: None,
                         tool_calls: None,
                         tool_call_id: row.tool_call_id,
                     });
@@ -818,20 +801,22 @@ async fn chat_stream(
             }
         }
 
-        messages.push(Message {
-            role: "user".into(),
+        messages.push(ChatMessage {
+            role: ChatRole::User,
             content: Some(user_content),
-            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
         });
 
         let tools = wallet_tools();
 
-        // Stream first response from DeepSeek
+        // Stream first response
+        let mut full_content = String::new();
+        let mut tool_calls_result: Vec<ProviderToolCallInfo> = Vec::new();
+
         let stream_resp = ai.stream_chat(&messages, &tools, None).await;
-        let raw_response = match stream_resp {
-            Ok(resp) => resp,
+        let mut event_stream = match stream_resp {
+            Ok(s) => s,
             Err(e) => {
                 tracing::error!("AI stream failed: {}", e);
                 yield sse_event("error", &serde_json::json!({"message": "AI 服务暂时不可用，请稍后重试"}));
@@ -840,85 +825,22 @@ async fn chat_stream(
             }
         };
 
-        // Parse SSE from upstream DeepSeek
-        let mut full_content = String::new();
-        let mut reasoning_content = String::new();
-        let mut tool_calls_acc: Vec<AccToolCall> = Vec::new();
-        let mut byte_stream = raw_response.bytes_stream();
-
-        let mut buffer = String::new();
-
-        while let Some(chunk) = byte_stream.next().await {
-            let chunk = match chunk {
-                Ok(c) => c,
-                Err(_) => break,
-            };
-            let text = String::from_utf8_lossy(&chunk);
-            buffer.push_str(&text);
-
-            // Process complete SSE lines
-            while let Some(pos) = buffer.find("\n\n") {
-                let event_block = buffer[..pos].to_string();
-                buffer = buffer[pos+2..].to_string();
-
-                for line in event_block.lines() {
-                    if !line.starts_with("data: ") { continue; }
-                    let data = &line[6..];
-                    if data == "[DONE]" { continue; }
-
-                    if let Ok(chunk) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(choices) = chunk.get("choices").and_then(|c| c.as_array()) {
-                            for choice in choices {
-                                let delta = match choice.get("delta") {
-                                    Some(d) => d,
-                                    None => continue,
-                                };
-
-                                // Reasoning content (DeepSeek thinking mode)
-                                if let Some(rc) = delta.get("reasoning_content").and_then(|t| t.as_str()) {
-                                    if !rc.is_empty() {
-                                        reasoning_content.push_str(rc);
-                                    }
-                                }
-
-                                // Text content
-                                if let Some(text) = delta.get("content").and_then(|t| t.as_str()) {
-                                    if !text.is_empty() {
-                                        full_content.push_str(text);
-                                        yield sse_event("token", &serde_json::json!({"text": text}));
-                                    }
-                                }
-
-                                // Tool calls (accumulated across chunks)
-                                if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
-                                    for tc in tcs {
-                                        let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-                                        while tool_calls_acc.len() <= idx {
-                                            tool_calls_acc.push(AccToolCall::default());
-                                        }
-                                        if let Some(id) = tc.get("id").and_then(|s| s.as_str()) {
-                                            tool_calls_acc[idx].id = id.to_string();
-                                        }
-                                        if let Some(f) = tc.get("function") {
-                                            if let Some(name) = f.get("name").and_then(|s| s.as_str()) {
-                                                tool_calls_acc[idx].name = name.to_string();
-                                            }
-                                            if let Some(args) = f.get("arguments").and_then(|s| s.as_str()) {
-                                                tool_calls_acc[idx].arguments.push_str(args);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+        while let Some(event) = event_stream.next().await {
+            match event {
+                StreamEvent::Token(text) => {
+                    full_content.push_str(&text);
+                    yield sse_event("token", &serde_json::json!({"text": text}));
                 }
+                StreamEvent::ToolCall(tc) => {
+                    tool_calls_result.push(tc);
+                }
+                StreamEvent::Done => break,
             }
         }
 
         // If no tool calls, check if the user message had transaction intent
         // that the AI failed to handle with a tool_call (safety net)
-        if tool_calls_acc.is_empty() {
+        if tool_calls_result.is_empty() {
             if has_transfer_intent(&user_message) {
                 // AI missed a transfer intent — clear the misleading text and retry
                 yield sse_event("replace", &serde_json::json!({"text": ""}));
@@ -927,92 +849,39 @@ async fn chat_stream(
                     "你必须使用 send_transaction 或 clarify 工具来处理这个请求。用户说的是：「{}」\n\n请重新处理，调用正确的工具。如果缺少参数（地址/金额/链），使用 clarify 工具询问用户。绝对不能用文本回复转账请求。",
                     user_message
                 );
-                messages.push(Message {
-                    role: "assistant".into(),
+                messages.push(ChatMessage {
+                    role: ChatRole::Assistant,
                     content: Some(full_content.clone()),
-                    reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                 });
-                messages.push(Message {
-                    role: "user".into(),
+                messages.push(ChatMessage {
+                    role: ChatRole::User,
                     content: Some(retry_msg),
-                    reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                 });
 
-                // Clear streamed content and retry
                 full_content.clear();
+                tool_calls_result.clear();
 
-                let retry_resp = ai.stream_chat(&messages, &tools, None).await;
-                if let Ok(resp) = retry_resp {
-                    let mut retry_buffer = String::new();
-                    let mut retry_stream = resp.bytes_stream();
-                    tool_calls_acc.clear();
-
-                    while let Some(chunk) = retry_stream.next().await {
-                        let chunk = match chunk {
-                            Ok(c) => c,
-                            Err(_) => break,
-                        };
-                        let text = String::from_utf8_lossy(&chunk);
-                        retry_buffer.push_str(&text);
-
-                        while let Some(pos) = retry_buffer.find("\n\n") {
-                            let event_block = retry_buffer[..pos].to_string();
-                            retry_buffer = retry_buffer[pos+2..].to_string();
-
-                            for line in event_block.lines() {
-                                if !line.starts_with("data: ") { continue; }
-                                let data = &line[6..];
-                                if data == "[DONE]" { continue; }
-
-                                if let Ok(chunk_val) = serde_json::from_str::<serde_json::Value>(data) {
-                                    if let Some(choices) = chunk_val.get("choices").and_then(|c| c.as_array()) {
-                                        for choice in choices {
-                                            let delta = match choice.get("delta") {
-                                                Some(d) => d,
-                                                None => continue,
-                                            };
-                                            if let Some(text) = delta.get("content").and_then(|t| t.as_str()) {
-                                                if !text.is_empty() {
-                                                    full_content.push_str(text);
-                                                    yield sse_event("token", &serde_json::json!({"text": text}));
-                                                }
-                                            }
-                                            if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
-                                                for tc in tcs {
-                                                    let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-                                                    while tool_calls_acc.len() <= idx {
-                                                        tool_calls_acc.push(AccToolCall::default());
-                                                    }
-                                                    if let Some(id) = tc.get("id").and_then(|s| s.as_str()) {
-                                                        tool_calls_acc[idx].id = id.to_string();
-                                                    }
-                                                    if let Some(f) = tc.get("function") {
-                                                        if let Some(name) = f.get("name").and_then(|s| s.as_str()) {
-                                                            tool_calls_acc[idx].name = name.to_string();
-                                                        }
-                                                        if let Some(args) = f.get("arguments").and_then(|s| s.as_str()) {
-                                                            tool_calls_acc[idx].arguments.push_str(args);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                if let Ok(mut retry_stream) = ai.stream_chat(&messages, &tools, None).await {
+                    while let Some(event) = retry_stream.next().await {
+                        match event {
+                            StreamEvent::Token(text) => {
+                                full_content.push_str(&text);
+                                yield sse_event("token", &serde_json::json!({"text": text}));
                             }
+                            StreamEvent::ToolCall(tc) => {
+                                tool_calls_result.push(tc);
+                            }
+                            StreamEvent::Done => break,
                         }
                     }
                 }
 
-                // If retry still no tool calls, discard AI's misleading text
-                // and send a safe fallback message instead
-                if tool_calls_acc.is_empty() {
+                if tool_calls_result.is_empty() {
                     let fallback = "抱歉，我无法处理这个转账请求。请用更明确的格式描述，例如：「转0.1 POL到0x1234...」";
-                    // Clear any tokens we already streamed from the retry
                     yield sse_event("replace", &serde_json::json!({"text": fallback}));
                     if let Some(db) = &state.db {
                         let _ = ChatStore::save_message(db, db_session_id, "assistant", Some(fallback), None, None).await;
@@ -1032,7 +901,7 @@ async fn chat_stream(
 
         // Parse and emit tool calls with kind/widget metadata
         let mut parsed_tool_calls: Vec<ToolCallInfo> = Vec::new();
-        for tc in &tool_calls_acc {
+        for tc in &tool_calls_result {
             let params: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
             let kind = tool_kind(&tc.name);
             let widget = tool_widget_type(&tc.name);
@@ -1158,22 +1027,10 @@ async fn chat_stream(
 
         // Build second round messages with tool results
         // Add assistant message with tool_calls
-        let tc_for_msg: Vec<crate::services::claude::ToolCall> = tool_calls_acc.iter().map(|tc| {
-            crate::services::claude::ToolCall {
-                id: tc.id.clone(),
-                call_type: "function".into(),
-                function: crate::services::claude::FunctionCall {
-                    name: tc.name.clone(),
-                    arguments: tc.arguments.clone(),
-                },
-            }
-        }).collect();
-
-        messages.push(Message {
-            role: "assistant".into(),
+        messages.push(ChatMessage {
+            role: ChatRole::Assistant,
             content: if full_content.is_empty() { None } else { Some(full_content.clone()) },
-            reasoning_content: if reasoning_content.is_empty() { None } else { Some(reasoning_content.clone()) },
-            tool_calls: Some(tc_for_msg),
+            tool_calls: Some(tool_calls_result.clone()),
             tool_call_id: None,
         });
 
@@ -1183,10 +1040,9 @@ async fn chat_stream(
             } else {
                 format!("Error: {}", result.error.as_deref().unwrap_or("unknown"))
             };
-            messages.push(Message {
-                role: "tool".into(),
+            messages.push(ChatMessage {
+                role: ChatRole::Tool,
                 content: Some(content),
-                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: Some(result.tool_id.clone()),
             });
@@ -1197,80 +1053,37 @@ async fn chat_stream(
         // has transfer/swap intent, provide all tools so the AI can call send_transaction
         // after checking balance. Otherwise only provide clarify for follow-up suggestions.
         let first_round_had_write = parsed_tool_calls.iter().any(|tc| tool_kind(&tc.name) == ToolKind::Write);
-        let second_round_tools: Vec<ToolDefinition> = if !first_round_had_write && has_transfer_intent(&user_message) {
+        let second_round_tools: Vec<ToolDef> = if !first_round_had_write && has_transfer_intent(&user_message) {
             wallet_tools()
         } else {
             wallet_tools_meta()
                 .into_iter()
-                .filter(|m| m.definition.function.name == "clarify")
+                .filter(|m| m.definition.name == "clarify")
                 .map(|m| m.definition)
                 .collect()
         };
         let stream_resp2 = ai.stream_chat(&messages, &second_round_tools, None).await;
         match stream_resp2 {
-            Ok(resp2) => {
-                let mut byte_stream2 = resp2.bytes_stream();
-                let mut buffer2 = String::new();
+            Ok(mut resp2) => {
                 let mut final_content = String::new();
-                let mut tool_calls_acc2: Vec<AccToolCall> = Vec::new();
+                let mut tool_calls_result2: Vec<ProviderToolCallInfo> = Vec::new();
 
-                while let Some(chunk) = byte_stream2.next().await {
-                    let chunk = match chunk {
-                        Ok(c) => c,
-                        Err(_) => break,
-                    };
-                    let text = String::from_utf8_lossy(&chunk);
-                    buffer2.push_str(&text);
-
-                    while let Some(pos) = buffer2.find("\n\n") {
-                        let event_block = buffer2[..pos].to_string();
-                        buffer2 = buffer2[pos+2..].to_string();
-
-                        for line in event_block.lines() {
-                            if !line.starts_with("data: ") { continue; }
-                            let data = &line[6..];
-                            if data == "[DONE]" { continue; }
-
-                            if let Ok(chunk_val) = serde_json::from_str::<serde_json::Value>(data) {
-                                if let Some(choices) = chunk_val.get("choices").and_then(|c| c.as_array()) {
-                                    for choice in choices {
-                                        if let Some(delta) = choice.get("delta") {
-                                            if let Some(text) = delta.get("content").and_then(|t| t.as_str()) {
-                                                if !text.is_empty() {
-                                                    final_content.push_str(text);
-                                                    yield sse_event("token", &serde_json::json!({"text": text}));
-                                                }
-                                            }
-                                            if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
-                                                for tc in tcs {
-                                                    let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-                                                    while tool_calls_acc2.len() <= idx {
-                                                        tool_calls_acc2.push(AccToolCall::default());
-                                                    }
-                                                    if let Some(id) = tc.get("id").and_then(|s| s.as_str()) {
-                                                        tool_calls_acc2[idx].id = id.to_string();
-                                                    }
-                                                    if let Some(f) = tc.get("function") {
-                                                        if let Some(name) = f.get("name").and_then(|s| s.as_str()) {
-                                                            tool_calls_acc2[idx].name = name.to_string();
-                                                        }
-                                                        if let Some(args) = f.get("arguments").and_then(|s| s.as_str()) {
-                                                            tool_calls_acc2[idx].arguments.push_str(args);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                while let Some(event) = resp2.next().await {
+                    match event {
+                        StreamEvent::Token(text) => {
+                            final_content.push_str(&text);
+                            yield sse_event("token", &serde_json::json!({"text": text}));
                         }
+                        StreamEvent::ToolCall(tc) => {
+                            tool_calls_result2.push(tc);
+                        }
+                        StreamEvent::Done => break,
                     }
                 }
 
                 // Safety net for second round: if AI still refused to call tools
                 // despite having transfer intent, replace its text with fallback
-                if tool_calls_acc2.is_empty() && !first_round_had_write && has_transfer_intent(&user_message) {
+                if tool_calls_result2.is_empty() && !first_round_had_write && has_transfer_intent(&user_message) {
                     let fallback = "抱歉，我无法处理这个转账请求。请用更明确的格式描述，例如：「转0.1 USDT到0x1234...（Polygon链）」";
                     yield sse_event("replace", &serde_json::json!({"text": fallback}));
                     if let Some(db) = &state.db {
@@ -1281,7 +1094,7 @@ async fn chat_stream(
                 }
 
                 // Process tool calls from second round (clarify, send_transaction, etc.)
-                for tc in &tool_calls_acc2 {
+                for tc in &tool_calls_result2 {
                     let params: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
                     let kind = tool_kind(&tc.name);
                     let widget = tool_widget_type(&tc.name);
@@ -1497,13 +1310,6 @@ async fn delete_session(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-#[derive(Default, Clone)]
-struct AccToolCall {
-    id: String,
-    name: String,
-    arguments: String,
-}
 
 fn sse_event(event: &str, data: &serde_json::Value) -> Result<Bytes, Infallible> {
     Ok(Bytes::from(format!("event: {}\ndata: {}\n\n", event, data)))

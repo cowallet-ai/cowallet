@@ -203,6 +203,45 @@ class _SettingsViewState extends State<SettingsView> {
     _settings.setVoiceInputEnabled(!_settings.voiceInputEnabled);
   }
 
+  void _showAiModelPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CwColors.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Text(S.aiModel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            _modelOption(ctx, AiModel.bedrock, 'Claude (Bedrock)', 'Anthropic Claude via AWS Bedrock'),
+            _modelOption(ctx, AiModel.deepseek, 'DeepSeek', 'DeepSeek AI'),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _modelOption(BuildContext ctx, AiModel model, String title, String subtitle) {
+    final selected = _settings.aiModel == model;
+    return ListTile(
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_off,
+        color: selected ? CwColors.accent : CwColors.ink4,
+      ),
+      title: Text(title),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: CwColors.ink4)),
+      onTap: () {
+        _settings.setAiModel(model);
+        Navigator.pop(ctx);
+      },
+    );
+  }
+
   void _toggleWeeklyReport() {
     if (!_settings.weeklyReportEnabled) {
       showTopToast(
@@ -653,8 +692,18 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.bgSubtle,
           title: S.aiModel,
           subtitle: S.aiModelSub,
-          trailing: const Icon(Icons.chevron_right,
-              size: 18, color: CwColors.ink4),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _settings.aiModel == AiModel.bedrock ? 'Claude' : 'DeepSeek',
+                style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+            ],
+          ),
+          onTap: _showAiModelPicker,
         ),
       ],
     );

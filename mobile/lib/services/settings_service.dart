@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum IntentMode { onEnter, whileTyping }
 
+enum AiModel { bedrock, deepseek }
+
 class SettingsService extends ChangeNotifier {
   static const _keyBiometric = 'settings_biometric_enabled';
   static const _keyVoiceInput = 'settings_voice_input_enabled';
@@ -10,6 +12,7 @@ class SettingsService extends ChangeNotifier {
   static const _keyLanguage = 'settings_language';
   static const _keyWeeklyReport = 'settings_weekly_report_enabled';
   static const _keyEmergencyFreeze = 'settings_emergency_freeze_active';
+  static const _keyAiModel = 'settings_ai_model';
 
   late SharedPreferences _prefs;
 
@@ -19,6 +22,7 @@ class SettingsService extends ChangeNotifier {
   String _language = 'zh';
   bool _weeklyReportEnabled = false;
   bool _emergencyFreezeActive = false;
+  AiModel _aiModel = AiModel.bedrock;
 
   // Getters
   bool get biometricEnabled => _biometricEnabled;
@@ -27,6 +31,10 @@ class SettingsService extends ChangeNotifier {
   String get language => _language;
   bool get weeklyReportEnabled => _weeklyReportEnabled;
   bool get emergencyFreezeActive => _emergencyFreezeActive;
+  AiModel get aiModel => _aiModel;
+
+  /// The model value string to send to the backend API.
+  String get aiModelValue => _aiModel == AiModel.bedrock ? 'bedrock' : 'deepseek';
 
   /// Initialize the service by loading persisted settings.
   Future<void> init() async {
@@ -39,6 +47,9 @@ class SettingsService extends ChangeNotifier {
     _language = _prefs.getString(_keyLanguage) ?? 'zh';
     _weeklyReportEnabled = _prefs.getBool(_keyWeeklyReport) ?? false;
     _emergencyFreezeActive = _prefs.getBool(_keyEmergencyFreeze) ?? false;
+    _aiModel = _prefs.getString(_keyAiModel) == 'deepseek'
+        ? AiModel.deepseek
+        : AiModel.bedrock;
   }
 
   // Setters that persist and notify
@@ -82,6 +93,13 @@ class SettingsService extends ChangeNotifier {
     if (_emergencyFreezeActive == value) return;
     _emergencyFreezeActive = value;
     await _prefs.setBool(_keyEmergencyFreeze, value);
+    notifyListeners();
+  }
+
+  Future<void> setAiModel(AiModel value) async {
+    if (_aiModel == value) return;
+    _aiModel = value;
+    await _prefs.setString(_keyAiModel, value == AiModel.bedrock ? 'bedrock' : 'deepseek');
     notifyListeners();
   }
 }

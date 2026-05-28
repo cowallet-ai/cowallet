@@ -368,6 +368,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       contacts: contactsList,
       authMethod: authMethod,
       lang: S.lang == Lang.zh ? 'zh' : 'en',
+      model: Services.settings.aiModelValue,
     );
 
     _streamSub?.cancel();

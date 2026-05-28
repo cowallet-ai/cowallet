@@ -8,7 +8,7 @@ use crate::middleware::rate_limit::AnyRateLimiter;
 use crate::retry::{CircuitBreaker, CircuitBreakerConfig};
 use crate::routes::price::PriceCache;
 use crate::routes::yield_::YieldCache;
-use crate::services::claude::AiClient;
+use crate::services::ai_provider::AiProvider;
 use crate::services::email::EmailService;
 use crate::services::mpc_participant::MpcParticipant;
 use crate::services::presign_manager::PresignManager;
@@ -24,7 +24,8 @@ pub struct AppState {
     pub price_cache: PriceCache,
     pub yield_cache: YieldCache,
     pub http: reqwest::Client,
-    pub claude: Option<AiClient>,
+    pub ai_bedrock: Option<Arc<dyn AiProvider>>,
+    pub ai_deepseek: Option<Arc<dyn AiProvider>>,
     pub nats: Option<async_nats::Client>,
     pub rate_limiter: AnyRateLimiter,
     pub rpc_circuit_breaker: CircuitBreaker,
@@ -99,14 +100,23 @@ impl AppState {
             }
         };
 
-        // Initialize AI client (DeepSeek)
-        let claude = match AiClient::from_env() {
-            Ok(client) => Some(client),
-            Err(e) => {
-                tracing::warn!("AI client not configured: {}", e);
-                None
-            }
-        };
+        // Initialize AI providers (both available, client selects)
+        let ai_bedrock: Option<Arc<dyn AiProvider>> =
+            match crate::services::bedrock_provider::BedrockProvider::from_env().await {
+                Ok(provider) => Some(Arc::new(provider)),
+                Err(e) => {
+                    tracing::warn!("Bedrock AI provider not configured: {}", e);
+                    None
+                }
+            };
+        let ai_deepseek: Option<Arc<dyn AiProvider>> =
+            match crate::services::claude::AiClient::from_env() {
+                Ok(client) => Some(Arc::new(client)),
+                Err(e) => {
+                    tracing::warn!("DeepSeek AI provider not configured: {}", e);
+                    None
+                }
+            };
 
         // Initialize MPC participant with encryption service (ENCRYPTION_KEY validated in main)
         let encryption_key = hex::decode(
@@ -183,7 +193,8 @@ impl AppState {
             price_cache: PriceCache::new(),
             yield_cache: YieldCache::new(),
             http: http_client,
-            claude,
+            ai_bedrock,
+            ai_deepseek,
             nats,
             rate_limiter: AnyRateLimiter::from_env().unwrap_or_else(|_| AnyRateLimiter::in_memory()),
             rpc_circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig::default()),
