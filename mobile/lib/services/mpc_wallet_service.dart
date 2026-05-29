@@ -265,8 +265,8 @@ class MpcWalletService implements WalletService {
 
       await MpcSessionStore.updateCurrentRound(1);
 
-      // Wait for server's Round 1 (R_1)
-      final serverR1 = await _waitForMessages(ws, expectedCount: 1);
+      // Wait for server's Round 1 (R_1) — server tags its R1 reply round=1
+      final serverR1 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 1);
       final serverR1Payload = serverR1.first.payload;
 
       // Sync _lastMessageId so Round 2 fallback skips Round 1 messages
@@ -289,8 +289,8 @@ class MpcWalletService implements WalletService {
 
       await MpcSessionStore.updateCurrentRound(2);
 
-      // Wait for server's signature
-      final serverR2 = await _waitForMessages(ws, expectedCount: 1);
+      // Wait for server's signature — server tags ServerSignature round=3 (round+1)
+      final serverR2 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 3);
       final serverR2Payload = serverR2.first.payload;
 
       final signature = await MpcBridge.signProcessRound2(
@@ -401,7 +401,7 @@ class MpcWalletService implements WalletService {
       await MpcSessionStore.updateCurrentRound(1);
 
       // Wait for server's reshare Round 1 messages (its evaluations for us)
-      final serverMessages = await _waitForMessages(ws, expectedCount: 1);
+      final serverMessages = await _waitForMessages(ws, expectedCount: 1, expectedRound: 1);
       final serverMsgsJson = serverMessages.map((m) {
         return jsonEncode({
           'session_id': remoteSessionId,
@@ -482,8 +482,8 @@ class MpcWalletService implements WalletService {
         // Send Round 1 to server
         ws.sendRaw(toParty: _serverParty, round: 1, payload: round1.payload);
 
-        // Wait for server's Round 1
-        final serverR1 = await _waitForMessages(ws, expectedCount: 1);
+        // Wait for server's Round 1 — server tags its R1 reply round=1
+        final serverR1 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 1);
 
         // Process and generate Round 2
         final round2Payload = await MpcBridge.presignProcessRound1AndGenerateRound2(
@@ -654,15 +654,22 @@ class MpcWalletService implements WalletService {
   }
 
   /// 通过 WebSocket 流等待指定数量的服务器消息
+  ///
+  /// [expectedRound] 若指定，仅接受该 round 的消息。WebSocket 重连后服务器会
+  /// 从头重放历史消息（ORDER BY round ASC），不按 round 过滤会让等待 Round 2
+  /// 的调用拿到被重放的 Round 1 消息，导致 bincode 反序列化把 SignRound1Message
+  /// 的 session_id 长度前缀（UUID = 36）误读成枚举变体下标。
   Future<List<MpcMessage>> _waitForMessages(
     MpcWebSocket ws, {
     required int expectedCount,
+    int? expectedRound,
   }) async {
     final messages = <MpcMessage>[];
     final completer = Completer<List<MpcMessage>>();
 
     final subscription = ws.messages.listen((msg) {
-      if (msg.fromParty == _serverParty) {
+      if (msg.fromParty == _serverParty &&
+          (expectedRound == null || msg.round == expectedRound)) {
         messages.add(msg);
         if (messages.length >= expectedCount && !completer.isCompleted) {
           completer.complete(messages);
@@ -696,6 +703,7 @@ class MpcWalletService implements WalletService {
           party: _deviceParty,
           expectedCount: expectedCount,
           afterId: _lastMessageId,
+          expectedRound: expectedRound,
         );
       }
       rethrow;
@@ -726,6 +734,7 @@ class MpcWalletService implements WalletService {
     required int party,
     required int expectedCount,
     int afterId = 0,
+    int? expectedRound,
   }) async {
     const pollInterval = Duration(seconds: 1);
     const pollTimeout = Duration(seconds: 30);
@@ -743,7 +752,8 @@ class MpcWalletService implements WalletService {
       if (result.isSuccess && result.data != null) {
         for (final raw in result.data!) {
           final m = Map<String, dynamic>.from(raw as Map);
-          if (m['from_party'] == _serverParty) {
+          if (m['from_party'] == _serverParty &&
+              (expectedRound == null || m['round'] == expectedRound)) {
             allMessages.add(MpcMessage(
               fromParty: m['from_party'] as int,
               toParty: m['to_party'] as int,

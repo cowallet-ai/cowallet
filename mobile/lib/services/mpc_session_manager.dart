@@ -185,8 +185,8 @@ class MpcSessionManager {
 
       await MpcSessionStore.updateCurrentRound(1);
 
-      // Wait for server's Round 1 (R_1)
-      final serverR1 = await _waitForServerMessages(ws, expectedCount: 1);
+      // Wait for server's Round 1 (R_1) — server tags its R1 reply round=1
+      final serverR1 = await _waitForServerMessages(ws, expectedCount: 1, expectedRound: 1);
 
       // Process R_1 and generate Round 2
       final round2Payload = await MpcBridge.signProcessRound1AndGenerateRound2(
@@ -199,8 +199,8 @@ class MpcSessionManager {
 
       await MpcSessionStore.updateCurrentRound(2);
 
-      // Wait for server's signature response
-      final serverR2 = await _waitForServerMessages(ws, expectedCount: 1);
+      // Wait for server's signature response — server tags ServerSignature round=3
+      final serverR2 = await _waitForServerMessages(ws, expectedCount: 1, expectedRound: 3);
 
       final signature = await MpcBridge.signProcessRound2(
         localSessionId,
@@ -234,15 +234,21 @@ class MpcSessionManager {
   // ==================== Helpers ====================
 
   /// Wait for server messages via WebSocket with timeout.
+  ///
+  /// [expectedRound] 若指定，仅接受该 round 的消息。WS 重连后服务器会按
+  /// round 升序重放历史消息，不过滤会让等待 Round 2 的调用拿到被重放的
+  /// Round 1，导致 bincode 把 SignRound1Message 误读为 SignRound2Message。
   Future<List<MpcMessage>> _waitForServerMessages(
     MpcWebSocket ws, {
     required int expectedCount,
+    int? expectedRound,
   }) async {
     final messages = <MpcMessage>[];
     final completer = Completer<List<MpcMessage>>();
 
     final subscription = ws.messages.listen((msg) {
-      if (msg.fromParty == 1) {
+      if (msg.fromParty == 1 &&
+          (expectedRound == null || msg.round == expectedRound)) {
         messages.add(msg);
         if (messages.length >= expectedCount && !completer.isCompleted) {
           completer.complete(messages);
