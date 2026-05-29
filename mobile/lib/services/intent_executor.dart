@@ -474,16 +474,24 @@ class IntentExecutor {
       );
     } catch (e) {
       final msg = e.toString();
+      final failHash = params['from_token'] != null
+          ? '${params['from_token']}>${params['to_token']}'
+          : 'swap';
       if (msg.contains('authentication') || msg.contains('Biometric')) {
+        Services.notifications.showTxFailed(failHash, S.authFailed);
         return ActionResult.fail(S.authFailedSwapCancelled);
       }
       if (msg.contains('insufficient funds') || msg.contains('InsufficientFunds')) {
+        Services.notifications.showTxFailed(failHash, S.insufficientBalance);
         return ActionResult.fail(S.insufficientBalance);
       }
       if (msg.contains('allowance') || msg.contains('ALLOWANCE')) {
+        Services.notifications.showTxFailed(failHash, S.tokenApprovalRequired);
         return ActionResult.fail(S.tokenApprovalRequired);
       }
-      return ActionResult.fail(S.swapFailed(msg));
+      final friendly = S.swapFailed(msg);
+      Services.notifications.showTxFailed(failHash, friendly);
+      return ActionResult.fail(friendly);
     }
   }
 

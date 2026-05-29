@@ -468,6 +468,7 @@ class S {
   static String get estGas => _p('预估 Gas', 'Est. gas');
   static String get sigMethod => _p('签名方式', 'Signing method');
   static String get network => _p('网络', 'Network');
+  static String get estimatedArrival => _p('预计到账', 'Est. arrival');
   static String get balancePrefix => _p('余额', 'Balance');
   static String get txStatus => _p('交易状态', 'Transaction Status');
   static String get txSuccess => _p('转账成功', 'Transfer successful');
@@ -671,6 +672,9 @@ class S {
   static String get authFailedSwapCancelled => _p('身份验证失败，兑换已取消', 'Authentication failed, swap cancelled');
   static String get tokenApprovalRequired => _p('需要先授权代币额度，请稍后重试', 'Token approval required. Please try again shortly.');
   static String swapFailed(String msg) => _p('兑换失败: $msg', 'Swap failed: $msg');
+  static String estArrivalMinutes(int m) => _p('约 $m 分钟', '~$m min');
+  static String estArrivalHours(int h) => _p('约 $h 小时', '~$h h');
+  static String estArrivalHoursMinutes(int h, int m) => _p('约 $h 小时 $m 分钟', '~${h}h ${m}m');
   static String get txErrorRpcUnavailable => _p('链上节点暂时不可用，请稍后重试', 'Chain RPC node unavailable, please try again later');
   static String get txErrorNonceTooLow => _p('交易序号冲突，请重新发起转账', 'Nonce conflict, please retry the transfer');
   static String get txErrorUnderpricedGas => _p('Gas费过低，网络拥堵，请稍后重试', 'Gas too low, network congested, please try again');

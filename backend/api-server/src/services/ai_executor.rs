@@ -2013,7 +2013,7 @@ impl ToolContext {
 
         // Try to get a real quote from Bridgers API
         let buy_decimals = crate::services::bridgers::token_decimals(&to_upper);
-        let (estimated_output, exchange_rate, price_impact, gas_estimate, sources) =
+        let (estimated_output, exchange_rate, price_impact, gas_estimate, sources, estimated_time) =
             match crate::services::bridgers::get_quote(
                 &self.app_state.http,
                 &self.app_state.bridgers_source_flag,
@@ -2041,6 +2041,7 @@ impl ToolContext {
                         None::<String>,
                         quote.estimated_gas.clone(),
                         vec!["bridgers".to_string()],
+                        quote.estimated_time,
                     )
                 }
                 Err(e) => {
@@ -2059,7 +2060,7 @@ impl ToolContext {
                             let output = amt * fp / tp;
                             let output_str = if tp >= 1.0 { format!("{:.2}", output) } else { format!("{:.6}", output) };
                             let rate = format!("{:.6}", fp / tp);
-                            (output_str, rate, None, "200000".to_string(), vec!["price_estimate".to_string()])
+                            (output_str, rate, None, "200000".to_string(), vec!["price_estimate".to_string()], None)
                         }
                         _ => {
                             return ToolExecutionResult {
@@ -2085,6 +2086,8 @@ impl ToolContext {
             "gas_estimate": gas_estimate,
             "slippage": slippage,
             "chain_id": chain_id,
+            "to_chain_id": to_chain_id,
+            "estimated_time": estimated_time,
             "sources": sources,
             "route": format!("{} → {}", from_upper, to_upper),
             "warning": "兑换需要您确认后执行。实际到账金额可能因市场波动略有差异。",

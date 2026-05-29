@@ -165,7 +165,7 @@ fn wallet_tools_meta() -> Vec<ToolMeta> {
         ToolMeta {
             definition: ToolDef {
                 name: "swap_token".into(),
-                description: "Swap one token for another via DEX. Requires user confirmation. MUST set chain_id based on the source token's native chain.".into(),
+                description: "Swap one token for another via DEX, on the same chain OR across chains (cross-chain bridge swap). Requires user confirmation. MUST set chain_id (source chain). For cross-chain swaps, also set to_chain_id (destination chain).".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -173,7 +173,8 @@ fn wallet_tools_meta() -> Vec<ToolMeta> {
                         "to_token": { "type": "string", "description": "Destination token symbol" },
                         "amount": { "type": "string", "description": "Amount of from_token to swap (human readable)" },
                         "slippage": { "type": "number", "description": "Max slippage tolerance in percent. Default: 0.5" },
-                        "chain_id": { "type": "integer", "description": "Target chain ID for the swap. ETH→1 or 8453, POL/MATIC→137, BNB→56, ARB→42161, OP→10. REQUIRED — you must ask the user if you cannot determine the chain." }
+                        "chain_id": { "type": "integer", "description": "Source chain ID. ETH→1 or 8453, POL/MATIC→137, BNB→56, ARB→42161, OP→10. REQUIRED — you must ask the user if you cannot determine the chain." },
+                        "to_chain_id": { "type": "integer", "description": "Destination chain ID for CROSS-CHAIN swaps (e.g. swap POL on Polygon into USDC on Base). Omit for same-chain swaps; defaults to chain_id." }
                     },
                     "required": ["from_token", "to_token", "amount", "chain_id"]
                 }),
@@ -286,6 +287,7 @@ const SYSTEM_PROMPT: &str = r#"你是 CoWallet，用户的加密钱包 AI 助手
 
 **兑换相关**（触发 swap_token）：
 "换点U""把ETH换成USDC""swap""兑换""想换个币"
+- **跨链兑换**：当用户要把一条链上的代币换成另一条链上的代币时（例："把 Polygon 上的 POL 换成 Base 上的 USDC""用 BSC 的 BNB 换以太坊的 ETH"），设 chain_id=源链、to_chain_id=目标链。同链兑换则省略 to_chain_id。
 
 **闲聊/问题**：
 "你好""在吗""这个币咋样""gas是什么""怎么用"→ 正常回答，不调用工具

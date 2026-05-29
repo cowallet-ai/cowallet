@@ -14,6 +14,8 @@ class ChatSwapConfirmWidget extends StatelessWidget {
   final VoidCallback? onConfirm;
   final VoidCallback? onDeny;
   final int? chainId;
+  final int? toChainId;
+  final int? estimatedTime;
 
   const ChatSwapConfirmWidget({
     super.key,
@@ -27,6 +29,8 @@ class ChatSwapConfirmWidget extends StatelessWidget {
     this.onConfirm,
     this.onDeny,
     this.chainId,
+    this.toChainId,
+    this.estimatedTime,
   });
 
   @override
@@ -85,8 +89,12 @@ class ChatSwapConfirmWidget extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _infoRow(S.slippageTolerance, '${slippage}%'),
-          if (chainId != null)
+          if (chainId != null && toChainId != null && toChainId != chainId)
+            _infoRow(S.network, '${_chainName(chainId!)} → ${_chainName(toChainId!)}')
+          else if (chainId != null)
             _infoRow(S.network, _chainName(chainId!)),
+          if (estimatedTime != null && estimatedTime! > 0)
+            _infoRow(S.estimatedArrival, _formatDuration(estimatedTime!)),
           _infoRow(S.route, '$fromToken → $toToken'),
           if (!resolved) ...[
             const SizedBox(height: 16),
@@ -195,5 +203,12 @@ class ChatSwapConfirmWidget extends StatelessWidget {
       case 137: return 'Polygon';
       default: return 'Chain $chainId';
     }
+  }
+
+  String _formatDuration(int minutes) {
+    if (minutes < 60) return S.estArrivalMinutes(minutes);
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    return m == 0 ? S.estArrivalHours(h) : S.estArrivalHoursMinutes(h, m);
   }
 }

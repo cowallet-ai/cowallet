@@ -133,6 +133,7 @@ struct QuoteData {
     to_token_amount: Option<Value>,
     from_token_decimal: Option<Value>,
     instant_rate: Option<Value>,
+    estimated_time: Option<Value>,
     chain_fee: Option<Value>,
     fee: Option<Value>,
     contract_address: Option<String>,
@@ -189,6 +190,7 @@ pub struct SwapQuote {
     pub to_chain: String,
     pub deposit_min: Option<String>,
     pub deposit_max: Option<String>,
+    pub estimated_time: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -330,6 +332,9 @@ pub async fn get_quote(
         to_chain: to_chain.to_string(),
         deposit_min: value_to_string(&data.deposit_min),
         deposit_max: value_to_string(&data.deposit_max),
+        estimated_time: data.estimated_time.as_ref().and_then(|v| {
+            v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        }),
     })
 }
 

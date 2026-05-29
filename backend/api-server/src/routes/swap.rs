@@ -57,6 +57,7 @@ struct QuoteResponse {
     contract_address: String,
     deposit_min: Option<String>,
     deposit_max: Option<String>,
+    estimated_time: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,6 +173,7 @@ async fn get_swap_quote(
         contract_address: quote.contract_address,
         deposit_min: quote.deposit_min,
         deposit_max: quote.deposit_max,
+        estimated_time: quote.estimated_time,
     }))
 }
 

@@ -449,6 +449,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                     'amount': params['amount'] ?? '0',
                     'slippage': params['slippage'] ?? 0.5,
                     'chain_id': params['chain_id'],
+                    'to_chain_id': params['to_chain_id'],
                   },
                   toolCallId: id,
                 ));
@@ -962,6 +963,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       'to_token': msg.widgetData['to_token'] as String? ?? '',
       'amount': msg.widgetData['amount'] as String? ?? '0',
       if (msg.widgetData['chain_id'] != null) 'chain_id': msg.widgetData['chain_id'].toString(),
+      if (msg.widgetData['to_chain_id'] != null) 'to_chain_id': msg.widgetData['to_chain_id'].toString(),
     };
 
     final result = await Services.intent.execute('swap', params);
@@ -1426,6 +1428,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
           estimatedOutput: msg.widgetData['estimated_output'] ?? '—',
           slippage: (msg.widgetData['slippage'] as num?)?.toDouble() ?? 0.5,
           chainId: msg.widgetData['chain_id'] as int?,
+          toChainId: msg.widgetData['to_chain_id'] as int?,
+          estimatedTime: msg.widgetData['estimated_time'] as int?,
           loading: msg.loading,
           resolved: msg.confirmed,
           onConfirm: () => _onSwapConfirm(index),
