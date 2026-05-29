@@ -18,7 +18,7 @@ impl BedrockProvider {
         let api_key = std::env::var("BEDROCK_API_KEY")
             .map_err(|_| "BEDROCK_API_KEY not set".to_string())?;
         let region = std::env::var("BEDROCK_REGION")
-            .unwrap_or_else(|_| "us-east-1".into());
+            .unwrap_or_else(|_| "us-west-2".into());
         let model_id = std::env::var("BEDROCK_MODEL_ID")
             .unwrap_or_else(|_| "anthropic.claude-sonnet-4-20250514-v1:0".into());
 
