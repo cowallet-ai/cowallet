@@ -101,39 +101,45 @@ class ChatSwapConfirmWidget extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: loading ? null : onDeny,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: CwColors.ink3,
-                      side: const BorderSide(color: CwColors.line),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: loading ? null : onDeny,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: CwColors.ink3,
+                        side: const BorderSide(color: CwColors.line),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
+                      child: Text(S.cancel),
                     ),
-                    child: Text(S.cancel),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed: loading ? null : onConfirm,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: CwColors.accent,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: loading ? null : onConfirm,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CwColors.accent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
+                      child: loading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(S.confirmSwap),
                     ),
-                    child: loading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(S.confirmSwap),
                   ),
                 ),
               ],
