@@ -78,6 +78,7 @@ class ChatReceiveWidget extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
+                Clipboard.setData(ClipboardData(text: address));
                 showTopToast(context, S.addressCopied);
               },
               label: Text(S.copyAddress),

@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "a9fd2d326d8700f75cac20c4ccdc0e2f2f6b1350758fbb134015a594f9d91b58"
+    },
+    "omnibridge-swap": {
+      "source": "OmniBridgeCloud/omnibridge-swap-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "c27a914a142aefb0d1e72eed858e95a70c91c95b40b62109c5021c3963a89a6c"
     }
   }
 }

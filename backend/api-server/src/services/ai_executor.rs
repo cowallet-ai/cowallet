@@ -2029,7 +2029,12 @@ impl ToolContext {
             .await
             {
                 Ok(quote) => {
-                    let output_formatted = crate::services::bridgers::raw_to_amount(&quote.buy_amount, buy_decimals);
+                    // Bridgers' toTokenAmount is already human-readable; only convert if it's a raw integer
+                    let output_formatted = if quote.buy_amount.contains('.') {
+                        quote.buy_amount.clone()
+                    } else {
+                        crate::services::bridgers::raw_to_amount(&quote.buy_amount, buy_decimals)
+                    };
                     (
                         output_formatted,
                         quote.price.clone(),

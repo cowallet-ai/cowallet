@@ -131,6 +131,8 @@ struct QuoteDataWrapper {
 struct QuoteData {
     amount_out_min: Option<Value>,
     to_token_amount: Option<Value>,
+    from_token_decimal: Option<Value>,
+    instant_rate: Option<Value>,
     chain_fee: Option<Value>,
     fee: Option<Value>,
     contract_address: Option<String>,
@@ -291,9 +293,21 @@ pub async fn get_quote(
 
     let buy_amount = value_to_string(&data.to_token_amount).unwrap_or_else(|| "0".into());
     let buy_amount_min = value_to_string(&data.amount_out_min).unwrap_or_else(|| buy_amount.clone());
-    let sell_f: f64 = from_token_amount.parse().unwrap_or(1.0);
-    let buy_f: f64 = buy_amount.parse().unwrap_or(0.0);
-    let price = if sell_f > 0.0 { format!("{:.10}", buy_f / sell_f) } else { "0".into() };
+    // Bridgers' instantRate is already buy-per-sell in human-readable terms. Prefer it.
+    // Fallback: compute from human buy_amount / human sell_amount (from_token_amount is RAW wei,
+    // so convert it down by from_token_decimal first).
+    let price = value_to_string(&data.instant_rate)
+        .filter(|r| r.parse::<f64>().map(|v| v > 0.0).unwrap_or(false))
+        .unwrap_or_else(|| {
+            let from_decimals = data.from_token_decimal
+                .as_ref()
+                .and_then(|v| v.as_u64())
+                .unwrap_or(18) as i32;
+            let sell_raw: f64 = from_token_amount.parse().unwrap_or(0.0);
+            let sell_human = sell_raw / 10f64.powi(from_decimals);
+            let buy_f: f64 = buy_amount.parse().unwrap_or(0.0);
+            if sell_human > 0.0 { format!("{:.10}", buy_f / sell_human) } else { "0".into() }
+        });
     let fee_rate = data.fee.map(|v| match v {
         Value::Number(n) => n.to_string(),
         Value::String(s) => s,

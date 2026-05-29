@@ -298,3 +298,116 @@
 - **移动端**: Flutter/Dart, flutter_rust_bridge v2
 - **AI**: Bedrock Claude (默认) + DeepSeek (备选), AiProvider trait 抽象, AWS Event Stream 流式, Function Calling
 - **部署**: Docker, GitHub Actions, AWS Cloud ECS
+
+---
+
+## 十、安全审计发现 (2026-05-28)
+
+### 高危（可直接导致资金损失）
+
+| # | 问题 | 位置 | 影响 |
+|---|------|------|------|
+| 1 | WebSocket MPC 会话不检查 Token 黑名单 | `routes/mpc_ws.rs:47` | logout 后旧 token 仍可参与签名 |
+| 2 | JWT 明文放 URL 参数 (WebSocket) | `routes/mpc_ws.rs:22` | Token 泄露到日志/CDN，可重放 |
+| 3 | ERC-20 无限授权 (MaxUint256) | `intent_executor.dart:392` | aggregator 被攻破则全部代币可被盗 |
+| 4 | 用户数据注入 AI 上下文（间接注入） | `ai.rs:793-801` | 联系人名可注入恶意指令操控 AI |
+| 5 | Prompt Injection 防御仅关键词匹配 | `ai.rs:438-445` | unicode/变体即可绕过 |
+
+### 中危
+
+| # | 问题 | 位置 |
+|---|------|------|
+| 6 | Device-ID 校验可绕过（不发 header 即跳过） | `middleware/auth.rs:199-207` |
+| 7 | Argon2id 参数偏弱（默认 m=19MiB） | `mpc-core/shard/encrypt.rs:99` |
+| 8 | HKDF 未使用 salt | `services/crypto.rs:63` |
+| 9 | Shard 传输用裸 SHA-256 派生 AES key | `routes/shards.rs:281` |
+| 10 | Covalent API Key 硬编码 | `state.rs:143-144` |
+
+### 低危
+
+| # | 问题 |
+|---|------|
+| 11 | root_key 存储在进程内存（标注 demo only） |
+| 12 | Bedrock 用 Bearer token 而非 SigV4 |
+| 13 | 助记词检测仅覆盖 5 种固定短语 |
+
+---
+
+## 十一、可靠性问题 (2026-05-28)
+
+| 问题 | 风险等级 | 说明 |
+|------|---------|------|
+| Bedrock 流无 idle timeout | 🔴 高 | AI 不响应时连接永远挂起，占满服务器资源 |
+| Bedrock buffer 无上限 | 🔴 高 | 故障帧可导致内存无限增长 (OOM) |
+| 客户端流无超时 | 🟡 中 | 网络异常时 UI 永远显示"加载中" |
+| 浮点精度丢失 | 🟡 中 | `double * 1e18` 对 >0.1 ETH 有精度误差 |
+| `buffer.remove(0)` O(n) | 🟢 低 | 垃圾数据多时性能退化 |
+
+---
+
+## 十二、架构评估 (2026-05-28)
+
+### 架构优点
+
+- AI Provider trait 抽象干净，Bedrock + DeepSeek 统一接口 + 自动 fallback
+- 中间件栈层次分明：request_id → audit → validation → CORS → trace → 限流 → auth
+- MPC 会话管理设计正确：DashMap 并发安全，300s 超时清理，presign 池化
+- 结构化错误码 (1000-1899 分段)，客户端可精确处理
+- AI Agent Loop 完整：流式 token + tool_call + 二轮对话 + safety net
+
+### 架构问题
+
+- AppState 是 God Object（24 字段），应按领域拆分
+- ai.rs 1330 行单文件，system prompt/tool/stream/session 全混一起
+- chat_view.dart 700+ 行，职责过多
+- ENCRYPTION_KEY 在 main.rs 和 state.rs 各解析一次
+
+---
+
+## 十三、改进路线图 (2026-05-28)
+
+### P0 — 立即修复（上线阻塞）
+
+| 建议 | 工作量 |
+|------|--------|
+| WS 连接加 Token 黑名单检查 | 1h |
+| 删除硬编码 Covalent API Key | 5min |
+| ERC-20 授权改为精确金额 | 30min |
+
+### P1 — 短期修复（1-2 周内）
+
+| 建议 | 工作量 |
+|------|--------|
+| WS 改用一次性 ticket 替代 URL 中的 JWT | 4h |
+| AI 上下文中 contacts/portfolio 做结构化清洗 | 2h |
+| Bedrock 流加 60s idle timeout + 4MB buffer cap | 2h |
+| 浮点金额改用字符串精确解析 | 2h |
+| 强制 Device-ID header | 30min |
+
+### P2 — 中期优化（1 月内）
+
+| 建议 | 工作量 |
+|------|--------|
+| 客户端流加 60s 无数据超时 | 1h |
+| 升级 Argon2 参数 (m=64MB, t=3, p=4) | 30min |
+| 拆分 ai.rs（prompt/tools/stream 分模块） | 半天 |
+| Bedrock buffer 用 bytes::BytesMut 替代 Vec<u8> | 2h |
+
+### P3 — 长期改进
+
+| 建议 | 工作量 |
+|------|--------|
+| 拆分 AppState 为领域子 state | 1天 |
+| 引入向量模型做 prompt injection 检测 | 1周 |
+| 接入 KMS 替代内存中 root key | 1周 |
+| 第三方安全审计 + 渗透测试 | 外部 |
+
+### 上线时间线
+
+```
+现在 ──── 2周后 ──── 1月后 ──── 2月后
+ │          │          │          │
+ ├ P0 修复  ├ P1 修复  ├ 安全审计  ├ 公开测试
+ ├ 集成测试 ├ 恢复验证 ├ 渗透测试  │
+ └ 内部测试 └ 性能基准 └ 修复发现  └ 正式发布
+```
