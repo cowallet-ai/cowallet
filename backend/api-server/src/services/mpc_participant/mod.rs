@@ -138,11 +138,15 @@ impl MpcParticipant {
         round: i16,
         payload: &[u8],
     ) -> Result<Vec<(i16, i16, i16, Vec<u8>)>, String> {
-        let meta = self.session_meta.get(&session_id)
-            .ok_or_else(|| format!("no active session {}", session_id))?;
-        let session_type = meta.session_type;
-        let user_id = meta.user_id;
-        drop(meta);
+        // Try to get session from memory; if missing, attempt recovery from DB
+        let (session_type, user_id) = match self.session_meta.get(&session_id) {
+            Some(meta) => (meta.session_type, meta.user_id),
+            None => {
+                // Session not in memory — possibly lost due to server restart.
+                // Try to recover from DB.
+                self.try_recover_session(session_id).await?
+            }
+        };
 
         match session_type {
             MpcSessionType::Dkg | MpcSessionType::Keygen => {
@@ -155,6 +159,51 @@ impl MpcParticipant {
                 self.process_reshare_message(session_id, user_id, from_party, round, payload).await
             }
         }
+    }
+
+    /// Attempt to recover a session from DB when in-memory state is lost (e.g. after restart).
+    /// Only sign sessions on round 1 can be recovered (server re-initializes from stored shard).
+    /// DKG/reshare sessions cannot be recovered because they require ephemeral crypto state.
+    async fn try_recover_session(&self, session_id: Uuid) -> Result<(MpcSessionType, Uuid), String> {
+        let row: Option<(String, Uuid, Vec<i16>, i16, Option<Uuid>)> = sqlx::query_as(
+            "SELECT session_type, user_id, parties, threshold, wallet_id
+             FROM mpc_sessions WHERE id = $1 AND status = 'active'"
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| format!("DB error recovering session {}: {}", session_id, e))?;
+
+        let (session_type_str, user_id, parties, threshold, wallet_id) =
+            row.ok_or_else(|| format!("no active session {} (not in memory or DB)", session_id))?;
+
+        let Some(mpc_type) = MpcSessionType::from_str(&session_type_str) else {
+            return Err(format!("session {} has unrecoverable type '{}'", session_id, session_type_str));
+        };
+
+        // Only sign sessions can be recovered (they re-init from stored shard)
+        if mpc_type != MpcSessionType::Sign {
+            return Err(format!(
+                "session {} type '{}' cannot be recovered after restart (requires ephemeral crypto state)",
+                session_id, session_type_str
+            ));
+        }
+
+        tracing::info!(
+            "Recovering sign session {} from DB (in-memory state was lost)",
+            session_id
+        );
+
+        let config = SessionConfig {
+            session_id: session_id.to_string(),
+            threshold: threshold as u16,
+            total_parties: parties.len() as u16,
+            party_index: SERVER_PARTY_INDEX,
+        };
+
+        self.init_sign_session(session_id, user_id, config, wallet_id).await?;
+
+        Ok((mpc_type, user_id))
     }
 
     /// Initialize a DKG session: create the session and generate server's Round 1.

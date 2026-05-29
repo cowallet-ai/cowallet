@@ -363,6 +363,13 @@ pub async fn send_message(
                         "Server participant error for session {} round {}: {}",
                         session_id, body.round, e
                     );
+                    // Mark session as failed so the client stops polling
+                    let _ = sqlx::query(
+                        "UPDATE mpc_sessions SET status = 'failed', completed_at = NOW() WHERE id = $1 AND status = 'active'"
+                    )
+                    .bind(session_id)
+                    .execute(db)
+                    .await;
                 }
             }
         }

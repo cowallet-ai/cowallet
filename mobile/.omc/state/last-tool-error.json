@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"flutter analyze lib/views/settings/policy_view.dart lib/views/settings/settings_view.dart lib/views/wallet/wallet_view.dart lib/widgets/pin_verify_dialog.dart 2>&1\",\"timeout\":60000}",
-  "error": "Exit code 1\nAnalyzing 4 items...                                            \n\nwarning • The value of the local variable 'isZh' isn't used • lib/views/settings/policy_view.dart:131:11 • unused_local_variable\n   info • Don't invoke 'print' in production code • lib/views/settings/settings_view.dart:93:5 • avoid_print\nwarning • The value of the local variable 'isZh' isn't used • lib/views/settings/settings_view.dart:317:11 • unused_local_variable\n   info • Unnecessary use of multiple underscores • l...",
-  "timestamp": "2026-05-26T01:31:33.013Z",
+  "tool_input_preview": "{\"command\":\"git add mobile/lib/services/mpc_wallet_service.dart mobile/lib/services/mpc_session_manager.dart && git commit -m \\\"$(cat <<'EOF'\\nfix: MPC 签名等待按 round 过滤，避免重连重放污染 Round 2\\n\\nWS 重连后服务器按 ro...",
+  "error": "Exit code 128\nwarning: could not open directory 'mobile/mobile/lib/services/': No such file or directory\nfatal: pathspec 'mobile/lib/services/mpc_wallet_service.dart' did not match any files",
+  "timestamp": "2026-05-29T09:30:30.507Z",
   "retry_count": 1
 }

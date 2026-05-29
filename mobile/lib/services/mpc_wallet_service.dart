@@ -738,9 +738,11 @@ class MpcWalletService implements WalletService {
   }) async {
     const pollInterval = Duration(seconds: 1);
     const pollTimeout = Duration(seconds: 30);
+    const statusCheckInterval = 5;
     final deadline = DateTime.now().add(pollTimeout);
     List<MpcMessage> allMessages = [];
     int lastId = afterId;
+    int pollCount = 0;
 
     while (DateTime.now().isBefore(deadline)) {
       final result = await MpcApi.receiveMessages(
@@ -768,6 +770,20 @@ class MpcWalletService implements WalletService {
 
         if (allMessages.length >= expectedCount) {
           return allMessages;
+        }
+      }
+
+      pollCount++;
+      // Periodically check session status to detect server-side failures
+      if (pollCount % statusCheckInterval == 0) {
+        final statusResult = await MpcApi.getSession(sessionId);
+        if (statusResult.isSuccess && statusResult.data != null) {
+          final status = statusResult.data!['status'] as String;
+          if (status == 'failed' || status == 'expired') {
+            throw MpcException(
+              'MPC session $status on server (round processing failed)',
+            );
+          }
         }
       }
 
