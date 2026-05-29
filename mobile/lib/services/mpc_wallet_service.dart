@@ -23,10 +23,14 @@ class MpcWalletService implements WalletService {
   List<int>? _lastBackupShard;
   bool _backupNeedsReExport = false;
   int _lastMessageId = 0;
+  bool _signInProgress = false;
+  Completer<void>? _operationLock;
   static const int _deviceParty = 0;
   static const int _serverParty = 1;
   static const int _backupParty = 2;
   static const Duration _wsTimeout = Duration(seconds: 45);
+
+  bool get signInProgress => _signInProgress;
 
   /// 执行完整的 DKG 密钥生成协议
   /// [walletId] 可选，用于多钱包场景
@@ -219,6 +223,26 @@ class MpcWalletService implements WalletService {
       throw MpcException('Message hash must be exactly 32 bytes');
     }
 
+    // Signal immediately so presign loop can bail out
+    _signInProgress = true;
+
+    // Wait for any in-progress operation to finish
+    while (_operationLock != null) {
+      await _operationLock!.future;
+    }
+    _operationLock = Completer<void>();
+
+    try {
+      return await _runSignInternal(msgHash, walletId: walletId);
+    } finally {
+      _signInProgress = false;
+      final lock = _operationLock;
+      _operationLock = null;
+      lock?.complete();
+    }
+  }
+
+  Future<List<int>> _runSignInternal(List<int> msgHash, {String? walletId}) async {
     await ensureShardLoaded();
 
     final sessionResult = await MpcApi.createSession(
@@ -455,9 +479,37 @@ class MpcWalletService implements WalletService {
   /// [walletId] 钱包ID
   /// [count] 要生成的预签名数量
   Future<int> runPresign({required String walletId, int count = 5}) async {
+    // Skip if a sign operation is in progress — presign can retry later
+    if (_signInProgress) {
+      print('[MpcWalletService] Skipping presign: sign operation in progress');
+      return 0;
+    }
+
+    // Acquire operation lock to prevent sign from starting mid-presign
+    while (_operationLock != null) {
+      await _operationLock!.future;
+    }
+    _operationLock = Completer<void>();
+
+    try {
+      return await _runPresignInternal(walletId: walletId, count: count);
+    } finally {
+      final lock = _operationLock;
+      _operationLock = null;
+      lock?.complete();
+    }
+  }
+
+  Future<int> _runPresignInternal({required String walletId, int count = 5}) async {
     int generated = 0;
 
     for (int i = 0; i < count; i++) {
+      // Bail out if a sign operation is waiting
+      if (_signInProgress) {
+        print('[MpcWalletService] Aborting presign batch: sign operation pending');
+        break;
+      }
+
       final sessionResult = await MpcApi.createSession(
         sessionType: 'presign',
         parties: [_deviceParty, _serverParty],

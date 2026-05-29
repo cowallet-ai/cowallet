@@ -199,6 +199,10 @@ async fn handle_ws_connection(
 
         match msg {
             Message::Text(text) => {
+                // Ignore JSON control messages (ping/pong heartbeat)
+                if text.contains("\"type\"") {
+                    continue;
+                }
                 match serde_json::from_str::<WsMessage>(&text) {
                     Ok(ws_msg) => {
                         handle_client_message(&state, session_id, party_index, ws_msg).await;
