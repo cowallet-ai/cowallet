@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::middleware::auth::verify_token_unchecked;
 use crate::state::AppState;
 
 /// Query parameters for the WebSocket upgrade request.
@@ -18,8 +17,12 @@ use crate::state::AppState;
 pub struct WsQuery {
     /// The party index this client represents.
     party: i16,
-    /// JWT token for authentication (passed as query param since WS doesn't support headers).
-    token: String,
+    /// Single-use WebSocket ticket (F-010). Obtained from POST /api/v1/auth/ws-ticket.
+    /// WS connections cannot send Authorization headers, and passing the raw JWT in
+    /// the query string leaked it in logs and bypassed the blacklist; the ticket is
+    /// short-lived (30s), single-use, and already validated against the blacklist at
+    /// issue time.
+    ticket: String,
 }
 
 /// JSON message format sent over the WebSocket.
@@ -43,12 +46,23 @@ async fn ws_handler(
     Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Validate JWT from query parameter
-    let claims = verify_token_unchecked(&query.token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-
     // Verify the session exists and the party belongs to it
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    // F-010: consume a single-use WS ticket instead of a raw JWT in the query
+    // string. The ticket was issued from a JWT that already passed the blacklist
+    // check; consuming it atomically (used = TRUE) prevents replay.
+    let ticket_row: Option<(Uuid,)> = sqlx::query_as(
+        "UPDATE ws_tickets SET used = TRUE
+         WHERE ticket = $1 AND NOT used AND expires_at > NOW()
+         RETURNING user_id"
+    )
+    .bind(&query.ticket)
+    .fetch_optional(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let ticket_user_id = ticket_row.ok_or(StatusCode::UNAUTHORIZED)?.0;
 
     let session: (String, Vec<i16>, Uuid) = sqlx::query_as(
         "SELECT status, parties, user_id FROM mpc_sessions WHERE id = $1"
@@ -80,9 +94,8 @@ async fn ws_handler(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Verify the authenticated user owns this session
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
-    if user_id != session_user_id {
+    // Verify the authenticated user (from the consumed ticket) owns this session
+    if ticket_user_id != session_user_id {
         return Err(StatusCode::FORBIDDEN);
     }
 

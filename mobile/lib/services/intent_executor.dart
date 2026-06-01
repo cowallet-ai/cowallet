@@ -388,24 +388,39 @@ class IntentExecutor {
             address, allowanceTarget, tokenContract,
           );
           if (currentAllowance < amount) {
+            final spenderStripped = allowanceTarget.toLowerCase().replaceFirst('0x', '');
+
+            // USDT-like tokens require resetting allowance to 0 first
+            if (currentAllowance > BigInt.zero) {
+              final zeroHex = '0'.padLeft(64, '0');
+              final resetData = '0x095ea7b3${spenderStripped.padLeft(64, '0')}$zeroHex';
+              final resetTxHash = await _tx.signAndSend(
+                to: tokenContract,
+                value: BigInt.zero,
+                data: resetData,
+                gasLimit: BigInt.from(60000),
+                chainId: chainId,
+              );
+              await _waitForTxConfirmation(resetTxHash);
+            }
+
             // Send unlimited approval (MaxUint256)
             final maxUint256 = BigInt.parse(
               'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
               radix: 16,
             );
-            final spenderStripped = allowanceTarget.toLowerCase().replaceFirst('0x', '');
             final amountHex = maxUint256.toRadixString(16).padLeft(64, '0');
             final approveData = '0x095ea7b3${spenderStripped.padLeft(64, '0')}$amountHex';
 
-            await _tx.signAndSend(
+            final approveTxHash = await _tx.signAndSend(
               to: tokenContract,
               value: BigInt.zero,
               data: approveData,
               gasLimit: BigInt.from(60000),
               chainId: chainId,
             );
-            // Brief wait for approval to be mined
-            await Future.delayed(const Duration(seconds: 3));
+            // Wait for approval to be mined before sending swap
+            await _waitForTxConfirmation(approveTxHash);
           }
         }
       }
@@ -492,6 +507,15 @@ class IntentExecutor {
       final friendly = S.swapFailed(msg);
       Services.notifications.showTxFailed(failHash, friendly);
       return ActionResult.fail(friendly);
+    }
+  }
+
+  /// Wait for a transaction to be mined by polling for its receipt.
+  Future<void> _waitForTxConfirmation(String txHash) async {
+    for (int i = 0; i < 30; i++) {
+      await Future.delayed(const Duration(seconds: 2));
+      final receipt = await _chain.getTransactionReceipt(txHash);
+      if (receipt != null) return;
     }
   }
 

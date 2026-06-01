@@ -24,6 +24,10 @@ pub struct ToolContext {
     pub user_id: Option<String>,
     pub wallet_address: Option<String>,
     pub auth_method: Option<String>,
+    /// The user's original (untrusted-data-free) message. Used to cross-validate
+    /// the LLM-chosen recipient address against any address the user literally
+    /// typed, as a defense against indirect prompt injection (F-013).
+    pub user_message: Option<String>,
 }
 
 /// Result of a tool execution
@@ -46,6 +50,35 @@ fn parse_param<T: for<'a> Deserialize<'a>>(params: &Value, key: &str) -> Option<
 /// Parse wallet address from context. Returns None if not provided or invalid.
 fn parse_wallet_address(wallet_address: Option<&str>) -> Option<Address> {
     wallet_address.and_then(|addr| Address::from_str(addr).ok())
+}
+
+/// Extract all 0x-prefixed 40-hex-char EVM addresses literally present in a
+/// string. Used to cross-validate LLM-chosen recipients against addresses the
+/// user actually typed (F-013).
+fn extract_0x_addresses(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 42 <= bytes.len() {
+        if bytes[i] == b'0' && (bytes[i + 1] == b'x' || bytes[i + 1] == b'X') {
+            let candidate = &text[i..i + 42];
+            if candidate[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+                // Ensure the char after the 42-char run isn't another hex digit
+                // (which would make this a longer, non-address hex string).
+                let next_is_hex = bytes
+                    .get(i + 42)
+                    .map(|b| (*b as char).is_ascii_hexdigit())
+                    .unwrap_or(false);
+                if !next_is_hex {
+                    out.push(candidate.to_string());
+                    i += 42;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    out
 }
 
 /// Helper: Get USDC address for common chains
@@ -81,6 +114,69 @@ fn format_units(value: alloy_primitives::U256, decimals: u32) -> String {
     } else {
         format!("{}.{:06}", integer, fraction.to_string().chars().take(6).collect::<String>())
     }
+}
+
+/// Convert a human-readable decimal amount string (e.g. "1.5") to the token's
+/// smallest unit using exact integer math (F-015). Avoids f64, which silently
+/// loses precision for values the user explicitly approved. Rejects malformed
+/// input and amounts with more fractional digits than the token supports rather
+/// than truncating them.
+fn parse_decimal_to_smallest(value: &str, decimals: u32) -> Result<alloy_primitives::U256, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("empty amount".into());
+    }
+    let (int_part, frac_part) = match value.split_once('.') {
+        Some((i, f)) => (i, f),
+        None => (value, ""),
+    };
+    // Both sides must be pure decimal digits (no sign, no exponent, no hex).
+    let valid = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    if (!int_part.is_empty() && !valid(int_part)) || !valid(frac_part) {
+        return Err("invalid decimal amount".into());
+    }
+    if frac_part.len() > decimals as usize {
+        return Err(format!(
+            "amount has more fractional digits ({}) than token decimals ({})",
+            frac_part.len(),
+            decimals
+        ));
+    }
+    // Right-pad the fraction to `decimals` digits, then parse the concatenation
+    // as a single integer in the smallest unit.
+    let mut digits = String::new();
+    digits.push_str(if int_part.is_empty() { "0" } else { int_part });
+    digits.push_str(frac_part);
+    for _ in 0..(decimals as usize - frac_part.len()) {
+        digits.push('0');
+    }
+    alloy_primitives::U256::from_str_radix(&digits, 10)
+        .map_err(|_| "amount out of range".to_string())
+}
+
+/// Validate an EVM address: 0x-prefixed, 20 bytes, valid hex, and — when the
+/// input is mixed-case — a correct EIP-55 checksum (F-016). Returns the
+/// canonical checksummed form.
+fn validate_evm_address(addr: &str) -> Result<String, String> {
+    use alloy_primitives::Address;
+    use std::str::FromStr;
+    if !addr.starts_with("0x") || addr.len() != 42 {
+        return Err("expected 0x-prefixed 40-char hex address".into());
+    }
+    let body = &addr[2..];
+    if !body.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("address contains non-hex characters".into());
+    }
+    // Address::from_str enforces the EIP-55 checksum when the string is mixed
+    // case; all-lower / all-upper inputs are accepted and normalized.
+    let parsed = if body.chars().any(|c| c.is_ascii_uppercase())
+        && body.chars().any(|c| c.is_ascii_lowercase())
+    {
+        Address::from_str(addr).map_err(|_| "invalid EIP-55 checksum".to_string())?
+    } else {
+        Address::from_str(&addr.to_lowercase()).map_err(|_| "invalid address".to_string())?
+    };
+    Ok(parsed.to_checksum(None))
 }
 
 fn token_balance_to_json(b: &crate::services::covalent::TokenBalance) -> serde_json::Value {
@@ -452,7 +548,22 @@ impl ToolContext {
     // --- send_transaction ---
     async fn execute_send_transaction(&self, tool_id: &str, params: Value) -> ToolExecutionResult {
         // Important: We only PREPARE the transaction, do NOT actually send it
-        // User biometric confirmation is required before signing
+        // User biometric confirmation is required before signing.
+        //
+        // F-013 (indirect prompt injection defense, residual control):
+        // The to_address here is chosen by the LLM and may have been influenced by
+        // untrusted portfolio/contacts data injected into the prompt. We CANNOT
+        // fully trust it. The structural mitigations are: (1) untrusted data is
+        // framed as non-instruction DATA in a separate context message (see
+        // chat_stream), and (2) this tool is classified as a `Write` tool, so the
+        // prepared transaction is ALWAYS returned to the client as a confirmation
+        // card (status="prepared", with an explicit biometric-confirmation warning)
+        // and is NEVER auto-broadcast. Below we additionally cross-validate: when
+        // the user's ORIGINAL message literally contains a 0x address, the
+        // tool-chosen to_address MUST match it; otherwise we reject and force the
+        // user to re-state the recipient. RESIDUAL RISK: when the user refers to a
+        // recipient by name/contact only, correctness ultimately relies on the user
+        // verifying the recipient address on the confirmation card before signing.
 
         let to_address: String = match parse_param(&params, "to_address") {
             Some(addr) => addr,
@@ -504,18 +615,22 @@ impl ToolContext {
         };
         let send_all: bool = parse_param(&params, "send_all").unwrap_or(false);
 
-        // Validate contract_address format if provided
-        if let Some(ref ca) = contract_address {
-            if !ca.starts_with("0x") || ca.len() != 42 {
-                return ToolExecutionResult {
-                    tool_id: tool_id.to_string(),
-                    tool_name: "send_transaction".into(),
-                    success: false,
-                    result: Value::Null,
-                    error: Some("Invalid contract_address format. Expected 0x-prefixed 40-char hex address".into()),
-                };
-            }
-        }
+        // Validate contract_address (hex + EIP-55 checksum, F-016)
+        let contract_address = match contract_address {
+            Some(ca) => match validate_evm_address(&ca) {
+                Ok(canonical) => Some(canonical),
+                Err(e) => {
+                    return ToolExecutionResult {
+                        tool_id: tool_id.to_string(),
+                        tool_name: "send_transaction".into(),
+                        success: false,
+                        result: Value::Null,
+                        error: Some(format!("Invalid contract_address: {}", e)),
+                    };
+                }
+            },
+            None => None,
+        };
         let from_address = match parse_wallet_address(self.wallet_address.as_deref()) {
             Some(a) => a,
             None => return ToolExecutionResult {
@@ -527,37 +642,68 @@ impl ToolContext {
             },
         };
 
-        // Validate to_address format
-        if !to_address.starts_with("0x") || to_address.len() != 42 {
-            return ToolExecutionResult {
-                tool_id: tool_id.to_string(),
-                tool_name: "send_transaction".into(),
-                success: false,
-                result: Value::Null,
-                error: Some("Invalid to_address format. Expected 0x-prefixed hex address".into()),
-            };
-        }
+        // Validate to_address (hex + EIP-55 checksum, F-016) and normalize.
+        let to_address = match validate_evm_address(&to_address) {
+            Ok(canonical) => canonical,
+            Err(e) => {
+                return ToolExecutionResult {
+                    tool_id: tool_id.to_string(),
+                    tool_name: "send_transaction".into(),
+                    success: false,
+                    result: Value::Null,
+                    error: Some(format!("Invalid to_address: {}", e)),
+                };
+            }
+        };
 
-        // Parse value - support both smallest-unit (integer) and human-readable (decimal) formats
-        let value_wei_str: String;
-        let value_u256 = if value.contains('.') {
-            // Human-readable amount - convert to smallest unit using token decimals
-            let amount: f64 = match value.parse() {
-                Ok(v) => v,
-                Err(_) => {
+        // F-013: Cross-validate the LLM-chosen recipient. If the user's ORIGINAL
+        // message literally contains one or more 0x addresses, the tool-chosen
+        // to_address MUST be one of them. This prevents indirect prompt injection
+        // (e.g. malicious portfolio/contact data) from redirecting a transfer the
+        // user explicitly addressed to a typed address. When the user did not type
+        // any address (referring to a contact by name), we fall through to the
+        // mandatory user-confirmation card (see function-level comment).
+        if let Some(msg) = &self.user_message {
+            let typed_addresses = extract_0x_addresses(msg);
+            if !typed_addresses.is_empty() {
+                let to_lower = to_address.to_lowercase();
+                let matches = typed_addresses.iter().any(|a| a.to_lowercase() == to_lower);
+                if !matches {
+                    tracing::warn!(
+                        "send_transaction to_address {} does not match any address typed by the user; rejecting (possible prompt injection)",
+                        to_address
+                    );
                     return ToolExecutionResult {
                         tool_id: tool_id.to_string(),
                         tool_name: "send_transaction".into(),
                         success: false,
                         result: Value::Null,
-                        error: Some("Invalid value format".into()),
+                        error: Some("收款地址与您消息中提供的地址不一致，已拒绝。请重新确认收款地址。(recipient address does not match the address you provided)".into()),
                     };
                 }
-            };
-            let factor = 10f64.powi(decimals as i32);
-            let smallest = (amount * factor) as u128;
-            value_wei_str = smallest.to_string();
-            alloy_primitives::U256::from(smallest)
+            }
+        }
+
+        // Parse value - support both smallest-unit (integer) and human-readable (decimal) formats
+        let value_wei_str: String;
+        let value_u256 = if value.contains('.') {
+            // Human-readable amount - convert to smallest unit with exact integer
+            // math (F-015). f64 would silently alter the amount the user approved.
+            match parse_decimal_to_smallest(&value, decimals as u32) {
+                Ok(v) => {
+                    value_wei_str = v.to_string();
+                    v
+                }
+                Err(e) => {
+                    return ToolExecutionResult {
+                        tool_id: tool_id.to_string(),
+                        tool_name: "send_transaction".into(),
+                        success: false,
+                        result: Value::Null,
+                        error: Some(format!("Invalid value format: {}", e)),
+                    };
+                }
+            }
         } else {
             match alloy_primitives::U256::from_str_radix(&value, 10) {
                 Ok(v) => {
@@ -760,12 +906,38 @@ impl ToolContext {
         value: alloy_primitives::U256,
         decimals: u8,
     ) -> policy_engine::PolicyResult {
-        // Get token price for USD estimation
+        // Get token price for USD estimation.
+        // F-012: FAIL CLOSED. If the price oracle is unavailable or returns a
+        // non-positive price, we cannot evaluate the USD-based spending limits.
+        // We MUST NOT collapse the valuation to $0 (which would bypass limits and
+        // silently prepare the transfer as if it passed). Instead, block the
+        // transaction with a clear reason.
         let symbol = if token.is_empty() { "ETH" } else { token };
         let price_usd = self.app_state.price_cache
             .get_usd_price(&self.app_state.http, &symbol.to_uppercase())
-            .await
-            .unwrap_or(0.0);
+            .await;
+
+        let price_usd = match price_usd {
+            Some(p) if p > 0.0 => p,
+            _ => {
+                tracing::warn!(
+                    "evaluate_transfer_policy: price oracle unavailable for {}, failing closed",
+                    symbol
+                );
+                return policy_engine::PolicyResult {
+                    allowed: false,
+                    warnings: Vec::new(),
+                    requires_extra_confirmation: false,
+                    violation: Some(policy_engine::limits::PolicyViolation {
+                        reason: format!(
+                            "无法获取 {} 的美元价格，无法核验转账限额，已暂停该交易。price oracle unavailable; cannot evaluate USD limit",
+                            symbol
+                        ),
+                        limit: "USD spending limit".into(),
+                    }),
+                };
+            }
+        };
 
         // Calculate value in USD
         let divisor = 10f64.powi(decimals as i32);

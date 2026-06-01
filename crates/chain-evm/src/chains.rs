@@ -52,9 +52,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::Eip1559,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -81,9 +81,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::OpBedrock,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -110,9 +110,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::ArbitrumNitro,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -139,9 +139,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::OpBedrock,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -168,9 +168,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::Legacy,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -197,9 +197,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::OpBedrock,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -226,9 +226,9 @@ impl ChainConfig {
             },
             gas_model: GasModel::Eip1559,
             erc4337_entrypoint: Some(
-                "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
                     .parse()
-                    .expect("valid EntryPoint v0.7 address"),
+                    .expect("valid EntryPoint v0.6 address"),
             ),
             bundler_url,
             paymaster_url: None,
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_entrypoint_addresses_consistent() {
-        let expected_entrypoint = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+        let expected_entrypoint = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
             .parse::<Address>()
             .unwrap();
 
@@ -407,7 +407,7 @@ mod tests {
             assert_eq!(
                 chain.erc4337_entrypoint,
                 Some(expected_entrypoint),
-                "chain {} should have consistent EntryPoint v0.7 address",
+                "chain {} should have consistent EntryPoint v0.6 address",
                 chain.name
             );
         }

@@ -16,7 +16,8 @@ class AuthExample {
 
     if (result.isSuccess) {
       print("注册成功！用户ID: ${result.data?["user_id"]}");
-      print("Token: ${result.data?["token"]}");
+      // Never log token material (F-021); it is persisted to SecureStorage.
+      print("Token: <redacted>");
       // token已自动保存到SecureStorage
     } else {
       print("注册失败: ${result.errorMessage}");

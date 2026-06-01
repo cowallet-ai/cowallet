@@ -2,9 +2,17 @@ package com.cowallet.mpc
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import androidx.annotation.RequiresApi
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -20,14 +28,34 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
     private const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
     private const val KEY_ALIAS = "com.cowallet.storage.master"
+    private const val SHARD_KEY_ALIAS = "com.cowallet.shard.encryption"
     private const val GCM_TAG_LENGTH_BITS = 128
     private const val IV_LENGTH_BYTES = 12
+    private const val SHARD_PREFS_NAME = "cowallet_shard_storage"
+    private const val SHARD_PREF_KEY = "device-shard-encrypted"
 
     fun setup(flutterEngine: FlutterEngine, context: Context) {
       val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
       channel.setMethodCallHandler(MpcKeystoreHandler(context))
     }
   }
+
+  private val mainHandler = Handler(Looper.getMainLooper())
+
+  /// Encrypted, MasterKey-backed SharedPreferences for shard ciphertext.
+  /// The MasterKey is itself AES256-GCM in the AndroidKeyStore, so the on-disk
+  /// preference file is double-encrypted and excluded from backups via
+  /// android:allowBackup="false" / data_extraction_rules.xml.
+  private fun shardPrefs() =
+    EncryptedSharedPreferences.create(
+      context,
+      SHARD_PREFS_NAME,
+      MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build(),
+      EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+      EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
 
   override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
     when (call.method) {
@@ -198,17 +226,39 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
   @RequiresApi(Build.VERSION_CODES.M)
   private fun storeEncryptedShard(shardData: ByteArray, result: MethodChannel.Result) {
     try {
-      // Ensure hardware-backed encryption key exists
+      // Ensure hardware-backed, auth-bound encryption key exists
       ensureShardEncryptionKeyExists()
 
-      // Encrypt the shard data
-      val encryptedData = encryptShardData(shardData)
+      val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+      cipher.init(Cipher.ENCRYPT_MODE, getShardKey())
 
-      // Store encrypted data in SharedPreferences
-      val sharedPref = context.getSharedPreferences("cowallet_secure_storage", Context.MODE_PRIVATE)
-      sharedPref.edit().putString("device-shard-encrypted", encryptedData).apply()
+      // The key requires user authentication for every use; authorize the
+      // cipher via BiometricPrompt before performing the encryption.
+      authenticateCipher(
+        cipher,
+        title = "Protect wallet backup",
+        subtitle = "Authenticate to encrypt your device shard",
+        onSuccess = { authedCipher ->
+          try {
+            val iv = authedCipher.iv
+            val ciphertext = authedCipher.doFinal(shardData)
+            val combined = ByteArray(iv.size + ciphertext.size)
+            System.arraycopy(iv, 0, combined, 0, iv.size)
+            System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
+            val encoded = Base64.getEncoder().encodeToString(combined)
 
-      result.success(null)
+            shardPrefs().edit().putString(SHARD_PREF_KEY, encoded).apply()
+            result.success(null)
+          } catch (e: Exception) {
+            result.error("ENCRYPTION_FAILED", e.message, null)
+          }
+        },
+        onError = { code, msg -> result.error(code, msg, null) },
+      )
+    } catch (e: KeyPermanentlyInvalidatedException) {
+      // Biometric enrollment changed: the old key is unusable. Surface a
+      // distinct error so the caller can re-provision the shard.
+      result.error("KEY_INVALIDATED", e.message, null)
     } catch (e: Exception) {
       result.error("ENCRYPTION_FAILED", e.message, null)
     }
@@ -217,22 +267,105 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
   @RequiresApi(Build.VERSION_CODES.M)
   private fun loadEncryptedShard(result: MethodChannel.Result) {
     try {
-      // Retrieve encrypted data from SharedPreferences
-      val sharedPref = context.getSharedPreferences("cowallet_secure_storage", Context.MODE_PRIVATE)
-      val encryptedData = sharedPref.getString("device-shard-encrypted", null)
-
+      val encryptedData = shardPrefs().getString(SHARD_PREF_KEY, null)
       if (encryptedData == null) {
         result.success(null) // No shard stored
         return
       }
 
-      // Decrypt the shard data
-      val decryptedData = decryptShardData(encryptedData)
+      val combined = Base64.getDecoder().decode(encryptedData)
+      val iv = ByteArray(IV_LENGTH_BYTES)
+      val ciphertext = ByteArray(combined.size - IV_LENGTH_BYTES)
+      System.arraycopy(combined, 0, iv, 0, IV_LENGTH_BYTES)
+      System.arraycopy(combined, IV_LENGTH_BYTES, ciphertext, 0, ciphertext.size)
 
-      // Return as byte array
-      result.success(decryptedData)
+      val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+      cipher.init(Cipher.DECRYPT_MODE, getShardKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+
+      // Decryption requires a fresh user authentication for every use.
+      authenticateCipher(
+        cipher,
+        title = "Unlock wallet backup",
+        subtitle = "Authenticate to decrypt your device shard",
+        onSuccess = { authedCipher ->
+          try {
+            val decrypted = authedCipher.doFinal(ciphertext)
+            result.success(decrypted)
+          } catch (e: Exception) {
+            result.error("DECRYPTION_FAILED", e.message, null)
+          }
+        },
+        onError = { code, msg -> result.error(code, msg, null) },
+      )
+    } catch (e: KeyPermanentlyInvalidatedException) {
+      result.error("KEY_INVALIDATED", e.message, null)
     } catch (e: Exception) {
       result.error("DECRYPTION_FAILED", e.message, null)
+    }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun getShardKey(): javax.crypto.SecretKey {
+    val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
+    keyStore.load(null)
+    return keyStore.getKey(SHARD_KEY_ALIAS, null) as? javax.crypto.SecretKey
+      ?: throw Exception("Shard encryption key not found")
+  }
+
+  /// Authorize an auth-bound Cipher via BiometricPrompt and run [onSuccess] on
+  /// the main thread once the user authenticates. The Cipher is wrapped in a
+  /// CryptoObject so the resulting key use is cryptographically tied to this
+  /// specific authentication. Requires the host to be a FragmentActivity
+  /// (MainActivity extends FlutterFragmentActivity), so no Dart-side change is
+  /// needed — the native prompt is shown automatically on store/load.
+  private fun authenticateCipher(
+    cipher: Cipher,
+    title: String,
+    subtitle: String,
+    onSuccess: (Cipher) -> Unit,
+    onError: (String, String) -> Unit,
+  ) {
+    val activity = context as? FragmentActivity
+    if (activity == null) {
+      onError("NO_ACTIVITY", "Biometric prompt requires a FragmentActivity host")
+      return
+    }
+
+    mainHandler.post {
+      val executor = androidx.core.content.ContextCompat.getMainExecutor(context)
+      val prompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+            val authedCipher = authResult.cryptoObject?.cipher
+            if (authedCipher == null) {
+              onError("AUTH_FAILED", "No authenticated cipher returned")
+            } else {
+              onSuccess(authedCipher)
+            }
+          }
+
+          override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            onError("AUTH_FAILED", errString.toString())
+          }
+        },
+      )
+
+      val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(title)
+        .setSubtitle(subtitle)
+        .setAllowedAuthenticators(
+          BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+        )
+        .build()
+
+      try {
+        prompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+      } catch (e: Exception) {
+        onError("AUTH_FAILED", e.message ?: "Biometric authentication failed")
+      }
     }
   }
 
@@ -241,76 +374,52 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
     val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
     keyStore.load(null)
 
-    val shardKeyAlias = "com.cowallet.shard.encryption"
+    if (!keyStore.containsAlias(SHARD_KEY_ALIAS)) {
+      // The shard key is bound to user authentication: every cryptographic
+      // use must be authorized by a BiometricPrompt CryptoObject. This means
+      // the ciphertext cannot be decrypted by anyone without a live biometric
+      // / device-credential challenge, even with full filesystem access.
+      val builder = KeyGenParameterSpec.Builder(
+        SHARD_KEY_ALIAS,
+        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+      )
+        .setKeySize(256)
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setRandomizedEncryptionRequired(true)
+        .setUserAuthenticationRequired(true)
 
-    if (!keyStore.containsAlias(shardKeyAlias)) {
-      val keyGenSpec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        KeyGenParameterSpec.Builder(shardKeyAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-          .setKeySize(256)
-          .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-          .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-          .setIsStrongBoxBacked(true) // Use StrongBox if available
-          .setUserAuthenticationRequired(false) // Don't require auth for every encryption
-          .setRandomizedEncryptionRequired(true)
-          .build()
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        builder.setIsStrongBoxBacked(true) // Use StrongBox if available
+      }
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        // 0 = authentication required for every single use (no validity window).
+        builder.setUserAuthenticationParameters(
+          0,
+          KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
+        )
       } else {
-        KeyGenParameterSpec.Builder(shardKeyAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-          .setKeySize(256)
-          .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-          .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-          .setRandomizedEncryptionRequired(true)
-          .build()
+        // Pre-R fallback: 0s validity also means auth-required-every-use.
+        @Suppress("DEPRECATION")
+        builder.setUserAuthenticationValidityDurationSeconds(-1)
       }
 
       val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
-      keyGenerator.init(keyGenSpec)
-      keyGenerator.generateKey()
+      try {
+        keyGenerator.init(builder.build())
+        keyGenerator.generateKey()
+      } catch (e: Exception) {
+        // StrongBox may be unavailable on this device; retry without it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+          builder.setIsStrongBoxBacked(false)
+          keyGenerator.init(builder.build())
+          keyGenerator.generateKey()
+        } else {
+          throw e
+        }
+      }
     }
   }
 
-  @RequiresApi(Build.VERSION_CODES.M)
-  private fun encryptShardData(plaintext: ByteArray): String {
-    val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
-    keyStore.load(null)
-
-    val shardKeyAlias = "com.cowallet.shard.encryption"
-    val secretKey = keyStore.getKey(shardKeyAlias, null)
-      ?: throw Exception("Shard encryption key not found")
-
-    val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-    cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-
-    val iv = cipher.iv
-    val ciphertext = cipher.doFinal(plaintext)
-
-    // Combine IV + ciphertext
-    val combined = ByteArray(iv.size + ciphertext.size)
-    System.arraycopy(iv, 0, combined, 0, iv.size)
-    System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
-
-    return Base64.getEncoder().encodeToString(combined)
-  }
-
-  @RequiresApi(Build.VERSION_CODES.M)
-  private fun decryptShardData(encryptedData: String): ByteArray {
-    val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
-    keyStore.load(null)
-
-    val shardKeyAlias = "com.cowallet.shard.encryption"
-    val secretKey = keyStore.getKey(shardKeyAlias, null)
-      ?: throw Exception("Shard encryption key not found")
-
-    val combined = Base64.getDecoder().decode(encryptedData)
-
-    val iv = ByteArray(IV_LENGTH_BYTES)
-    val ciphertext = ByteArray(combined.size - IV_LENGTH_BYTES)
-
-    System.arraycopy(combined, 0, iv, 0, IV_LENGTH_BYTES)
-    System.arraycopy(combined, IV_LENGTH_BYTES, ciphertext, 0, ciphertext.size)
-
-    val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-    cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-
-    return cipher.doFinal(ciphertext)
-  }
 }

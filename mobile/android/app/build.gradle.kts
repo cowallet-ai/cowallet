@@ -50,6 +50,9 @@ dependencies {
 
     // AndroidX Biometric
     implementation("androidx.biometric:biometric:1.1.0")
+
+    // Jetpack Security – EncryptedSharedPreferences (AES256-GCM, MasterKey-backed)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     
     // Kotlin Coroutines (for async operations)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")

@@ -15,10 +15,12 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
+        .route("/challenge", post(login_challenge))
         .route("/login", post(login))
         .route("/refresh", post(refresh))
         .route("/logout", post(logout))
         .route("/session", get(session_info))
+        .route("/ws-ticket", post(ws_ticket))
         .route("/audit-log", get(audit_log))
         .route("/email/send-otp", post(send_email_otp))
         .route("/recovery/initiate", post(initiate_recovery))
@@ -148,6 +150,9 @@ struct RegisterRequest {
     force: bool,
     /// SHA-256 hash of the user's backup shard (hex). Required when force=true.
     backup_shard_hash: Option<String>,
+    /// Wallet secp256k1 public key (SEC1 hex, compressed or uncompressed).
+    /// Stored so the user can later authenticate via challenge-response login (F-001).
+    public_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -221,9 +226,23 @@ async fn register(
 
     let (verification_id, attempts) = verification.unwrap();
 
-    if attempts > 5 {
+    // SECURITY (F-011): lock on the 5th failed guess (>=), not the 6th.
+    if attempts >= 5 {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
+
+    // Decode the optional wallet public key (SEC1 hex) used for challenge-response
+    // login (F-001). Reject malformed keys so logins can actually verify later.
+    let public_key_bytes: Option<Vec<u8>> = match &body.public_key {
+        Some(pk_hex) => {
+            let bytes = hex::decode(pk_hex.trim_start_matches("0x"))
+                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            k256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)
+                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            Some(bytes)
+        }
+        None => None,
+    };
 
     // Mark as verified
     sqlx::query("UPDATE email_verifications SET verified = TRUE WHERE id = $1")
@@ -334,9 +353,13 @@ async fn register(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
 
-        // Update device_id and reuse the user
-        sqlx::query("UPDATE users SET device_id = $1 WHERE id = $2")
+        // Update device_id and reuse the user.
+        // Set public_key only when provided (don't clobber an existing key with NULL).
+        sqlx::query(
+            "UPDATE users SET device_id = $1, public_key = COALESCE($2, public_key) WHERE id = $3"
+        )
             .bind(&body.device_id)
+            .bind(public_key_bytes.as_deref())
             .bind(existing_id)
             .execute(db)
             .await
@@ -346,10 +369,11 @@ async fn register(
     } else {
         // New user
         let new_id = uuid::Uuid::new_v4();
-        sqlx::query("INSERT INTO users (id, email, device_id) VALUES ($1, $2, $3)")
+        sqlx::query("INSERT INTO users (id, email, device_id, public_key) VALUES ($1, $2, $3, $4)")
             .bind(new_id)
             .bind(&body.email)
             .bind(&body.device_id)
+            .bind(public_key_bytes.as_deref())
             .execute(db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -383,10 +407,69 @@ async fn register(
 }
 
 #[derive(Deserialize)]
-struct LoginRequest {
+struct ChallengeRequest {
     device_id: String,
 }
 
+#[derive(Serialize)]
+struct ChallengeResponse {
+    /// Random 32-byte nonce (hex). The client signs SHA-256(nonce) with the
+    /// wallet's secp256k1 private key and returns the signature to /login.
+    challenge: String,
+}
+
+/// POST /api/v1/auth/challenge — issue a login challenge nonce (F-001).
+/// Public endpoint. Always returns a challenge (even for unknown devices) to
+/// avoid leaking which devices are registered; verification happens at /login.
+async fn login_challenge(
+    State(state): State<AppState>,
+    Json(body): Json<ChallengeRequest>,
+) -> Result<Json<ChallengeResponse>, StatusCode> {
+    let db = state
+        .require_db()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let mut nonce = [0u8; 32];
+    rand::Rng::fill(&mut rand::thread_rng(), &mut nonce[..]);
+    let expires_at = Utc::now() + chrono::Duration::minutes(5);
+
+    sqlx::query(
+        "INSERT INTO login_challenges (device_id, nonce, expires_at) VALUES ($1, $2, $3)"
+    )
+    .bind(&body.device_id)
+    .bind(nonce.as_slice())
+    .bind(expires_at)
+    .execute(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to store login challenge: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(ChallengeResponse {
+        challenge: hex::encode(nonce),
+    }))
+}
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    device_id: String,
+    /// The challenge nonce (hex) previously issued by /auth/challenge.
+    challenge: String,
+    /// secp256k1 ECDSA signature (DER or fixed 64-byte, hex) over SHA-256(nonce).
+    signature: String,
+}
+
+/// POST /api/v1/auth/login — public-key challenge-response login (F-001).
+///
+/// Replaces the previous device_id-only login (which authenticated anyone who
+/// knew a device_id). The client must prove possession of the wallet private
+/// key by signing the challenge nonce. Verification steps:
+///   1. Look up the user by device_id and fetch their stored public_key.
+///   2. Reject if public_key is NULL (user cannot do challenge login).
+///   3. Atomically consume the matching, unexpired, unused challenge nonce.
+///   4. Verify the secp256k1 signature over SHA-256(nonce) with that public key.
+/// Only then are tokens issued.
 async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
@@ -395,32 +478,83 @@ async fn login(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let result: Result<(uuid::Uuid,), StatusCode> = sqlx::query_as("SELECT id FROM users WHERE device_id = $1")
-        .bind(&body.device_id)
-        .fetch_one(db)
-        .await
-        .map_err(|_| StatusCode::UNAUTHORIZED);
+    let audit_denied = |state: AppState, device_id: String| async move {
+        let _ = state
+            .audit_logger
+            .log_with_details(
+                uuid::Uuid::nil(),
+                "auth.login",
+                AuditResult::Denied,
+                None,
+                None,
+                None,
+                None,
+                Some(serde_json::json!({ "device_id": device_id })),
+            )
+            .await;
+    };
 
-    let user_id = match result {
-        Ok((id,)) => id,
-        Err(e) => {
-            // Audit log - login failure
-            let _ = state
-                .audit_logger
-                .log_with_details(
-                    uuid::Uuid::nil(),
-                    "auth.login",
-                    AuditResult::Denied,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(serde_json::json!({ "device_id": body.device_id })),
-                )
-                .await;
-            return Err(e);
+    // 1. Look up user + their stored public key.
+    let user_row: Option<(uuid::Uuid, Option<Vec<u8>>)> =
+        sqlx::query_as("SELECT id, public_key FROM users WHERE device_id = $1")
+            .bind(&body.device_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let (user_id, public_key) = match user_row {
+        Some((id, Some(pk))) => (id, pk),
+        // 2. No user, or user has no public_key on file → cannot verify.
+        _ => {
+            audit_denied(state.clone(), body.device_id.clone()).await;
+            return Err(StatusCode::UNAUTHORIZED);
         }
     };
+
+    // Parse the challenge nonce and the signature.
+    let nonce = hex::decode(body.challenge.trim_start_matches("0x"))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // 3. Atomically consume a matching, unexpired, unused challenge for this device.
+    let consumed: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "UPDATE login_challenges SET used = TRUE
+         WHERE id = (
+             SELECT id FROM login_challenges
+             WHERE device_id = $1 AND nonce = $2 AND NOT used AND expires_at > NOW()
+             ORDER BY created_at DESC
+             LIMIT 1
+         )
+         RETURNING id"
+    )
+    .bind(&body.device_id)
+    .bind(nonce.as_slice())
+    .fetch_optional(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if consumed.is_none() {
+        // Challenge not found / expired / already used.
+        audit_denied(state.clone(), body.device_id.clone()).await;
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // 4. Verify the secp256k1 signature over SHA-256(nonce) with the stored key.
+    let verifying_key = k256::ecdsa::VerifyingKey::from_sec1_bytes(&public_key)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let sig_bytes = hex::decode(body.signature.trim_start_matches("0x"))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    // Accept either fixed-size (r||s) or DER-encoded signatures.
+    let signature = k256::ecdsa::Signature::from_slice(&sig_bytes)
+        .or_else(|_| k256::ecdsa::Signature::from_der(&sig_bytes))
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let digest = Sha256::digest(&nonce);
+    {
+        use k256::ecdsa::signature::hazmat::PrehashVerifier;
+        if verifying_key.verify_prehash(digest.as_slice(), &signature).is_err() {
+            audit_denied(state.clone(), body.device_id.clone()).await;
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
 
     let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -451,16 +585,24 @@ async fn login(
 
 async fn refresh(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<RefreshRequest>,
 ) -> Result<Json<AuthResponse>, StatusCode> {
     let db = state
         .db
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
+    // Device id MUST come from an independent source (request header), not from
+    // the refresh token itself, otherwise the binding check is a no-op (F-011).
+    let presented_device_id = headers
+        .get("X-Device-ID")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::FORBIDDEN)?;
+
     let claims = verify_token_unchecked(&body.refresh_token)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let token_pair = refresh_access_token(&db, &body.refresh_token, &claims.device_id).await?;
+    let token_pair = refresh_access_token(&db, &body.refresh_token, presented_device_id).await?;
 
     let user_id = claims.sub.parse().unwrap_or(uuid::Uuid::nil());
     let _ = state
@@ -536,6 +678,72 @@ async fn session_info(
         "device_id": claims.device_id,
         "expires_at": claims.exp,
     })))
+}
+
+#[derive(Serialize)]
+struct WsTicketResponse {
+    /// Opaque single-use ticket. Pass to the WS handler as `?ticket=`.
+    ticket: String,
+    /// Seconds until the ticket expires.
+    expires_in: u64,
+}
+
+/// POST /api/v1/auth/ws-ticket — exchange a valid JWT for a short-lived,
+/// single-use WebSocket ticket (F-010).
+///
+/// The MPC WebSocket cannot send Authorization headers, so previously the raw
+/// JWT was passed in the query string (`?token=`), exposing it in logs/proxies
+/// and bypassing blacklist checks. This endpoint validates the bearer JWT
+/// (signature + expiry + blacklist), then stores a random 32-byte ticket in the
+/// DB with a 30-second TTL keyed to the user_id. The WS handler consumes it.
+async fn ws_ticket(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<WsTicketResponse>, StatusCode> {
+    let db = state
+        .require_db()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    // Extract + verify the bearer JWT (mirrors require_auth, incl. blacklist).
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let claims = verify_token_unchecked(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    if crate::middleware::auth::is_token_blacklisted(db, &claims.jti)
+        .await
+        .unwrap_or(false)
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let user_id = uuid::Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Generate an opaque random ticket (32 bytes hex).
+    let mut raw = [0u8; 32];
+    rand::Rng::fill(&mut rand::thread_rng(), &mut raw[..]);
+    let ticket = hex::encode(raw);
+    let expires_in: u64 = 30;
+    let expires_at = Utc::now() + chrono::Duration::seconds(expires_in as i64);
+
+    sqlx::query(
+        "INSERT INTO ws_tickets (ticket, user_id, device_id, expires_at) VALUES ($1, $2, $3, $4)"
+    )
+    .bind(&ticket)
+    .bind(user_id)
+    .bind(&claims.device_id)
+    .bind(expires_at)
+    .execute(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to store ws ticket: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(WsTicketResponse { ticket, expires_in }))
 }
 
 async fn audit_log(
@@ -759,8 +967,8 @@ async fn verify_recovery_otp(
         return Err(StatusCode::CONFLICT);
     }
 
-    // Brute-force protection: lock after 5 failed attempts
-    if attempts > 5 {
+    // Brute-force protection: lock on the 5th failed attempt (F-011: >= not >)
+    if attempts >= 5 {
         let _ = sqlx::query("UPDATE recovery_sessions SET status = 'locked' WHERE id = $1")
             .bind(recovery_session_id)
             .execute(db)

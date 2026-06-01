@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use alloy_primitives::{Address, Bytes, U256};
 
-use crate::{errors::ApiError, state::AppState};
+use crate::{errors::ApiError, middleware::auth::Claims, state::AppState};
 use chain_evm::userop::{
     build_transfer_userop, estimate_userop_gas, request_paymaster_sponsorship, submit_to_bundler,
     UserOperation,
@@ -138,6 +138,7 @@ async fn build_userop_handler(
 /// Attach signature to a UserOperation and submit it to the bundler.
 async fn submit_userop_handler(
     State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
     Json(req): Json<SubmitUserOpRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Check if bundler is configured
@@ -145,6 +146,24 @@ async fn submit_userop_handler(
         .bundler_url
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("ERC-4337 bundler not configured"))?;
+
+    // The userOp sender MUST belong to the authenticated user (F-019): without
+    // this, any user could relay a signed userOp for another account / paymaster.
+    let db = state.require_db()?;
+    let user_id: uuid::Uuid = claims.0.sub.parse()
+        .map_err(|_| ApiError::auth_invalid_token("invalid user id in token"))?;
+    let sender_bytes = req.userop.sender.as_slice().to_vec();
+    let owns_sender: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
+    )
+    .bind(&sender_bytes)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(ApiError::database_error)?;
+    if owns_sender.is_none() {
+        return Err(ApiError::auth_forbidden("sender does not belong to authenticated user"));
+    }
 
     // Parse and attach signature
     let sig_hex = req.signature.strip_prefix("0x").unwrap_or(&req.signature);

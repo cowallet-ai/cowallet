@@ -272,8 +272,15 @@ async fn main() {
 
     tracing::info!("cowallet API server v{} listening on :3000", env!("CARGO_PKG_VERSION"));
 
-    // Graceful shutdown setup
-    let server = axum::serve(listener, app);
+    // Graceful shutdown setup.
+    // `into_make_service_with_connect_info` is required so the rate limiter can
+    // key unauthenticated requests on the real peer socket address (F-011);
+    // without it, ConnectInfo is never populated and every unauthenticated
+    // request collapses into a single shared bucket.
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    );
 
     let graceful = server.with_graceful_shutdown(async {
         let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())

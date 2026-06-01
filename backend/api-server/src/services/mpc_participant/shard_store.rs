@@ -18,6 +18,47 @@ impl ShardStore {
         Self { db, encryption }
     }
 
+    /// Version tag stored in `encryption_key_id` for shards encrypted with the
+    /// identity-bound (AAD) scheme (F-013). Lets `load_*` pick the right path.
+    fn bound_key_id(&self) -> String {
+        format!("{}-aad", self.encryption.key_id())
+    }
+
+    /// Additional authenticated data binding a server shard to its owning user.
+    fn aad_user(user_id: Uuid) -> Vec<u8> {
+        let mut aad = b"cowallet-shard|server|user=".to_vec();
+        aad.extend_from_slice(user_id.as_bytes());
+        aad
+    }
+
+    /// AAD binding a shard to a specific user + wallet.
+    fn aad_wallet(user_id: Uuid, wallet_id: Uuid) -> Vec<u8> {
+        let mut aad = b"cowallet-shard|server|user=".to_vec();
+        aad.extend_from_slice(user_id.as_bytes());
+        aad.extend_from_slice(b"|wallet=");
+        aad.extend_from_slice(wallet_id.as_bytes());
+        aad
+    }
+
+    /// Decrypt a stored shard, dispatching on the persisted `key_id`. Rows
+    /// written with the AAD scheme REQUIRE the matching identity; only rows
+    /// written by the pre-F-013 scheme fall back to unbound decryption, so the
+    /// fallback cannot be used to bypass binding on new shards.
+    fn decrypt_stored(
+        &self,
+        key_id: &str,
+        encrypted: &EncryptedData,
+        aad: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        if key_id.ends_with("-aad") {
+            self.encryption.decrypt_bound(encrypted, aad)
+                .map_err(|e| format!("decryption failed: {}", e))
+        } else {
+            self.encryption.decrypt(encrypted)
+                .map_err(|e| format!("decryption failed (legacy): {}", e))
+        }
+    }
+
     /// Store the server's KeyShare after DKG completes.
     /// The secret_share is encrypted at rest with AES-256-GCM.
     pub async fn store_key_share(
@@ -26,7 +67,8 @@ impl ShardStore {
         share: &KeyShare,
     ) -> Result<(), String> {
         let plaintext = self.serialize_share(share)?;
-        let encrypted = self.encryption.encrypt(&plaintext)
+        let aad = Self::aad_user(user_id);
+        let encrypted = self.encryption.encrypt_bound(&plaintext, &aad)
             .map_err(|e| format!("encryption failed: {}", e))?;
 
         sqlx::query(
@@ -44,7 +86,7 @@ impl ShardStore {
         .bind(SERVER_PARTY_INDEX as i16)
         .bind(&encrypted.ciphertext)
         .bind(encrypted.nonce.as_slice())
-        .bind(self.encryption.key_id())
+        .bind(self.bound_key_id())
         .execute(&self.db)
         .await
         .map_err(|e| format!("DB store failed: {}", e))?;
@@ -56,8 +98,8 @@ impl ShardStore {
     /// Load the server's KeyShare for signing.
     /// Returns None if no shard exists for this user.
     pub async fn load_key_share(&self, user_id: Uuid) -> Result<Option<KeyShare>, String> {
-        let row: Option<(Vec<u8>, Vec<u8>)> = sqlx::query_as(
-            "SELECT encrypted_shard, nonce FROM shard_metadata
+        let row: Option<(Vec<u8>, Vec<u8>, String)> = sqlx::query_as(
+            "SELECT encrypted_shard, nonce, encryption_key_id FROM shard_metadata
              WHERE user_id = $1 AND location = 'server'"
         )
         .bind(user_id)
@@ -65,7 +107,7 @@ impl ShardStore {
         .await
         .map_err(|e| format!("DB load failed: {}", e))?;
 
-        let (ciphertext, nonce_vec) = match row {
+        let (ciphertext, nonce_vec, key_id) = match row {
             Some(r) => r,
             None => return Ok(None),
         };
@@ -77,8 +119,8 @@ impl ShardStore {
         nonce.copy_from_slice(&nonce_vec);
 
         let encrypted = EncryptedData { nonce, ciphertext };
-        let plaintext = self.encryption.decrypt(&encrypted)
-            .map_err(|e| format!("decryption failed: {}", e))?;
+        let aad = Self::aad_user(user_id);
+        let plaintext = self.decrypt_stored(&key_id, &encrypted, &aad)?;
 
         let share = self.deserialize_share(&plaintext)?;
 
@@ -102,7 +144,8 @@ impl ShardStore {
         share: &KeyShare,
     ) -> Result<(), String> {
         let plaintext = self.serialize_share(share)?;
-        let encrypted = self.encryption.encrypt(&plaintext)
+        let aad = Self::aad_wallet(user_id, wallet_id);
+        let encrypted = self.encryption.encrypt_bound(&plaintext, &aad)
             .map_err(|e| format!("encryption failed: {}", e))?;
 
         sqlx::query(
@@ -121,7 +164,7 @@ impl ShardStore {
         .bind(SERVER_PARTY_INDEX as i16)
         .bind(&encrypted.ciphertext)
         .bind(encrypted.nonce.as_slice())
-        .bind(self.encryption.key_id())
+        .bind(self.bound_key_id())
         .execute(&self.db)
         .await
         .map_err(|e| format!("DB store failed: {}", e))?;
@@ -140,7 +183,8 @@ impl ShardStore {
         share: &KeyShare,
     ) -> Result<(), String> {
         let plaintext = self.serialize_share(share)?;
-        let encrypted = self.encryption.encrypt(&plaintext)
+        let aad = Self::aad_wallet(user_id, wallet_id);
+        let encrypted = self.encryption.encrypt_bound(&plaintext, &aad)
             .map_err(|e| format!("encryption failed: {}", e))?;
 
         sqlx::query(
@@ -159,7 +203,7 @@ impl ShardStore {
         .bind(SERVER_PARTY_INDEX as i16)
         .bind(&encrypted.ciphertext)
         .bind(encrypted.nonce.as_slice())
-        .bind(self.encryption.key_id())
+        .bind(self.bound_key_id())
         .execute(&mut **tx)
         .await
         .map_err(|e| format!("DB store failed: {}", e))?;
@@ -174,8 +218,8 @@ impl ShardStore {
         user_id: Uuid,
         wallet_id: Uuid,
     ) -> Result<Option<KeyShare>, String> {
-        let row: Option<(Vec<u8>, Vec<u8>)> = sqlx::query_as(
-            "SELECT encrypted_shard, nonce FROM shard_metadata
+        let row: Option<(Vec<u8>, Vec<u8>, String)> = sqlx::query_as(
+            "SELECT encrypted_shard, nonce, encryption_key_id FROM shard_metadata
              WHERE user_id = $1 AND wallet_id = $2 AND location = 'server'"
         )
         .bind(user_id)
@@ -184,7 +228,7 @@ impl ShardStore {
         .await
         .map_err(|e| format!("DB load failed: {}", e))?;
 
-        let (ciphertext, nonce_vec) = match row {
+        let (ciphertext, nonce_vec, key_id) = match row {
             Some(r) => r,
             None => return Ok(None),
         };
@@ -196,8 +240,8 @@ impl ShardStore {
         nonce.copy_from_slice(&nonce_vec);
 
         let encrypted = EncryptedData { nonce, ciphertext };
-        let plaintext = self.encryption.decrypt(&encrypted)
-            .map_err(|e| format!("decryption failed: {}", e))?;
+        let aad = Self::aad_wallet(user_id, wallet_id);
+        let plaintext = self.decrypt_stored(&key_id, &encrypted, &aad)?;
 
         let share = self.deserialize_share(&plaintext)?;
 

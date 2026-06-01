@@ -246,18 +246,20 @@ struct TxStatusResponse {
 /// Returns the current confirmation status of a transaction.
 async fn tx_status(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Path(tx_hash): Path<String>,
 ) -> Result<Json<TxStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.require_db().map_err(|_| db_unavailable())?;
+    let user_id: uuid::Uuid = claims.0.sub.parse()
+        .map_err(|_| rpc_error("invalid user id in token"))?;
 
     let hash_str = tx_hash.strip_prefix("0x").unwrap_or(&tx_hash);
     let hash_bytes = hex::decode(hash_str)
         .map_err(|_| rpc_error("invalid tx_hash hex"))?;
 
-    let row: Option<(String, Option<i64>, Option<i64>, Option<chrono::DateTime<chrono::Utc>>, i64)> =
+    let row: Option<(String, Option<i64>, Option<i64>, Option<chrono::DateTime<chrono::Utc>>, i64, Vec<u8>, Vec<u8>)> =
         sqlx::query_as(
-            "SELECT status, block_number, gas_used, confirmed_at, chain_id
+            "SELECT status, block_number, gas_used, confirmed_at, chain_id, from_addr, to_addr
              FROM transactions
              WHERE tx_hash = $1"
         )
@@ -266,8 +268,23 @@ async fn tx_status(
         .await
         .map_err(|e| db_error(&e.to_string()))?;
 
-    let (status, block_number, gas_used, confirmed_at, chain_id) = row
+    let (status, block_number, gas_used, confirmed_at, chain_id, from_addr, to_addr) = row
         .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "transaction not found".into() })))?;
+
+    // The caller must own one side of the tx (F-008). Return NOT_FOUND on a
+    // non-owned hash so existence isn't leaked.
+    let owned: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM wallets WHERE eth_address IN ($1, $2) AND user_id = $3 LIMIT 1"
+    )
+    .bind(&from_addr)
+    .bind(&to_addr)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| db_error(&e.to_string()))?;
+    if owned.is_none() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { error: "transaction not found".into() })));
+    }
 
     // Calculate confirmations if confirmed
     let confirmations = if let Some(block_num) = block_number {
@@ -719,10 +736,13 @@ struct SubmitSignedUserOpResponse {
 /// Submits an already-signed UserOperation to a bundler via eth_sendUserOperation.
 async fn submit_signed_userop(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Json(body): Json<SubmitSignedUserOpRequest>,
 ) -> Result<Json<SubmitSignedUserOpResponse>, (StatusCode, Json<ErrorResponse>)> {
     let _chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
+    let db = state.require_db().map_err(|_| db_unavailable())?;
+    let user_id: uuid::Uuid = claims.0.sub.parse()
+        .map_err(|_| rpc_error("invalid user id in token"))?;
 
     // Parse the UserOperation from the JSON value
     let op = &body.user_op;
@@ -754,6 +774,26 @@ async fn submit_signed_userop(
     };
 
     let sender = parse_address("sender")?;
+
+    // The userOp sender MUST belong to the authenticated user (F-019). Otherwise
+    // any user could relay a signed userOp for someone else's smart account (or
+    // attach a sponsoring paymaster) through this endpoint.
+    let sender_bytes = sender.as_slice().to_vec();
+    let owns_sender: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
+    )
+    .bind(&sender_bytes)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| db_error(&e.to_string()))?;
+    if owns_sender.is_none() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse { error: "sender does not belong to authenticated user".into() }),
+        ));
+    }
+
     let nonce = parse_u256("nonce")?;
     let init_code = parse_bytes("initCode")?;
     let call_data = parse_bytes("callData")?;

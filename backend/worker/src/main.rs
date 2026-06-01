@@ -104,6 +104,26 @@ async fn session_cleanup_task(db: PgPool) {
         {
             tracing::error!("old session cleanup failed: {}", e);
         }
+
+        // Purge expired ephemeral auth artifacts so the public, unauthenticated
+        // /auth/challenge endpoint cannot grow these tables unbounded (F-001/F-010).
+        if let Err(e) = sqlx::query(
+            "DELETE FROM login_challenges WHERE expires_at < NOW() - INTERVAL '1 hour'",
+        )
+        .execute(&db)
+        .await
+        {
+            tracing::error!("login_challenges cleanup failed: {}", e);
+        }
+
+        if let Err(e) = sqlx::query(
+            "DELETE FROM ws_tickets WHERE expires_at < NOW() - INTERVAL '1 hour'",
+        )
+        .execute(&db)
+        .await
+        {
+            tracing::error!("ws_tickets cleanup failed: {}", e);
+        }
     }
 }
 

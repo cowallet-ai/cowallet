@@ -60,7 +60,16 @@ impl EncryptionService {
     /// Derive a context-specific encryption key using HKDF-SHA256
     /// This ensures different shards/purposes use different keys even from the same root key
     fn derive_key(&self) -> [u8; 32] {
-        let hkdf = Hkdf::<Sha256>::new(None, &self.root_key);
+        self.derive_key_with_salt(&[])
+    }
+
+    /// Derive a key mixing in a per-record `salt` (F-013). Using the owning
+    /// identity (user_id[/wallet_id]) as salt makes every user's shard key
+    /// distinct, so a single static root key no longer encrypts every shard
+    /// under the same derived key.
+    fn derive_key_with_salt(&self, salt: &[u8]) -> [u8; 32] {
+        let salt_opt = if salt.is_empty() { None } else { Some(salt) };
+        let hkdf = Hkdf::<Sha256>::new(salt_opt, &self.root_key);
         let info = format!("cowallet-v1-{}", self.context);
         let mut derived_key = [0u8; 32];
         hkdf.expand(info.as_bytes(), &mut derived_key)
@@ -105,8 +114,41 @@ impl EncryptionService {
             .map_err(|e| CryptoError::Decryption(e.to_string()))
     }
 
+    /// Encrypt, binding the ciphertext to `aad` (the owning identity) and using
+    /// `aad` as the HKDF salt (F-013). Decryption fails unless the exact same
+    /// `aad` is supplied, so a shard row copied to another user's record (or
+    /// swapped between wallets) will not decrypt. AAD is authenticated, not
+    /// stored in the ciphertext.
+    pub fn encrypt_bound(&self, plaintext: &[u8], aad: &[u8]) -> Result<EncryptedData, CryptoError> {
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let derived_key = self.derive_key_with_salt(aad);
+        let key = Key::<Aes256Gcm>::from_slice(&derived_key);
+        let cipher = Aes256Gcm::new(key);
+
+        let ciphertext = cipher
+            .encrypt(nonce, aes_gcm::aead::Payload { msg: plaintext, aad })
+            .map_err(|e| CryptoError::Encryption(e.to_string()))?;
+
+        Ok(EncryptedData { nonce: nonce_bytes, ciphertext })
+    }
+
+    /// Decrypt data encrypted with [`encrypt_bound`], requiring the same `aad`.
+    pub fn decrypt_bound(&self, encrypted: &EncryptedData, aad: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        let nonce = Nonce::from_slice(&encrypted.nonce);
+
+        let derived_key = self.derive_key_with_salt(aad);
+        let key = Key::<Aes256Gcm>::from_slice(&derived_key);
+        let cipher = Aes256Gcm::new(key);
+
+        cipher
+            .decrypt(nonce, aes_gcm::aead::Payload { msg: encrypted.ciphertext.as_ref(), aad })
+            .map_err(|e| CryptoError::Decryption(e.to_string()))
+    }
+
     /// Re-encrypt data with a new root key (for key rotation)
-    /// This is atomic - either both decrypt and encrypt succeed, or neither does
     pub fn rotate_key(&self, encrypted: &EncryptedData, new_service: &EncryptionService) -> Result<EncryptedData, CryptoError> {
         // Decrypt with old key
         let mut plaintext = self.decrypt(encrypted)?;
@@ -467,34 +509,40 @@ mod tests {
     }
 
     #[test]
-    fn test_hkdf_key_isolation_security() {
-        // Security test: ensure that knowing derived key for one context
-        // doesn't compromise another context (in practice, we can't extract
-        // the derived key, but we can verify encryption isolation)
+    fn test_aad_binding_rejects_foreign_identity() {
+        // F-013: a shard encrypted bound to user A's identity must NOT decrypt
+        // under user B's identity, even with the same EncryptionService/root key.
+        let service = EncryptionService::for_test();
+        let secret = b"server key share for user A";
 
-        let root_key = [12u8; 32];
-        let device_service = EncryptionService::new(&root_key, "device-shard");
-        let server_service = EncryptionService::new(&root_key, "server-shard");
-        let backup_service = EncryptionService::new(&root_key, "backup-shard");
+        let aad_a = b"cowallet-shard|server|user=AAAA";
+        let aad_b = b"cowallet-shard|server|user=BBBB";
 
-        let secret = b"critical private key material";
+        let enc = service.encrypt_bound(secret, aad_a).unwrap();
 
-        // Encrypt same data with different contexts
-        let device_enc = device_service.encrypt(secret).unwrap();
-        let server_enc = server_service.encrypt(secret).unwrap();
-        let backup_enc = backup_service.encrypt(secret).unwrap();
+        // Correct identity decrypts.
+        let dec = service.decrypt_bound(&enc, aad_a).unwrap();
+        assert_eq!(dec.as_slice(), secret);
 
-        // Each service can only decrypt its own
-        assert!(device_service.decrypt(&device_enc).is_ok());
-        assert!(device_service.decrypt(&server_enc).is_err());
-        assert!(device_service.decrypt(&backup_enc).is_err());
+        // Wrong identity (swapped shard row) fails authentication.
+        let wrong = service.decrypt_bound(&enc, aad_b);
+        assert!(wrong.is_err(), "shard must not decrypt under a foreign identity");
 
-        assert!(server_service.decrypt(&server_enc).is_ok());
-        assert!(server_service.decrypt(&device_enc).is_err());
-        assert!(server_service.decrypt(&backup_enc).is_err());
+        // Unbound decrypt path also fails on a bound ciphertext.
+        assert!(service.decrypt(&enc).is_err());
+    }
 
-        assert!(backup_service.decrypt(&backup_enc).is_ok());
-        assert!(backup_service.decrypt(&device_enc).is_err());
-        assert!(backup_service.decrypt(&server_enc).is_err());
+    #[test]
+    fn test_aad_binding_distinct_keys_per_identity() {
+        // Different AAD => different derived key (HKDF salt), so ciphertexts of
+        // the same plaintext differ structurally, not just by nonce.
+        let service = EncryptionService::for_test();
+        let pt = b"same plaintext";
+        let e1 = service.encrypt_bound(pt, b"user=1").unwrap();
+        let e2 = service.encrypt_bound(pt, b"user=2").unwrap();
+        assert_ne!(e1.ciphertext, e2.ciphertext);
+        // And cross-decrypt fails both ways.
+        assert!(service.decrypt_bound(&e1, b"user=2").is_err());
+        assert!(service.decrypt_bound(&e2, b"user=1").is_err());
     }
 }

@@ -53,12 +53,15 @@ impl PaillierRangeProof {
         let n_squared = n * n;
         let mut rng = rand::thread_rng();
 
-        // Range parameter: we prove v ∈ [-q^3, q^3] which subsumes [0, q)
+        // Range parameter: we prove v ∈ [0, q). The masking value alpha is drawn
+        // from [0, q^3) so that the honest response s1 = alpha + e*v stays within
+        // a TIGHT bound (see `verify`). Both alpha and e*v are non-negative, so s1
+        // is a genuine non-negative integer (no signed/negative branch needed).
         let q_cubed = &q * &q * &q;
 
         // Prover commits:
-        // alpha ← random in [-q^3, q^3]
-        let alpha = rng.gen_biguint_below(&(&q_cubed * BigUint::from(2u64)));
+        // alpha ← random in [0, q^3)
+        let alpha = rng.gen_biguint_below(&q_cubed);
 
         // beta ← random coprime to N
         let beta = loop {
@@ -145,8 +148,20 @@ impl PaillierRangeProof {
         let s1 = BigUint::from_bytes_be(&self.s1);
         let s2 = BigUint::from_bytes_be(&self.s2);
 
-        // Check 1: s1 ∈ [-q^3, q^3] (range bound)
-        if s1 > q_cubed * BigUint::from(3u64) {
+        // Check 1: TIGHT two-sided range bound on s1 (F-005).
+        //
+        // Honest prover: s1 = alpha + e*v with alpha ∈ [0, q^3), e ∈ [0, q),
+        // v ∈ [0, q). Hence the honest maximum is
+        //     s1_max = (q^3 - 1) + (q - 1)*(q - 1) < q^3 + q^2.
+        // Both terms are non-negative, so the honest minimum is 0. We therefore
+        // accept exactly s1 ∈ [0, q^3 + q^2) — the slack above the honest maximum
+        // is O(1), not O(q^3) as in the previous unsound `3*q^3` bound. Because s1
+        // is encoded as an unsigned BigUint and the construction never produces a
+        // negative value, the lower bound is implicitly 0 and no negative-mirror
+        // branch is required.
+        let q_squared = &q * &q;
+        let accept_bound = &q_cubed + &q_squared;
+        if s1 >= accept_bound {
             return false;
         }
 
@@ -280,6 +295,19 @@ pub struct PaillierModulusProof {
 
 const MODULUS_PROOF_ITERATIONS: usize = 64;
 
+/// The first 100 odd primes, used for the small-factor check in
+/// `PaillierModulusProof::verify` (F-005). 2 is omitted because the odd check
+/// already rejects even N.
+const SMALL_PRIMES: [u64; 100] = [
+    3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
+    79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157,
+    163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239,
+    241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331,
+    337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421,
+    431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509,
+    521, 523, 541, 547,
+];
+
 impl PaillierModulusProof {
     /// Generate a proof of knowledge of factorization of N = p*q.
     pub fn prove(n: &BigUint, p: &BigUint, q: &BigUint) -> Self {
@@ -322,6 +350,22 @@ impl PaillierModulusProof {
         }
         if n.bits() < 2047 {
             return false;
+        }
+
+        // Small-factor check: reject N divisible by any small prime. A legitimate
+        // Paillier modulus N = p*q with p, q large primes has no small factors;
+        // a maliciously chosen N with small factors would break the N-th root
+        // soundness argument below.
+        //
+        // NOTE: This is NOT a full Paillier-Blum proof. Ideally we would prove
+        // that N is a Blum integer (p ≡ q ≡ 3 mod 4) AND square-free AND a product
+        // of exactly two prime powers (Goldberg et al. / GG18 "Pi_mod"). Trial
+        // division only rules out small prime factors; it does NOT prove N is
+        // square-free, has exactly two prime factors, or is a Blum integer.
+        for &p in SMALL_PRIMES.iter() {
+            if &n % BigUint::from(p) == BigUint::from(0u64) {
+                return false;
+            }
         }
 
         for i in 0..MODULUS_PROOF_ITERATIONS {
@@ -432,6 +476,41 @@ mod tests {
     }
 
     #[test]
+    fn test_paillier_range_proof_rejects_oversized_s1() {
+        // F-005: a proof whose s1 exceeds the tight accept bound (q^3 + q^2)
+        // must be rejected. We forge a proof by inflating s1 past the bound.
+        let keypair = PaillierKeypair::generate();
+        let q = secp256k1_order();
+        let value = BigUint::from(7u64);
+        let r = loop {
+            let candidate = rand::thread_rng().gen_biguint_below(&keypair.public.n);
+            if candidate > BigUint::from(0u64) {
+                break candidate;
+            }
+        };
+        let ct = keypair.public.encrypt_with_randomness(&value, &r);
+
+        let mut proof = PaillierRangeProof::prove(
+            &keypair.public,
+            &ct,
+            &value,
+            &r,
+            b"test-range",
+        );
+
+        // Honest proof verifies.
+        assert!(proof.verify(&keypair.public, &ct, b"test-range"));
+
+        // Set s1 well above the accept bound (q^3 + q^2): use 2*q^3.
+        let oversized = (&q * &q * &q) * BigUint::from(2u64);
+        proof.s1 = oversized.to_bytes_be();
+        assert!(
+            !proof.verify(&keypair.public, &ct, b"test-range"),
+            "s1 above the tight bound must be rejected"
+        );
+    }
+
+    #[test]
     fn test_paillier_range_proof_wrong_domain() {
         let keypair = PaillierKeypair::generate();
         let value = BigUint::from(42u64);
@@ -512,5 +591,22 @@ mod tests {
             responses: vec![vec![1u8]; MODULUS_PROOF_ITERATIONS],
         };
         assert!(!small_proof.verify());
+    }
+
+    #[test]
+    fn test_paillier_modulus_proof_small_factor_rejected() {
+        // F-005: a large N (>= 2047 bits, odd) that has a small prime factor must
+        // be rejected by the trial-division check. Take a valid modulus and
+        // multiply by 3 to inject a small factor (result is still odd).
+        let keypair = PaillierKeypair::generate();
+        let bad_n = &keypair.public.n * BigUint::from(3u64);
+        assert!(bad_n.bits() >= 2047);
+        assert_eq!(&bad_n % BigUint::from(2u64), BigUint::from(1u64));
+
+        let bad_proof = PaillierModulusProof {
+            n: bad_n.to_bytes_be(),
+            responses: vec![vec![1u8]; MODULUS_PROOF_ITERATIONS],
+        };
+        assert!(!bad_proof.verify(), "N with small factor 3 must be rejected");
     }
 }

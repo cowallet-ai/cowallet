@@ -167,4 +167,23 @@ class MpcApi {
 
     return Result.error(result.errorMessage ?? 'Failed to fetch backup contribution', result.errorCode ?? 500);
   }
+
+  /// 获取一次性 WebSocket 票据
+  /// POST /api/v1/auth/ws-ticket
+  /// 用已认证的 JWT 换取一个短期(30s)、单次使用的不透明票据，
+  /// 用于 MPC WebSocket 握手——避免把 JWT 暴露在 URL 查询串与日志中。
+  static Future<Result<String>> getWsTicket() async {
+    final result = await DioClient.post("/auth/ws-ticket");
+    if (result.isSuccess && result.data is Map) {
+      final ticket = (result.data as Map)['ticket'];
+      if (ticket is String && ticket.isNotEmpty) {
+        return Result.success(ticket);
+      }
+      return Result.error('Invalid ws-ticket response', 400);
+    }
+    return Result.error(
+      result.errorMessage ?? 'Failed to fetch ws ticket',
+      result.errorCode ?? 500,
+    );
+  }
 }

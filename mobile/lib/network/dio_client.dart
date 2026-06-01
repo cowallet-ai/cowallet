@@ -42,7 +42,9 @@ class DioClient {
             
             if (token != null && token.isNotEmpty) {
               options.headers["Authorization"] = "Bearer $token";
-              print("✅ [DioClient] Token added: ${token.substring(0, 30)}...");
+              // Do not log token contents, not even a prefix (F-021): a prefix
+              // still leaks the JWT header/alg and narrows brute-force space.
+              print("✅ [DioClient] Token attached");
             } else {
               print("⚠️  [DioClient] No token found in SecureStorage");
               // 尝试直接检查文件

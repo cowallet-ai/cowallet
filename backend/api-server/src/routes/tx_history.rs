@@ -50,7 +50,7 @@ struct HistoryResponse {
 /// Get paginated transaction history for an address
 async fn get_history(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<HistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.require_db().map_err(|_| db_unavailable())?;
@@ -63,6 +63,10 @@ async fn get_history(
     if address_bytes.len() != 20 {
         return Err(validation_error("address must be 20 bytes"));
     }
+
+    // Only the owner of the address may read its history (F-008).
+    let user_id = parse_user_id(&claims.0)?;
+    assert_address_owned(db, user_id, &address_bytes).await?;
 
     let limit = q.limit.unwrap_or(50).min(100).max(1);
     let offset = q.offset.unwrap_or(0).max(0);
@@ -168,10 +172,11 @@ struct TransactionDetail {
 /// Get single transaction details by hash
 async fn get_transaction(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Path(hash): Path<String>,
 ) -> Result<Json<TransactionDetail>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.require_db().map_err(|_| db_unavailable())?;
+    let user_id = parse_user_id(&claims.0)?;
 
     // Parse transaction hash
     let hash_str = hash.strip_prefix("0x").unwrap_or(&hash);
@@ -194,6 +199,14 @@ async fn get_transaction(
         .ok_or_else(|| not_found("transaction not found"))?;
 
     let (tx_hash, from_addr, to_addr, value, token_address, status, block_number, created_at, chain_id, gas_used) = row;
+
+    // The caller must own at least one side of the transaction (F-008). Return
+    // NOT_FOUND rather than FORBIDDEN so tx existence isn't leaked by status code.
+    let owns_from = assert_address_owned(db, user_id, &from_addr).await.is_ok();
+    let owns_to = assert_address_owned(db, user_id, &to_addr).await.is_ok();
+    if !owns_from && !owns_to {
+        return Err(not_found("transaction not found"));
+    }
 
     Ok(Json(TransactionDetail {
         tx_hash: format!("0x{}", hex::encode(&tx_hash)),
@@ -249,13 +262,19 @@ struct CovalentTxInfo {
 /// Get on-chain transaction history via Covalent API (no DB required)
 async fn get_covalent_history(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Query(q): Query<CovalentHistoryQuery>,
 ) -> Result<Json<CovalentHistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Validate address
     if !q.address.starts_with("0x") || q.address.len() != 42 {
         return Err(validation_error("invalid address format"));
     }
+
+    // Only the owner may query this address's on-chain history (F-008).
+    let db = state.require_db().map_err(|_| db_unavailable())?;
+    let user_id = parse_user_id(&claims.0)?;
+    let address_bytes = parse_address_bytes(&q.address)?;
+    assert_address_owned(db, user_id, &address_bytes).await?;
 
     let chain_id = q.chain_id.ok_or_else(|| validation_error("chain_id is required"))?;
 
@@ -338,13 +357,19 @@ struct AllChainTxInfo {
 /// Get transaction history across multiple chains in parallel
 async fn get_all_chain_history(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Query(q): Query<AllChainHistoryQuery>,
 ) -> Result<Json<AllChainHistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Validate address
     if !q.address.starts_with("0x") || q.address.len() != 42 {
         return Err(validation_error("invalid address format"));
     }
+
+    // Only the owner may query this address's history across chains (F-008).
+    let db = state.require_db().map_err(|_| db_unavailable())?;
+    let user_id = parse_user_id(&claims.0)?;
+    let address_bytes = parse_address_bytes(&q.address)?;
+    assert_address_owned(db, user_id, &address_bytes).await?;
 
     // Parse chain IDs from comma-separated string
     let chain_ids: Vec<u64> = if let Some(chains_str) = q.chains {
@@ -448,4 +473,50 @@ fn not_found(msg: &str) -> (StatusCode, Json<ErrorResponse>) {
             error: msg.to_string(),
         }),
     )
+}
+
+fn forbidden(msg: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            error: msg.to_string(),
+        }),
+    )
+}
+
+/// Parse a user_id from JWT claims.
+fn parse_user_id(claims: &Claims) -> Result<uuid::Uuid, (StatusCode, Json<ErrorResponse>)> {
+    claims.sub.parse().map_err(|_| validation_error("invalid user id in token"))
+}
+
+/// Verify that `address_bytes` (20-byte EVM address) belongs to the authenticated
+/// user. Prevents querying arbitrary addresses' history/details (F-008).
+async fn assert_address_owned(
+    db: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+    address_bytes: &[u8],
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let owned: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
+    )
+    .bind(address_bytes)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| db_error(&e.to_string()))?;
+
+    if owned.is_none() {
+        return Err(forbidden("address does not belong to authenticated user"));
+    }
+    Ok(())
+}
+
+/// Parse and validate a 0x-prefixed 20-byte address into raw bytes.
+fn parse_address_bytes(addr: &str) -> Result<Vec<u8>, (StatusCode, Json<ErrorResponse>)> {
+    let s = addr.strip_prefix("0x").unwrap_or(addr);
+    let bytes = hex::decode(s).map_err(|_| validation_error("invalid address hex"))?;
+    if bytes.len() != 20 {
+        return Err(validation_error("address must be 20 bytes"));
+    }
+    Ok(bytes)
 }

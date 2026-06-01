@@ -66,7 +66,6 @@ async fn register_token(
 
 #[derive(Debug, Deserialize)]
 struct SendPushRequest {
-    user_id: String,
     title: String,
     body: String,
     data: serde_json::Value,
@@ -74,11 +73,14 @@ struct SendPushRequest {
 
 async fn send_push(
     State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
     Json(req): Json<SendPushRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = req.user_id.parse()
-        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user_id"))?;
+    // Derive the recipient from the authenticated identity, never from the request
+    // body — trusting body user_id let any user push to anyone's devices (F-007).
+    let user_id: uuid::Uuid = claims.0.sub.parse()
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
 
     let fcm_server_key = std::env::var("FCM_SERVER_KEY")
         .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "FCM not configured"))?;

@@ -174,17 +174,25 @@ pub async fn create_session(
 /// Get session status
 pub async fn get_session(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<Json<SessionResponse>, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let row: (String, i32, Option<chrono::DateTime<Utc>>, Option<uuid::Uuid>) = sqlx::query_as(
-        "SELECT status, current_round, last_activity, wallet_id FROM mpc_sessions WHERE id = $1"
+    let row: (String, i32, Option<chrono::DateTime<Utc>>, Option<uuid::Uuid>, uuid::Uuid) = sqlx::query_as(
+        "SELECT status, current_round, last_activity, wallet_id, user_id FROM mpc_sessions WHERE id = $1"
     )
     .bind(id)
     .fetch_one(db)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // SECURITY (F-003): enforce session ownership.
+    if row.4 != user_id {
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     Ok(Json(SessionResponse {
         session_id: id.to_string(),
@@ -198,9 +206,27 @@ pub async fn get_session(
 /// Abort a session
 pub async fn abort_session(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // SECURITY (F-003): enforce session ownership before mutating it.
+    let owner: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "SELECT user_id FROM mpc_sessions WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    match owner {
+        Some((session_user_id,)) if session_user_id == user_id => {}
+        Some(_) => return Err(StatusCode::FORBIDDEN),
+        None => return Err(StatusCode::NOT_FOUND),
+    }
 
     let result = sqlx::query(
         "UPDATE mpc_sessions SET status = 'failed' WHERE id = $1 AND status IN ('pending', 'active')"
@@ -257,6 +283,13 @@ pub async fn send_message(
     let parties = &session.1;
     let current_round = session.2 as i16;
     let session_user_id = session.3;
+
+    // SECURITY (F-003): enforce session ownership.
+    let user_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    if session_user_id != user_id {
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     // Session must be active
     if status != "active" {
@@ -406,20 +439,27 @@ pub(crate) struct MessageResponse {
 ///   ?after_id=5 — only return messages with id > this value
 pub async fn recv_messages(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(session_id): Path<uuid::Uuid>,
     Query(query): Query<RecvQuery>,
 ) -> Result<Json<Vec<MessageResponse>>, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    // Verify session exists
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM mpc_sessions WHERE id = $1)")
-        .bind(session_id)
-        .fetch_one(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // SECURITY (F-003): verify session exists AND belongs to this user.
+    let owner: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "SELECT user_id FROM mpc_sessions WHERE id = $1"
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if !exists {
-        return Err(StatusCode::NOT_FOUND);
+    match owner {
+        Some((session_user_id,)) if session_user_id == user_id => {}
+        Some(_) => return Err(StatusCode::FORBIDDEN),
+        None => return Err(StatusCode::NOT_FOUND),
     }
 
     let after_id = query.after_id.unwrap_or(0);

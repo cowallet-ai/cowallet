@@ -105,16 +105,21 @@ class RecoveryService {
   }
 
   /// Step 3: Import backup shard from cloud or file.
+  ///
+  /// SECURITY (F-002): backups are now stored as password-encrypted ciphertext
+  /// (Argon2id + AES-256-GCM). The retrieved blob is decrypted with the user's
+  /// [password] inside Rust; the plaintext shard never exists in Dart memory.
   Future<void> importBackupShard({
+    required String password,
     BackupShardSource source = BackupShardSource.cloud,
     String? fileContent,
   }) async {
-    List<int>? backupBytes;
+    String? encryptedBlob;
 
     switch (source) {
       case BackupShardSource.cloud:
-        backupBytes = await _backupService.retrieveFromCloud();
-        if (backupBytes == null) {
+        encryptedBlob = await _backupService.retrieveFromCloud();
+        if (encryptedBlob == null) {
           throw RecoveryException('No backup shard found in cloud storage');
         }
         break;
@@ -123,15 +128,31 @@ class RecoveryService {
         if (fileContent == null) {
           throw RecoveryException('File content is required for file import');
         }
-        backupBytes = _backupService.parseBackupFile(fileContent);
-        if (backupBytes == null) {
+        encryptedBlob = _backupService.parseBackupFile(fileContent);
+        if (encryptedBlob == null) {
           throw RecoveryException('Invalid backup file format');
         }
         break;
     }
 
-    // Import to Rust FFI layer
-    await MpcBridge.recoveryImportBackupShard(backupBytes);
+    // Decrypt + validate the backup shard inside Rust (Argon2id + AES-256-GCM).
+    // The plaintext shard never crosses the FFI boundary into Dart — only the
+    // ciphertext blob and password do.
+    //
+    // NOTE (follow-up, Rust side): import_backup_shard currently loads the
+    // decrypted share into MpcState share-slot 2, whereas
+    // recovery_reconstruct_device_shard reads the dedicated recovery slot
+    // (store_recovery_backup_shard). To complete the encrypted recovery path,
+    // Rust's import_backup_shard must also populate the recovery slot (or a new
+    // recovery_import_encrypted_backup_shard FFI must be added). This Dart code
+    // is the call site that will use it.
+    final ok = await MpcBridge.importBackupShard(
+      encryptedData: encryptedBlob,
+      password: password,
+    );
+    if (!ok) {
+      throw RecoveryException('Failed to decrypt backup shard (wrong password?)');
+    }
   }
 
   /// Step 4: Execute recovery protocol.
@@ -177,6 +198,7 @@ class RecoveryService {
     required String email,
     required String otp,
     required String deviceId,
+    required String backupPassword,
     BackupShardSource backupSource = BackupShardSource.cloud,
     String? backupFileContent,
   }) async {
@@ -188,6 +210,7 @@ class RecoveryService {
 
     // Step 3: Import backup shard
     await importBackupShard(
+      password: backupPassword,
       source: backupSource,
       fileContent: backupFileContent,
     );

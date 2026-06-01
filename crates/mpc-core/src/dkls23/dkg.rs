@@ -314,10 +314,21 @@ impl DkgSession {
 
                     // Feldman VSS verification:
                     // Verify s_ij * G == sum_k( C_{sender,k} * (my_idx+1)^k )
-                    if let Some(round1) = self.round1_messages.iter().find(|r| r.party_index == msg.from_party) {
-                        Self::verify_feldman_share(&share, my_idx, &round1.commitments)?;
-                    }
+                    // A missing Round-1 commitment for the sender is a HARD ERROR (F-007):
+                    // we must never add an unverified share.
+                    let round1 = self
+                        .round1_messages
+                        .iter()
+                        .find(|r| r.party_index == msg.from_party)
+                        .ok_or_else(|| {
+                            MpcError::DkgFailed(format!(
+                                "missing round1 commitment for sender party {}",
+                                msg.from_party
+                            ))
+                        })?;
+                    Self::verify_feldman_share(&share, my_idx, &round1.commitments)?;
 
+                    // Only add the share AFTER successful Feldman verification.
                     my_share += share;
                 }
             }
@@ -449,7 +460,7 @@ impl DkgSession {
     ///
     /// Checks: share * G == C_0 + x*C_1 + x^2*C_2 + ... + x^{t-1}*C_{t-1}
     /// where x = recipient_index + 1 (1-indexed evaluation points for Shamir)
-    fn verify_feldman_share(share: &Scalar, recipient_index: u16, commitments: &[Vec<u8>]) -> Result<()> {
+    pub(crate) fn verify_feldman_share(share: &Scalar, recipient_index: u16, commitments: &[Vec<u8>]) -> Result<()> {
         let x = Scalar::from((recipient_index + 1) as u64);
 
         // LHS: share * G

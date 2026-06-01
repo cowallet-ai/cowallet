@@ -473,6 +473,58 @@ impl MpcParticipant {
                 let wallet_id = meta.wallet_id;
                 drop(meta);
 
+                // ── SECURITY (F-004): tx re-derivation + freeze/policy enforcement ──
+                //
+                // Previously the server blindly signed any client-supplied 32-byte
+                // msg_hash. That let a compromised/malicious client obtain a valid
+                // signature over an arbitrary digest (e.g. a draining transaction or
+                // an off-chain message) regardless of wallet limits or freeze state.
+                //
+                // We now REQUIRE the client to also send the raw (unsigned) tx bytes
+                // alongside the hash. The server independently re-derives
+                // keccak256(raw_tx) and refuses to sign unless it matches msg_hash.
+                // We additionally re-check the wallet's `frozen` flag here (not just at
+                // session-create time, which is racy) and consult the user's policy row.
+                //
+                // ENFORCED HERE:
+                //   (a) raw tx must be present and keccak256(raw_tx) == msg_hash
+                //       (binds the signature to a transaction the server has seen)
+                //   (b) wallet must not be frozen (re-checked at sign time)
+                //   (c) the user's policy row is consulted; signing is refused if the
+                //       user has an explicit block (single_limit_usd <= 0)
+                // NOTE: the QUANTITATIVE USD value/limit check is NOT performed here —
+                // this struct has no price oracle or HTTP client, only a DB handle.
+                // That check is enforced in routes/tx.rs before broadcast. The
+                // hash-match above still guarantees the signed bytes are exactly the
+                // disclosed tx, so a signature cannot be obtained for a hidden digest.
+                let raw_tx = self.extract_raw_tx(payload)?;
+                let derived = alloy_primitives::keccak256(&raw_tx);
+                if derived.as_slice() != msg_hash.as_slice() {
+                    return Err(format!(
+                        "tx hash mismatch: keccak256(raw_tx) != client msg_hash for session {}",
+                        session_id
+                    ));
+                }
+
+                // (b) Re-check wallet freeze status at sign time.
+                if let Some(wid) = wallet_id {
+                    let status: Option<(String,)> = sqlx::query_as(
+                        "SELECT status FROM wallets WHERE id = $1"
+                    )
+                    .bind(wid)
+                    .fetch_optional(&self.db)
+                    .await
+                    .map_err(|e| format!("failed to load wallet status: {}", e))?;
+                    if let Some((s,)) = status {
+                        if s == "frozen" {
+                            return Err(format!("wallet {} is frozen — refusing to sign", wid));
+                        }
+                    }
+                }
+
+                // (c) Consult the user's signing policy row (see note above).
+                self.enforce_sign_policy(user_id, &raw_tx).await?;
+
                 // Use wallet-specific shard if wallet_id is available
                 let key_share = if let Some(wid) = wallet_id {
                     self.shard_store.load_key_share_for_wallet(user_id, wid).await?
@@ -752,6 +804,81 @@ impl MpcParticipant {
         }
 
         Ok(outbound)
+    }
+
+    /// Extract the raw (unsigned) transaction bytes the client must disclose
+    /// alongside its Round 1 message (F-004). The server re-derives
+    /// keccak256(raw_tx) and refuses to sign unless it matches the client's
+    /// msg_hash, binding the signature to a transaction the server has seen.
+    ///
+    /// The mobile client sends a JSON wrapper:
+    ///   {"msg_hash": [...], "raw_tx": [...] | "0x..", "party": 0, ...}
+    /// `raw_tx` may be a byte array or a hex string.
+    fn extract_raw_tx(&self, payload: &[u8]) -> Result<Vec<u8>, String> {
+        let json: serde_json::Value = serde_json::from_slice(payload)
+            .map_err(|_| "client round 1 payload must be JSON containing raw_tx (F-004)".to_string())?;
+
+        let raw = json.get("raw_tx")
+            .ok_or("client round 1 payload missing required 'raw_tx' field (F-004)".to_string())?;
+
+        if let Some(arr) = raw.as_array() {
+            let bytes: Vec<u8> = arr.iter()
+                .filter_map(|v| v.as_u64().map(|n| n as u8))
+                .collect();
+            if bytes.is_empty() {
+                return Err("raw_tx array decoded to empty bytes".into());
+            }
+            return Ok(bytes);
+        }
+
+        if let Some(s) = raw.as_str() {
+            let bytes = hex::decode(s.trim_start_matches("0x"))
+                .map_err(|_| "raw_tx hex string is invalid".to_string())?;
+            if bytes.is_empty() {
+                return Err("raw_tx hex decoded to empty bytes".into());
+            }
+            return Ok(bytes);
+        }
+
+        Err("raw_tx must be a byte array or hex string".into())
+    }
+
+    /// Enforce the user's signing policy before producing a signature (F-004).
+    ///
+    /// Loads the per-user limits from `user_policies` (defaulting to the same
+    /// values as migration 013 when no row exists). The signature itself is
+    /// already bound to the disclosed `raw_tx` via the keccak256 hash-match in
+    /// the caller, and the wallet freeze flag is re-checked there.
+    ///
+    /// Full USD valuation of the tx value/calldata requires the alloy-consensus
+    /// RLP decoder, which is not a dependency of this crate; that quantitative
+    /// limit is enforced in `routes/tx.rs` before broadcast. Here we guarantee a
+    /// policy row is consulted and rejected sessions are auditable, and we reject
+    /// outright if the user has been assigned a zero single-tx limit (an explicit
+    /// "block all signing" policy).
+    async fn enforce_sign_policy(&self, user_id: Uuid, _raw_tx: &[u8]) -> Result<(), String> {
+        let limits: Option<(f64, f64)> = sqlx::query_as(
+            "SELECT single_limit_usd, daily_limit_usd FROM user_policies WHERE user_id = $1"
+        )
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| format!("failed to load user policy: {}", e))?;
+
+        let (single_limit_usd, daily_limit_usd) = limits.unwrap_or((500.0, 2000.0));
+
+        if single_limit_usd <= 0.0 {
+            return Err(format!(
+                "user {} signing blocked by policy (single_limit_usd <= 0)",
+                user_id
+            ));
+        }
+
+        tracing::debug!(
+            "[MPC Sign] policy ok for user {} (single={} daily={})",
+            user_id, single_limit_usd, daily_limit_usd
+        );
+        Ok(())
     }
 
     /// Extract the 32-byte message hash from the client's Round 1 payload.

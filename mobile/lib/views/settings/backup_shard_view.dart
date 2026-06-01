@@ -1,5 +1,5 @@
 import 'package:cowallet/theme/typography.dart';
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -92,9 +92,11 @@ class _ExportTabState extends State<_ExportTab> {
   String? _error;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  Timer? _clipboardClearTimer;
 
   @override
   void dispose() {
+    _clipboardClearTimer?.cancel();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -140,10 +142,21 @@ class _ExportTabState extends State<_ExportTab> {
 
   Future<void> _copyToClipboard() async {
     if (_exportedData == null) return;
-    await Clipboard.setData(ClipboardData(text: _exportedData!));
+    final copied = _exportedData!;
+    await Clipboard.setData(ClipboardData(text: copied));
     if (mounted) {
       showTopToast(context, S.backupCopied, backgroundColor: CwColors.success);
     }
+    // Security: auto-clear the clipboard after 60s so the (encrypted) backup
+    // blob does not linger and get pasted/captured by other apps. Only clear
+    // if the clipboard still holds exactly what we copied.
+    _clipboardClearTimer?.cancel();
+    _clipboardClearTimer = Timer(const Duration(seconds: 60), () async {
+      final current = await Clipboard.getData(Clipboard.kTextPlain);
+      if (current?.text == copied) {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      }
+    });
   }
 
   Future<void> _saveToFile() async {

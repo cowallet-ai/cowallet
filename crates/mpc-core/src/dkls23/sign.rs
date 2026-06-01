@@ -46,6 +46,37 @@ pub struct SignSession {
     paillier_keypair: Option<PaillierKeypair>,
 }
 
+/// Zeroize secret session material on drop (F-025). Unlike DkgSession /
+/// ReshareSession, SignSession previously left `my_k`, the Paillier keypair and
+/// the key share resident in memory after use, widening the blast radius of any
+/// memory-disclosure bug. The ephemeral signing nonce `my_k` is especially
+/// sensitive: leaking it alongside a signature reveals the long-term key share.
+impl Zeroize for SignSession {
+    fn zeroize(&mut self) {
+        if let Some(ref mut k) = self.my_k {
+            *k = Scalar::ZERO;
+        }
+        self.my_k = None;
+        if let Some(ref mut r) = self.r_scalar {
+            *r = Scalar::ZERO;
+        }
+        self.r_scalar = None;
+        // KeyShare / PaillierKeypair: drop the secrets by taking them out. (Their
+        // own Drop impls handle any deeper zeroization.)
+        self.my_share = None;
+        self.paillier_keypair = None;
+        self.aggregate_r_point = None;
+        self.round1_messages.clear();
+        self.round2_messages.clear();
+    }
+}
+
+impl Drop for SignSession {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 /// Internal state of the signing session
 #[allow(dead_code)]
 enum SignState {
@@ -825,19 +856,10 @@ impl SignSession {
         // Extract x coordinate (r value)
         let r_bytes = &uncompressed_bytes[1..33];
 
-        // Check if r >= n (x overflow)
-        // secp256k1 curve order n
-        const N_BYTES: [u8; 32] = [
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xeb, 0xaa, 0xed, 0xce, 0x6a, 0xf4, 0x8a, 0x03,
-            0xbb, 0xfd, 0x25, 0xe8, 0xcd, 0x03, 0x64, 0x14,
-        ];
-
-        // Convert slice to array for comparison
-        let mut r_array = [0u8; 32];
-        r_array.copy_from_slice(r_bytes);
-        let x_overflow = if r_array >= N_BYTES { 1u8 } else { 0u8 };
+        // Check if r >= n (x overflow). Use the authoritative secp256k1 order
+        // from crypto::paillier (see F-018) rather than a hand-written constant.
+        let r_value = BigUint::from_bytes_be(r_bytes);
+        let x_overflow = if r_value >= secp256k1_order() { 1u8 } else { 0u8 };
 
         // Standard Ethereum recovery ID format
         // Bit 0: y parity, Bit 1: x overflow
@@ -957,16 +979,10 @@ impl SignSession {
         let y_bytes = &uncompressed_bytes[33..65];
         let y_is_odd = (y_bytes[31] & 1) == 1;
 
-        // For recovery ID, check if we need to use x overflow (x >= n)
-        // secp256k1: n = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
-        const N_BYTES: [u8; 32] = [
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xeb, 0xaa, 0xed, 0xce, 0x6a, 0xf4, 0x8a, 0x03,
-            0xbb, 0xfd, 0x25, 0xe8, 0xcd, 0x03, 0x64, 0x14,
-        ];
-
-        let x_overflow = if r_array > N_BYTES { 1u8 } else { 0u8 };
+        // For recovery ID, check if we need to use x overflow (x >= n).
+        // Use the authoritative secp256k1 order from crypto::paillier (F-018).
+        let r_value = BigUint::from_bytes_be(&r_array);
+        let x_overflow = if r_value >= secp256k1_order() { 1u8 } else { 0u8 };
 
         // Standard Ethereum recovery ID format
         // Bit 0: y parity, Bit 1: x overflow

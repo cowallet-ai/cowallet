@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config/api_config.dart';
-import '../utils/secure_storage.dart';
+import '../api/mpc_api.dart';
 
 /// MPC协议消息
 class MpcMessage {
@@ -45,7 +45,8 @@ enum MpcWebSocketState {
 }
 
 /// 管理MPC会话的WebSocket连接，用于实时传输MPC协议消息。
-/// 连接地址: ws://host/api/v1/mpc/session/{sessionId}/ws?party={partyIndex}&token={jwt}
+/// 连接地址: ws://host/api/v1/mpc/session/{sessionId}/ws?party={partyIndex}&ticket={ticket}
+/// 票据为一次性、30秒有效，由 /auth/ws-ticket 用 JWT 换取——避免 JWT 进入 URL/日志。
 class MpcWebSocket {
   final String sessionId;
   final int partyIndex;
@@ -85,9 +86,15 @@ class MpcWebSocket {
   }
 
   /// 构建WebSocket URL
-  /// 将HTTP URL转换为WS URL，并附加session/party/token参数
+  /// 将HTTP URL转换为WS URL，并附加session/party/ticket参数。
+  /// 每次连接(含重连)都换取一张新的一次性票据——票据30秒有效且仅可用一次。
   Future<Uri> _buildWsUri() async {
-    String token = await SecureStorage.getToken() ?? '';
+    final ticketResult = await MpcApi.getWsTicket();
+    if (!ticketResult.isSuccess || ticketResult.data == null) {
+      throw Exception(
+          'Failed to obtain ws ticket: ${ticketResult.errorMessage ?? 'unknown error'}');
+    }
+    final String ticket = ticketResult.data!;
 
     // 将 http:// 或 https:// 转换为 ws:// 或 wss://
     String wsBase = ApiConfig.baseUrl
@@ -95,7 +102,7 @@ class MpcWebSocket {
         .replaceFirst('https://', 'wss://');
 
     String url =
-        '$wsBase${ApiConfig.apiPrefix}/mpc/session/$sessionId/ws?party=$partyIndex&token=$token';
+        '$wsBase${ApiConfig.apiPrefix}/mpc/session/$sessionId/ws?party=$partyIndex&ticket=$ticket';
 
     return Uri.parse(url);
   }

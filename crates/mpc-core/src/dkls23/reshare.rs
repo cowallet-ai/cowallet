@@ -43,12 +43,19 @@ pub struct ReshareRound1Message {
     pub commitments: Vec<Vec<u8>>, // New polynomial commitments
 }
 
-/// Round 2 message for resharing: secret share evaluations
+/// Round 2 message for resharing: secret share evaluations.
+///
+/// Each message carries the sender's polynomial `commitments` so the recipient
+/// can run Feldman VSS verification on the received evaluation (F-008). Without
+/// this, a malicious participant could inject an arbitrary share that silently
+/// corrupts the reshared key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReshareRound2Message {
     pub session_id: String,
     pub from_party: u16,
     pub evaluations: Vec<(u16, Vec<u8>)>,
+    /// Sender's VSS polynomial commitments (C_0, C_1, ..., C_{t-1}).
+    pub commitments: Vec<Vec<u8>>,
 }
 
 #[allow(dead_code)]
@@ -189,16 +196,18 @@ impl ReshareSession {
         let round1 = ReshareRound1Message {
             session_id: self.config.session_id.clone(),
             party_index: my_idx,
-            commitments,
+            commitments: commitments.clone(),
         };
 
-        // Create individual messages for each party (encrypted point-to-point)
+        // Create individual messages for each party (encrypted point-to-point).
+        // Each message carries the sender's commitments for Feldman verification.
         let mut messages = Vec::new();
         for (recipient, eval_bytes) in evaluations {
             let round2 = ReshareRound2Message {
                 session_id: self.config.session_id.clone(),
                 from_party: my_idx,
                 evaluations: vec![(recipient, eval_bytes)],
+                commitments: commitments.clone(),
             };
 
             let payload = bincode::serialize(&round2)
@@ -255,6 +264,28 @@ impl ReshareSession {
                     bytes.copy_from_slice(&share_bytes[..32]);
                     let share = Option::<Scalar>::from(Scalar::from_repr(bytes.into()))
                         .ok_or_else(|| MpcError::ResharingFailed("invalid share value".into()))?;
+
+                    // F-008: verify the received evaluation against the sender's
+                    // polynomial commitments before accepting it. A missing
+                    // commitment set is a HARD ERROR (cf. F-007).
+                    if round2.commitments.is_empty() {
+                        return Err(MpcError::ResharingFailed(format!(
+                            "missing reshare commitments from party {}",
+                            round2.from_party
+                        )));
+                    }
+                    crate::dkls23::dkg::DkgSession::verify_feldman_share(
+                        &share,
+                        target,
+                        &round2.commitments,
+                    )
+                    .map_err(|e| {
+                        MpcError::ResharingFailed(format!(
+                            "Feldman verification failed for share from party {}: {}",
+                            round2.from_party, e
+                        ))
+                    })?;
+
                     received_shares.push(share);
                 }
             }

@@ -152,12 +152,15 @@ impl RateLimiter for RedisRateLimiter {
 
         let mut conn = match self.get_conn().await {
             Ok(c) => c,
-            Err(_) => {
-                // Fallback: allow on Redis failure (fail-open)
+            Err(e) => {
+                // SECURITY (F-011): FAIL CLOSED on Redis connection failure.
+                // For a crypto wallet, allowing unlimited requests when the rate
+                // limiter backend is down enables OTP/auth brute force, so we deny.
+                tracing::error!("Rate limiter Redis connection failed, denying request: {}", e);
                 return RateLimitStatus {
-                    allowed: true,
-                    remaining: limit.max_requests - 1,
-                    retry_after: 0,
+                    allowed: false,
+                    remaining: 0,
+                    retry_after: limit.window_secs,
                 };
             }
         };
@@ -201,11 +204,15 @@ impl RateLimiter for RedisRateLimiter {
                     }
                 }
             }
-            Err(_) => RateLimitStatus {
-                allowed: true, // Fail-open for resilience
-                remaining: limit.max_requests - 1,
-                retry_after: 0,
-            },
+            Err(e) => {
+                // SECURITY (F-011): FAIL CLOSED on Redis query failure.
+                tracing::error!("Rate limiter Redis query failed, denying request: {}", e);
+                RateLimitStatus {
+                    allowed: false,
+                    remaining: 0,
+                    retry_after: limit.window_secs,
+                }
+            }
         }
     }
 
@@ -407,18 +414,20 @@ async fn apply_rate_limit(mut request: Request<Body>, next: Next, limit: RateLim
         }
     };
 
-    // Try to get user ID from claims if authenticated, or use IP as fallback
+    // Try to get user ID from claims if authenticated, or use the real socket
+    // address as fallback.
+    //
+    // SECURITY (F-011): we no longer trust the client-supplied X-Forwarded-For
+    // header for rate-limit keying. XFF is trivially spoofable, which let an
+    // attacker rotate the header value to bypass per-IP limits entirely. We key
+    // only on the real peer socket address (ConnectInfo). If a trusted reverse
+    // proxy is deployed in front of this service, it should be configured to
+    // rewrite the source address (or this should be revisited with a vetted
+    // TRUSTED_PROXIES allowlist) rather than honoring arbitrary XFF headers.
     let key = request
         .extensions()
         .get::<crate::middleware::auth::Claims>()
         .map(|c| format!("user:{}", c.sub))
-        .or_else(|| {
-            request
-                .headers()
-                .get("X-Forwarded-For")
-                .and_then(|h| h.to_str().ok())
-                .map(|s| format!("ip:{}", s.split(',').next().unwrap_or(s).trim()))
-        })
         .or_else(|| {
             request
                 .extensions()

@@ -140,10 +140,14 @@ impl AppState {
         let participant = Arc::new(participant);
         participant.spawn_cleanup();
 
+        // SECURITY (F-016): the previously hardcoded Covalent fallback key
+        // ("cqt_rQGHc9RXCJfWxFDffW6qp7xHqcYG") was removed. That key was leaked in
+        // source control and MUST be rotated/revoked in the Covalent dashboard.
+        // When COVALENT_API_KEY is unset the field stays None and balance/tx-history
+        // endpoints return 503 (handled below).
         let covalent_api_key = std::env::var("COVALENT_API_KEY")
             .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(|| Some("cqt_rQGHc9RXCJfWxFDffW6qp7xHqcYG".to_string()));
+            .filter(|s| !s.is_empty());
         if covalent_api_key.is_some() {
             tracing::info!("Covalent API configured for balance queries");
         } else {

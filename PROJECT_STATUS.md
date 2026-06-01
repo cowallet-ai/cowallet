@@ -1,6 +1,6 @@
 # CoWallet 功能清单
 
-> 更新日期: 2026-05-28 | 项目阶段: Alpha
+> 更新日期: 2026-05-30 | 项目阶段: Alpha
 >
 > 状态说明: ✅ 已实现 | 🔧 部分实现 | ❌ 未实现 | 🧪 已验证（真机/生产环境实测通过）
 
@@ -20,10 +20,10 @@
 
 ### 写完了但没验证的（有风险）
 
-- 预签名池自动补充 — 后台任务，边界情况没测过
+- 预签名池自动补充 — 后台任务，已增加签名互斥保护，边界情况没测过
 - 密钥轮换备份 — 出错可能丢钱，但没在真实环境跑过
 - ERC-4337 账户抽象 — 链路复杂，等于没用
-- DEX 兑换（Bridgers API）— 刚从 0x 切过来，还在修 bug
+- DEX 兑换（Bridgers API）— 同链兑换已验证，跨链兑换已修复 USDT approve 问题
 - EIP-712 结构化签名 — 目前没有 DApp 场景用到
 
 ### 还没做的（上线拦路虎）
@@ -36,6 +36,14 @@
 ### 当前适合什么
 
 内部测试和演示。距离公开发布还需要补齐安全审计、集成测试、恢复流程验证，预计 2-3 个月。
+
+### 本周完成 (2026-05-26 ~ 2026-05-30)
+
+- **MPC 签名稳定性** — 修复预签名/签名并发竞争，增加异步互斥锁；WS 消息投递改为并行轮询+监听，解决 NATS 竞态；签名等待按 round 过滤避免重连重放污染
+- **跨链兑换修复** — USDT0 approve 需先 reset 为 0，增加前置步骤；approve 等待改为轮询 receipt 确认
+- **Bridgers API 迁移** — DEX 兑换从 0x API 切换到 Bridgers，支持同链+跨链兑换
+- **Bedrock AI 集成** — 新增 AWS Bedrock Claude 作为默认 AI Provider，DeepSeek 降为备选
+- **WS 心跳兼容** — 跳过 JSON 控制消息（ping/pong）的反序列化
 
 ---
 
@@ -75,8 +83,10 @@
 ### 1.3 DEX 兑换 (Swap)
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 报价查询 | ✅ 已实现 | 0x API 聚合路由获取最优报价 |
+| 报价查询 | ✅ 已实现 | Bridgers API 聚合路由获取最优报价 |
 | 构建 Swap 交易 | ✅ 已实现 | 自动构建兑换交易数据 |
+| 同链兑换 | 🧪 已验证 | 同链 token swap 已真机验证通过 |
+| 跨链兑换 | ✅ 已实现 | 跨链桥接兑换，USDT approve 兼容已修复 |
 | AI 发起兑换 | ✅ 已实现 | 自然语言 → swap_token 工具调用 |
 | 滑点控制 | ✅ 已实现 | 可配置滑点参数 |
 
@@ -265,7 +275,19 @@
 
 ---
 
-## 七、近期修复 (2026-05-22)
+## 七、近期修复 (2026-05-29)
+
+| 修复项 | 说明 |
+|--------|------|
+| MPC 签名卡死 | 预签名/签名并发竞争 FFI 全局状态，增加 `_signInProgress` 标志 + Completer 异步互斥锁 |
+| WS 消息投递竞态 | NATS 发布早于客户端订阅，改为 WS 监听 + HTTP 轮询并行，3s 延迟启动轮询，30s 硬超时 |
+| 跨链兑换 revert | USDT0 approve 需先 reset 为 0 再设新值，增加 `approve(spender, 0)` 前置步骤 |
+| Approve 未确认就发 swap | 原 3s 盲等改为 `_waitForTxConfirmation` 轮询 receipt（最多 60s） |
+| WS ping 反序列化警告 | `{"type":"ping"}` 心跳消息跳过 WsMessage 解析 |
+| Bridgers API 迁移 | DEX 兑换从 0x API 切换到 Bridgers，支持同链+跨链 |
+| Bedrock AI 集成 | 新增 AWS Bedrock Claude 作为默认 AI Provider，DeepSeek 降为备选 |
+
+### 近期修复 (2026-05-22)
 
 | 修复项 | 说明 |
 |--------|------|
@@ -294,7 +316,7 @@
 
 - **后端**: Rust, Axum, SQLx, PostgreSQL, Redis, NATS, Tower
 - **密码学**: DKLS23 (自研), secp256k1, AES-GCM, Noise Protocol
-- **区块链**: Alloy (EVM), Covalent API, 0x API
+- **区块链**: Alloy (EVM), Covalent API, Bridgers API (DEX 聚合)
 - **移动端**: Flutter/Dart, flutter_rust_bridge v2
 - **AI**: Bedrock Claude (默认) + DeepSeek (备选), AiProvider trait 抽象, AWS Event Stream 流式, Function Calling
 - **部署**: Docker, GitHub Actions, AWS Cloud ECS

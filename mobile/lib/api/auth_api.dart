@@ -48,7 +48,8 @@ class AuthApi {
       String? refreshToken = result.data?["refresh_token"];
       String? userId = result.data?["user_id"];
 
-      print("📝 AuthApi.register response: token=${token?.substring(0, 30)}..., userId=$userId");
+      // Do not log token material, not even a prefix (F-021).
+      print("📝 AuthApi.register response: token=${token != null ? "<received>" : "<null>"}, userId=$userId");
 
       if (token != null) {
         await SecureStorage.saveToken(token);
