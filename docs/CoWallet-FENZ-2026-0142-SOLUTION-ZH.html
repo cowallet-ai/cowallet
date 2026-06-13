@@ -400,6 +400,16 @@ hr::after {
       <li class="toc-level-1"><a href="#chains">漏洞链修复确认</a></li>
       <li class="toc-level-1"><a href="#breaking">破坏性变更清单</a></li>
       <li class="toc-level-1"><a href="#ops">待运维 / 后续事项</a></li>
+      <li class="toc-level-1"><a href="#r2-top">附录 R2 —— 第二轮修复（COWALLET-SECFIX-R2）</a></li>
+      <li class="toc-level-2"><a href="#r2-about">R2 关于编号（独立编号）</a></li>
+      <li class="toc-level-2"><a href="#r2-verify">R2 整体验证结论</a></li>
+      <li class="toc-level-2"><a href="#r2-tier1">R2 认证与会话</a></li>
+      <li class="toc-level-2"><a href="#r2-tier2">R2 越权与归属</a></li>
+      <li class="toc-level-2"><a href="#r2-tier3">R2 AI 执行器与提示注入</a></li>
+      <li class="toc-level-2"><a href="#r2-tier4">R2 MPC 核心内存安全</a></li>
+      <li class="toc-level-2"><a href="#r2-tier5">R2 卫生级</a></li>
+      <li class="toc-level-2"><a href="#r2-gaps">R2 已知缺口与待确认</a></li>
+      <li class="toc-level-2"><a href="#r2-table">R2 16 项一览</a></li>
     </ul>
   </nav>
   <div style="flex:1; min-width: 0;">
@@ -514,10 +524,11 @@ if verifying_key.verify_prehash(digest.as_slice(), &signature).is_err() {
   <div class="kicker">修复方案 —— 强制走 Argon2id + AES-GCM 加密路径</div>
   <ul>
     <li><code>storeBackupShard</code> 现要求 <code>password</code>，统一经 <code>exportEncrypted → MpcBridge.exportBackupShard</code>（Rust 端 Argon2id + AES-256-GCM）。</li>
-    <li>删除 <code>_buildBackupPayload</code>/<code>_writeBackupFile</code>/<code>_parseBackupPayload</code> 及全局可读 <code>Download/</code> 写路径；导出目录仅限应用私有目录。</li>
-    <li>DKG 时自动备份现弹窗要求设置备份密码（≥8 位、二次确认），未设则取消；备份哈希注册改为对<strong>密文 blob</strong> 求 SHA-256。</li>
+    <li>删除 <code>_buildBackupPayload</code>/<code>_writeBackupFile</code>/<code>_parseBackupPayload</code> 及全局可读 <code>Download/</code> 写路径；<code>_getExportDirectory</code> 仅返回应用私有目录。</li>
+    <li>DKG 时自动备份（<code>onboarding_flow.dart:_saveBackup</code>）现弹窗要求设置备份密码（≥8 位、二次确认），未设则取消；备份哈希注册改为对<strong>密文 blob</strong> 求 SHA-256（前后一致）。仅<strong>云备份</strong>（<code>result.method == BackupMethod.cloud</code>）才向服务端注册哈希——文件备份不再登记服务端哈希。</li>
+    <li>钱包服务层（<code>mobile/lib/services/mpc_wallet_service.dart</code>）：<code>storeBackupShard</code> 新增<strong>必填 <code>password</code></strong> 参数并透传给 <code>BackupShardService</code>（加密链路的接口破坏性变更）；新增 <code>retrieveBackupBlob()</code> 取回云端密文 blob 以供注册其 SHA-256 指纹。</li>
     <li>剪贴板复制的是密文，新增 <strong>60 秒后自动清空</strong>。</li>
-    <li>连带打通加密恢复读路径（<code>recovery_service.dart</code> / <code>key_health_service.dart</code> / 相关视图）。</li>
+    <li>连带打通加密恢复读路径：<code>recovery_service.dart</code> / <code>key_health_service.dart</code> / <code>recovery_view.dart</code> / <code>keys_view.dart</code> 现要求密码并经解密校验。</li>
   </ul>
   <div class="note-block">
   <p><strong>遗留 TODO（已内联标注）。</strong> <code>import_backup_shard</code> 写入 share-slot 2，而恢复重建读取专用 recovery slot。完整加密恢复路径需 Rust 端 <code>import_backup_shard</code> 同时写 recovery slot，或新增专用 FFI。已在 <code>recovery_service.dart</code> 标注，未擅改 Rust FFI 以免破坏编译。</p>
@@ -868,6 +879,232 @@ let server = axum::serve(
 
 <hr>
 <p><em>解决方案报告结束。发现与风险背景见配套《审计报告》 <code>FENZ-2026-0142-AUDIT-ZH</code>。</em></p>
+
+<hr style="border:0;border-top:3px double var(--accent-deep);margin:48px 0;">
+<h2 id="r2-top">附录 R2 —— 第二轮修复（COWALLET-SECFIX-R2）</h2>
+<div class="note-block">
+<p><strong>本附录来自另一份独立文档 <code>COWALLET-SECFIX-R2-ZH</code></strong>（对应 <code>v1-cowallet-audit</code> / 报告号 FENZ-2026-<strong>001</strong>，25 项中的 16 项）。其 <code>F-0xx</code> 编号与上方 FENZ-0142 正文 <strong>各自独立、同号不同义</strong>（如 F-015：FENZ=明文 HTTP，R2=金额精度）。为避免锚点冲突，本附录所有锚点采用 <code>r2-</code> 前缀。修复状态：<strong>16/16 已实施并验证</strong>。</p>
+</div>
+
+<section id="r2-about">
+<h3>R2 · 关于编号（独立编号，切勿混用）</h3>
+<table>
+<thead><tr><th>编号</th><th>R2 语义</th><th>FENZ-0142 语义</th></tr></thead>
+<tbody>
+<tr><td>F-015</td><td>金额精度（f64 丢精度）</td><td>明文 HTTP</td></tr>
+<tr><td>F-016</td><td>EVM 地址校验（EIP-55）</td><td>Covalent 密钥硬编码</td></tr>
+<tr><td>F-017</td><td>AI 注入过滤器加固</td><td>同左（一致）</td></tr>
+</tbody>
+</table>
+<p><strong>两份审计源 ↔ 修复文档对照</strong>：<code>v2-cowallet-audit</code>（FENZ-2026-<strong>0142</strong>，19 项）↔ 本 SOLUTION 文档正文，19/19 对齐；<code>v1-cowallet-audit</code>（FENZ-2026-<strong>001</strong>，25 项）↔ 部分由本 R2 附录覆盖、部分由正文以不同编号覆盖。<strong>文件名 v1/v2 与报告号大小相反</strong>。关键漂移：v1 审计 F-017=「策略默认放行+USD/wei」、F-020=「注入过滤器」，而 R2 的「F-017」对应 v1 审计的 <strong>F-020</strong>。</p>
+</section>
+
+<section id="r2-verify">
+<h3>R2 · 整体验证结论</h3>
+<table>
+<thead><tr><th>验证项</th><th>结果</th></tr></thead>
+<tbody>
+<tr><td><code>cargo build --workspace</code></td><td>✅ 通过（仅既有 dead-code 警告）</td></tr>
+<tr><td><code>cargo test -p mpc-core</code>（含签名套件）</td><td>✅ 18 passed, 0 failed</td></tr>
+<tr><td><code>cargo test -p api-server crypto::</code></td><td>✅ 23 passed（含 2 个新增 AAD 绑定测试）</td></tr>
+<tr><td><code>cargo test -p policy-engine</code></td><td>✅ 46 passed, 0 failed</td></tr>
+<tr><td><code>cargo test -p chain-evm</code>（EntryPoint 一致性）</td><td>✅ passed</td></tr>
+</tbody>
+</table>
+<p><strong>修复纠错记录</strong>：R2 F-017 曾被误标为「策略引擎失败关闭」，据此误改 <code>policy-engine/rules.rs</code> 默认分支为硬 Deny，破坏 deny-list 模型，已<strong>完整还原</strong>（46/46）。真实修复是 <code>ai.rs</code> 注入过滤器。</p>
+</section>
+<h2 id="r2-tier1">R2 第一级 —— 认证与会话</h2>
+
+<section class="finding" id="r2-f-009">
+  <h3>R2 F-009 · JWT 黑名单查询失败时被当作「未拉黑」→ 失败关闭</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：黑名单校验在 DB/Redis 出错或缺失时返回「未拉黑」，被撤销令牌可在故障窗口内继续使用。</p>
+  <p><strong>修复</strong>（<code>middleware/auth.rs:236</code>）：黑名单查询<strong>失败关闭</strong>——DB 错误或缺库一律视为「拒绝」。</p>
+</section>
+
+<section class="finding" id="r2-f-010">
+  <h3>R2 F-010 · 设备绑定未强制 + 令牌入 WS 查询串 → 强制绑定 + 一次性票据</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：缺 <code>X-Device-ID</code> 时绕过设备绑定；WebSocket 把原始 JWT 放查询串（易入日志/代理缓存）。</p>
+  <ul>
+    <li><code>middleware/auth.rs:254</code>：缺失 <code>X-Device-ID</code> 的请求<strong>直接拒绝</strong>。</li>
+    <li><code>routes/mpc_ws.rs:52</code> + <code>routes/auth.rs:692</code>：WS 改用<strong>一次性票据</strong>（<code>POST /api/v1/auth/ws-ticket</code> 换取），不再在查询串传 JWT。</li>
+  </ul>
+</section>
+
+<section class="finding" id="r2-f-011">
+  <h3>R2 F-011 · 限速器失败开放 + IP 可伪造 + OTP 阈值差一 → 失败关闭 + 真实 socket + 阈值修正</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：Redis 故障时限速器放行；信任客户端 <code>X-Forwarded-For</code>；OTP 锁定用 <code>&gt;</code> 多放一次；刷新端点设备绑定取自令牌自身，校验恒为真。</p>
+  <ul>
+    <li><code>middleware/rate_limit.rs:156,208</code>：Redis 连接/查询失败<strong>失败关闭</strong>。</li>
+    <li><code>middleware/rate_limit.rs:420</code>：按真实 peer socket 计数，不再信任 <code>X-Forwarded-For</code>。</li>
+    <li><code>routes/auth.rs:229,970</code>：锁定阈值 <code>&gt;</code> 改 <code>&gt;=</code>，第 5 次失败即锁。</li>
+    <li><code>middleware/auth.rs:158,185,201</code> + <code>routes/auth.rs:597</code>：刷新端点设备绑定改用<strong>独立来源</strong>的 <code>X-Device-ID</code> 头，缺头即 <code>FORBIDDEN</code>。</li>
+  </ul>
+</section>
+
+<section class="finding" id="r2-f-014">
+  <h3>R2 F-014 · 客户端提供的身份字段作授权根 → 改从 JWT 取身份 + 令牌类型声明</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：<code>wallet_address</code>/<code>user_id</code>/<code>auth_method</code> 取自请求体；access/refresh 令牌无类型区分可互换滥用。</p>
+  <ul>
+    <li><code>middleware/auth.rs:13,167</code>：令牌带 <code>token_type</code> 声明；仅 refresh 令牌可在刷新端点交换（<code>auth.rs:230</code> 拒绝 bearer 重放）。</li>
+    <li><code>routes/ai.rs:855,864,1127</code>：身份与钱包地址<strong>一律从已验证 JWT（<code>claims.sub</code>）解析</strong>。</li>
+    <li>兼容（<code>auth.rs:33</code>）：旧无 <code>token_type</code> 令牌按 access 处理。</li>
+  </ul>
+</section>
+<h2 id="r2-tier2">R2 第二级 —— 越权与归属（IDOR/BOLA）</h2>
+
+<section class="finding" id="r2-f-007">
+  <h3>R2 F-007 · 推送发送 IDOR → 归属取自 JWT</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：<code>send_push</code> 信任请求体 <code>user_id</code>，任意用户可向他人设备推送。</p>
+  <p><strong>修复</strong>（<code>routes/push.rs:81</code>）：忽略请求体 <code>user_id</code>，归属取自 JWT（<code>claims.sub</code>）；<code>register_token</code>(:42) 同样以 <code>claims.sub</code> 为根。</p>
+</section>
+
+<section class="finding" id="r2-f-008">
+  <h3>R2 F-008 · 交易历史 IDOR → 调用方须拥有交易一方</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：历史/详情端点未校验调用方是否拥有该地址或交易。</p>
+  <p><strong>修复</strong>（<code>routes/tx_history.rs:67,203,273,368</code> + <code>routes/tx.rs:274</code>）：调用方须拥有该地址（或交易 from/to 一方），否则 <code>NOT_FOUND</code>（不泄露存在性）。</p>
+</section>
+
+<section class="finding" id="r2-f-019">
+  <h3>R2 F-019 · userOp <code>sender</code> 无归属校验 → 绑定到认证用户</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：提交 ERC-4337 userOp 时 <code>sender</code> 未校验归属，可代他人发起账户抽象交易。</p>
+  <p><strong>修复</strong>（<code>routes/userop.rs:150</code> + <code>routes/tx.rs:778</code>）：userOp 的 <code>sender</code> 必须属于认证用户。</p>
+</section>
+
+<h2 id="r2-tier3">R2 第三级 —— AI 执行器与提示注入</h2>
+
+<section class="finding" id="r2-f-013">
+  <h3>R2 F-013 · 分片加密未绑定用户身份 → AES-GCM AAD 身份绑定</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s1">严重</span></div>
+  <p><strong>根因</strong>：所有服务器分片在同一静态根密钥下加密，密文与所属用户无密码学绑定——分片行被挪到他人记录仍可解密。</p>
+  <ul>
+    <li><code>services/crypto.rs:70,122,139</code>：新增 <code>derive_key_with_salt</code>/<code>encrypt_bound</code>/<code>decrypt_bound</code>——「所属身份」既作 AES-GCM AAD 又作 HKDF salt（每用户密钥相异）。</li>
+    <li><code>shard_store.rs:23,28,35,47</code>：六处读写接入身份 AAD；<code>decrypt_stored</code> 按 <code>encryption_key_id</code> 版本分派，新分片无法被降级绕过。</li>
+    <li><strong>新增测试</strong>：<code>test_aad_binding_rejects_foreign_identity</code>、<code>..._distinct_keys_per_identity</code>。</li>
+  </ul>
+</section>
+
+<section class="finding" id="r2-f-015">
+  <h3>R2 F-015 · 金额按 f64 换算丢精度 → 精确整数换算</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s2">高危</span></div>
+  <p><strong>根因</strong>：金额经 <code>amount * 10^decimals as u128</code> 用 f64 中转，悄改用户已批准金额。</p>
+  <p><strong>修复</strong>（<code>services/ai_executor.rs:124</code> <code>parse_decimal_to_smallest</code>）：纯整数解析，拒绝非法/超精度输入，不经 f64。</p>
+</section>
+
+<section class="finding" id="r2-f-016">
+  <h3>R2 F-016 · 地址仅查长度前缀 → EIP-55 校验 + 规范化</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s2">高危</span></div>
+  <p><strong>根因</strong>：仅检查 <code>0x</code> 前缀与长度，混合大小写时不校验 EIP-55 校验和。</p>
+  <p><strong>修复</strong>（<code>services/ai_executor.rs:160</code> <code>validate_evm_address</code>）：校验 hex + 混合大小写强制 EIP-55，返回规范化 checksum 形式。</p>
+</section>
+
+<section class="finding" id="r2-extra-erc20">
+  <h3>R2 附加 · ERC-20 授权竞态 + USDT 兼容（无审计编号，资金可用性）</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s2">高危（资金流可用性）</span></div>
+  <p><strong>根因</strong>：① USDT 类代币在非零 allowance 上直接改额会 revert（须先置 0）；② approve 后固定 <code>Future.delayed(3s)</code> 即发 swap，链上未确认时授权未生效（竞态）。</p>
+  <p><strong>修复</strong>（<code>mobile/lib/services/intent_executor.dart</code>）：授权前若 <code>currentAllowance &gt; 0</code> 先 <code>approve(spender,0)</code> 并等确认；新增 <code>_waitForTxConfirmation</code>（轮询回执≤60s）取代固定延时，approve <strong>确认后</strong>才发 swap。</p>
+</section>
+
+<section class="finding" id="r2-f-017">
+  <h3>R2 F-017 · 注入过滤器易绕过且扫错内容 → 归一化加固（已存在，本轮核对）</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s3">中危</span></div>
+  <p><strong>说明</strong>：真实修复位于 <code>routes/ai.rs:507,535,608</code>（<code>normalize_for_threat_scan</code>/<code>detect_threat</code>/<code>detect_threat_in_context</code>），本轮核查已存在。<strong>不涉及策略引擎默认值</strong>（见 R2 纠错记录）。</p>
+</section>
+<h2 id="r2-tier4">R2 第四级 —— MPC 核心内存安全</h2>
+
+<section class="finding" id="r2-f-024">
+  <h3>R2 F-024 · FFI 全局锁中毒后永久不可用 → 容忍中毒</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s2">高危</span></div>
+  <p><strong>根因</strong>：<code>ffi-mobile/state.rs</code> 全局会话表用 <code>.lock().unwrap()</code>，任一持锁线程 panic 即毒化锁，后续所有 MPC 操作 panic，钱包整体瘫痪。</p>
+  <p><strong>修复</strong>（<code>crates/ffi-mobile/src/state.rs</code>，13 处）：改为 <code>.lock().unwrap_or_else(|e| e.into_inner())</code>，中毒后仍恢复内部数据继续工作。</p>
+</section>
+
+<section class="finding" id="r2-f-025">
+  <h3>R2 F-025 · 签名会话敏感材料不清零 → Zeroize + Drop</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s2">高危</span></div>
+  <p><strong>根因</strong>：<code>SignSession</code> 析构时不清零，临时 nonce <code>my_k</code>、Paillier 私钥、密钥分片用后驻留内存——<code>my_k</code> 泄露 + 签名即可反推长期分片。</p>
+  <p><strong>修复</strong>（<code>crates/mpc-core/src/dkls23/sign.rs:54,74</code>）：实现 <code>Zeroize</code>/<code>Drop</code>，清零 <code>my_k</code>/<code>r_scalar</code>，并取出 <code>my_share</code>/<code>paillier_keypair</code> 触发其清零析构。</p>
+</section>
+
+<h2 id="r2-tier5">R2 第五级 —— 卫生级</h2>
+
+<section class="finding" id="r2-f-005">
+  <h3>R2 F-005 · <code>.env.example</code> 含真实密钥 → 占位符</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s2">高危</span></div>
+  <p><strong>根因</strong>：<code>.env.example</code> 直接写入真实 DeepSeek API Key 与可用 dev <code>JWT_SECRET</code>。</p>
+  <p><strong>修复</strong>（<code>.env.example:85,109</code>）：替换为占位符。<strong>⚠️ 需运维</strong>：该 DeepSeek 密钥已入 git 历史，<strong>必须在控制台轮换/吊销</strong>；生产 <code>JWT_SECRET</code> 须用 <code>openssl rand -base64 32</code> 生成。</p>
+</section>
+
+<section class="finding" id="r2-f-021">
+  <h3>R2 F-021 · 移动端日志打印令牌内容 → 全部脱敏</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s3">中危</span></div>
+  <p><strong>根因</strong>：三处 <code>print</code> 输出 JWT 全文或前缀（前缀仍泄露 header/alg 并缩小爆破空间）。</p>
+  <p><strong>修复</strong>：<code>api/example_usage.dart:20</code>（全文→<code>&lt;redacted&gt;</code>）、<code>network/dio_client.dart:47</code>（前缀→<code>Token attached</code>）、<code>api/auth_api.dart:52</code>（前缀→<code>&lt;received&gt;</code>）。</p>
+</section>
+
+<section class="finding" id="r2-f-023">
+  <h3>R2 F-023 · EntryPoint 版本不一致 → 统一到 v0.6</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span><span class="badge b-s3">中危</span></div>
+  <p><strong>根因</strong>：签名/提交路径全程实现 ERC-4337 <strong>v0.6</strong>，但 <code>chains.rs</code> 声明了 <strong>v0.7</strong> EntryPoint（<code>erc4337_entrypoint</code> 字段，实际从未被读取）。日后接线会与 v0.6 打包/哈希不匹配。</p>
+  <p><strong>修复</strong>（用户决策统一 v0.6）：<code>crates/chain-evm/src/chains.rs</code> 8 处地址、7 处 <code>.expect</code> 文案、1 处测试注释统一为 v0.6（<code>0x5FF1…2789</code>）。<code>test_entrypoint_addresses_consistent</code> 通过。</p>
+</section>
+<h2 id="r2-gaps">R2 已知缺口与待确认</h2>
+
+<section class="finding" id="r2-gap-002-017">
+  <h3>⚠️ v1 审计 F-002 / F-017 · 签名路径的 USD 限额仍未强制（未闭环）</h3>
+  <div class="fhead"><span class="badge b-s1">未闭环</span></div>
+  <p><strong>实地核实结论</strong>（2026-06-01）：</p>
+  <ul>
+    <li>签名网关 <code>services/mpc_participant/mod.rs::enforce_sign_policy</code> 加载了 <code>single_limit_usd</code>，但<strong>只判断它 <code>&lt;= 0</code> 这个哨兵</strong>，<code>_raw_tx</code> 参数未使用——<strong>交易实际美元金额从不计算、从不与限额比较</strong>。</li>
+    <li>广播路径 <code>routes/tx.rs::submit</code> 在 <code>eth_sendRawTransaction</code> 前<strong>只重查冻结状态</strong>，无 USD/<code>user_policies</code> 强制。源码原注释声称「定量 USD 检查在 tx.rs 广播前执行」——<strong>经核实不成立</strong>，误导性注释已在 <code>mod.rs:495</code> 更正。</li>
+    <li>真正的限额逻辑（<code>compute_tx_history</code> + <code>policy-engine::rules::evaluate</code>）<strong>已存在，但只接在咨询型 <code>/policy/evaluate</code> 端点</strong>，签名授权路径从不调用。</li>
+  </ul>
+  <p><strong>当前已有保护</strong>：① keccak 重派生哈希绑定（不能盲签隐藏摘要）；② 签名时复查冻结；③ 显式 <code>single_limit_usd &lt;= 0</code> 封禁。<strong>缺的是定量美元限额。</strong></p>
+  <p><strong>为何未改代码</strong>（经决策确认，范围外）：(a) userOp 签名与普通签名共用 <code>session_type="sign"</code>，而 userOp 的 <code>raw_tx</code> 是 abi 哈希预像、不可 RLP 解码，朴素 fail-closed 会<strong>误封所有 userOp</strong>；(b) ERC-20 转账 <code>value=0</code>、金额在 calldata，估值需代币元数据。</p>
+  <p><strong>推荐修复路径</strong>（后续单独立项）：① 给 <code>MpcParticipant</code> 注入 <code>Arc&lt;PriceCache&gt;</code>+<code>reqwest::Client</code>；② 在 <code>chain-evm</code> 加 tx 解码 helper；③ 按类型分派：原生 ETH→<code>.value</code>×币价强制、价缺拒签；userOp→在 <code>submit_userop</code> 估值；ERC-20→解码金额按代币定价。</p>
+</section>
+
+<section class="finding" id="r2-gap-022">
+  <h3>v1 审计 F-022 · presign 失败会话消耗预签名池 —— ✅ 已缓解</h3>
+  <div class="fhead"><span class="badge b-fixed">已缓解</span><span class="badge b-s4">低危</span></div>
+  <p><code>presign_manager.rs::cleanup_stale_reservations</code>（后台循环已调用）将「已预留但 10 分钟未消费」的预签名释放回 <code>available</code>，失败会话<strong>不会永久消耗</strong>池。现状视为<strong>已缓解</strong>，不需代码改动。</p>
+</section>
+
+<section class="finding" id="r2-gap-012">
+  <h3>R2 F-012 · 预言机不可用时 USD 限额坍缩为 $0 → 失败关闭</h3>
+  <div class="fhead"><span class="badge b-fixed">已修复</span></div>
+  <p>已核实修复存在于 <code>services/ai_executor.rs:924,933</code>（价格缺失时<strong>失败关闭</strong>，返回「无法核验转账限额，已暂停该交易」而非按 $0 放行）。注：此为 <strong>AI 执行器</strong>路径，与上方 MPC 签名路径的 F-002/F-017 缺口是<strong>不同路径</strong>。</p>
+</section>
+
+<h2 id="r2-table">R2 · 本轮 16 项一览</h2>
+<table>
+<thead><tr><th>编号</th><th>主题</th><th>关键文件</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>F-005</td><td>移除泄露密钥</td><td><code>.env.example</code></td><td>✅ 代码层</td></tr>
+<tr><td>F-007</td><td>推送发送 IDOR</td><td><code>routes/push.rs</code></td><td>✅</td></tr>
+<tr><td>F-008</td><td>交易历史 IDOR</td><td><code>routes/tx_history.rs</code>,<code>tx.rs</code></td><td>✅</td></tr>
+<tr><td>F-009</td><td>JWT 黑名单失败关闭</td><td><code>middleware/auth.rs</code></td><td>✅</td></tr>
+<tr><td>F-010</td><td>设备绑定 + WS 票据</td><td><code>middleware/auth.rs</code>,<code>routes/mpc_ws.rs</code></td><td>✅</td></tr>
+<tr><td>F-011</td><td>限速失败关闭 + 阈值</td><td><code>middleware/rate_limit.rs</code>,<code>routes/auth.rs</code></td><td>✅</td></tr>
+<tr><td>F-013</td><td>分片身份绑定（AAD）</td><td><code>services/crypto.rs</code>,<code>shard_store.rs</code></td><td>✅ +测试</td></tr>
+<tr><td>F-014</td><td>身份取自 JWT + 令牌类型</td><td><code>middleware/auth.rs</code>,<code>routes/ai.rs</code></td><td>✅</td></tr>
+<tr><td>F-015</td><td>金额精度</td><td><code>services/ai_executor.rs</code></td><td>✅</td></tr>
+<tr><td>F-016</td><td>EIP-55 地址校验</td><td><code>services/ai_executor.rs</code></td><td>✅</td></tr>
+<tr><td>F-017</td><td>注入过滤器（已存在）</td><td><code>routes/ai.rs</code></td><td>✅ 核对</td></tr>
+<tr><td>F-019</td><td>userOp 归属</td><td><code>routes/userop.rs</code>,<code>tx.rs</code></td><td>✅</td></tr>
+<tr><td>F-021</td><td>移动端令牌日志脱敏</td><td><code>mobile/lib/...</code></td><td>✅</td></tr>
+<tr><td>F-023</td><td>EntryPoint 统一 v0.6</td><td><code>crates/chain-evm/src/chains.rs</code></td><td>✅ +测试</td></tr>
+<tr><td>F-024</td><td>FFI 锁中毒容忍</td><td><code>crates/ffi-mobile/src/state.rs</code></td><td>✅</td></tr>
+<tr><td>F-025</td><td>签名会话清零</td><td><code>crates/mpc-core/src/dkls23/sign.rs</code></td><td>✅ +测试</td></tr>
+</tbody>
+</table>
+<p style="margin-top:24px;"><em>附录 R2 结束。来源文档 <code>COWALLET-SECFIX-R2-ZH</code>（v1 审计 / FENZ-2026-001）。</em></p>
     </main>
     <footer class="page-footer">
       Generated&nbsp;by&nbsp;FENZ.AI Chimera &middot;&middot;&middot; 在 AI 失控之前完成修复。

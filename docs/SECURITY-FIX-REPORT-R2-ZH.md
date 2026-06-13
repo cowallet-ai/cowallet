@@ -19,6 +19,31 @@
 
 引用本报告发现时，请带上 `COWALLET-SECFIX-R2` 前缀以消歧。
 
+### 两份审计源 ↔ 修复文档对照（2026-06-01 核对补充）
+
+经回到两份审计源文件逐项核对，归属与覆盖关系如下：
+
+- **`v2-cowallet-audit`（报告号 FENZ-2026-**0142**，19 项 F-001~F-019）** ↔ 由 `FENZ-2026-0142-SOLUTION-ZH` 覆盖，19/19 逐项对齐。
+- **`v1-cowallet-audit`（报告号 FENZ-2026-**001**，25 项 F-001~F-025）** ↔ 部分由 **本报告（R2）** 覆盖、部分由上面 SOLUTION 文档以不同编号覆盖。
+
+> ⚠️ **文件名 v1/v2 与报告号大小相反**：`v2` 文件 = 0142 号 = 19 项；`v1` 文件 = 001 号 = 25 项。
+>
+> ⚠️ **R2 编号 ≠ v1 审计编号**。关键漂移：v1 审计 **F-017**=「策略默认放行 + USD/wei 混用」、v1 审计 **F-020**=「注入过滤器」；而本报告的「F-017」对应的是 v1 审计的 **F-020**（注入过滤器）。只看本报告对照 v1 审计会误判 v1-F-017 缺失——其真实状态见下方「待确认 / 已知缺口」。
+
+| v1 审计项 | 语义 | 状态 | 记录位置 |
+|---|---|---|---|
+| v1 F-001 | 服务端联署任意哈希 | ✅ 已修（keccak 重派生绑定） | SOLUTION F-004 |
+| v1 F-002 | 策略引擎从未在签名路径强制 | ⚠️ **部分（USD 限额仍未强制）** | 本文「已知缺口」 |
+| v1 F-003 | 备份分片明文落盘 | ✅ | SOLUTION F-002 |
+| v1 F-004 | 仅 device_id 认证 | ✅ | SOLUTION F-001 |
+| v1 F-006 | AI 信任客户端 user_id | ✅ | SOLUTION F-014 / R2 F-014 |
+| v1 F-012 | MPC 会话缺归属 | ✅ | SOLUTION F-003 |
+| v1 F-017 | 策略默认放行 + USD/wei | ⚠️ **部分（见已知缺口）** | 本文「已知缺口」 |
+| v1 F-018 | 恢复 id 阶常量 | ✅ | SOLUTION F-018 |
+| v1 F-020 | 注入过滤器 | ✅ | 本报告「F-017」/ SOLUTION F-017 |
+| v1 F-022 | presign 失败会话消耗池 | ✅ **已缓解**（非永久消耗） | 本文「已知缺口」 |
+| 其余 v1 项 | （F-005/007/008/009/010/011/013/014/015/016/019/021/023/024/025） | ✅ | 本报告对应条目 |
+
 ---
 
 ## 整体验证结论
@@ -84,14 +109,14 @@
 
 ## 第二级 —— 越权与归属（IDOR/BOLA）
 
-### F-007：推送注册 IDOR → 归属取自 JWT
+### F-007：推送发送 IDOR → 归属取自 JWT
 
 | | |
 |---|---|
 | **严重程度** | 🔴 严重 |
-| **根因** | 推送 token 注册信任请求体里的 `user_id`，任意用户可把推送绑到他人设备。 |
+| **根因** | `send_push` 处理器信任请求体里的 `user_id`，任意用户可向他人设备推送。 |
 
-**修复**（`routes/push.rs:81`）：忽略请求体 `user_id`，归属取自已验证 JWT。
+**修复**（`routes/push.rs:81`）：`send_push` 忽略请求体 `user_id`，归属取自已验证 JWT（`claims.sub`）。注：`register_token`(:42) 同样以 `claims.sub` 为归属根。
 
 ### F-008：交易历史 IDOR → 调用方须拥有交易一方
 
@@ -228,9 +253,32 @@
 | **F-005** | 生产 `JWT_SECRET` 用 `openssl rand -base64 32` 重新生成 | `.env.example` 旧值为弱 dev 值 |
 | **F-013** | 评估对存量旧方案分片做离线重加密迁移 | 当前靠版本门兼容旧分片；迁移后可移除非绑定回退路径 |
 
-## 待确认（本轮范围外）
+## 已知缺口与待确认
 
-- **F-012**（预言机不可用时 USD 限额坍缩为 $0 → 失败关闭）：`FENZ-2026-0142` 文档标 CONFIRMED-FIXED（`services/ai_executor.rs:~795`）。本轮未触碰，请确认已覆盖。
+### ⚠️ v1 审计 F-002 / F-017：签名路径的 USD 限额**仍未强制**（未闭环）
+
+**实地核实结论**（2026-06-01）：
+
+- 服务端签名网关 `services/mpc_participant/mod.rs::enforce_sign_policy` 加载了 `single_limit_usd`，但**只判断它 `<= 0` 这个哨兵**（「显式封禁」），其 `_raw_tx` 参数未使用——**交易的实际美元金额从不计算、从不与限额比较**。
+- 广播路径 `routes/tx.rs::submit` 在 `eth_sendRawTransaction` 前**只重查冻结状态**，无任何 USD / `user_policies` 强制。源码中原有注释声称「定量 USD 检查在 routes/tx.rs 广播前执行」——经核实**不成立**，相关误导性注释已在 `mod.rs:495` / `enforce_sign_policy` doc 注释中更正。
+- 真正的限额逻辑（`compute_tx_history` + `policy-engine::rules::evaluate`）**已存在，但只接在咨询型 `/policy/evaluate` 端点上**，签名授权路径从不调用——这正是 v1 审计 F-002「策略引擎从未在签名路径强制」的本质。
+
+**当前已有保护**（不因本缺口失效）：① keccak 重派生哈希绑定（签名只能针对已披露的 tx，不能盲签隐藏摘要）；② 签名时复查冻结；③ 显式 `single_limit_usd <= 0` 封禁。**缺的是定量美元限额。**
+
+**为何本轮未改代码**（经决策确认，范围外）：正确修法是在签名时解码 tx 估值并 fail-closed，但存在两个会扩大爆炸半径的因素——(a) userOp 签名与普通签名共用 `session_type="sign"`，而 userOp 的 `raw_tx` 是 abi 哈希预像、不可 RLP 解码，朴素 fail-closed 会**误封所有 userOp**；(b) ERC-20 转账 `value=0`、金额在 calldata，估值需代币元数据。
+
+**推荐修复路径**（后续单独立项）：
+1. 给 `MpcParticipant` 注入 `Arc<PriceCache>` + `reqwest::Client`（仿 `set_presign_manager`，无循环依赖）。
+2. 在 `chain-evm` 加 tx 解码 helper（该 crate 已依赖 `alloy-consensus`）。
+3. 按类型分派：原生 ETH 转账 → `.value` × 原生币价强制 `single_limit_usd`，价缺**拒签**；userOp → 在 `submit_userop`（calldata + 预言机同时可用处）估值强制；ERC-20 → 解码 `transfer`/`transferFrom` 金额 + 按代币定价。
+
+### v1 审计 F-022：presign 失败会话消耗预签名池 —— ✅ 已缓解
+
+`presign_manager.rs::cleanup_stale_reservations`（后台循环已调用）将「已预留但 10 分钟未消费」的预签名释放回 `available`，失败会话**不会永久消耗**池。审计判低危，现状视为**已缓解**，不需代码改动。
+
+### F-012（本报告口径）：预言机不可用时 USD 限额坍缩为 $0 → 失败关闭
+
+本轮已实地核实修复存在于 `services/ai_executor.rs:924,933`（`evaluate_transfer_policy` 价格缺失时 **失败关闭**，返回「无法核验转账限额，已暂停该交易」而非按 $0 放行），与 `FENZ-2026-0142` 标注的 CONFIRMED-FIXED 一致。注：此为 **AI 执行器**路径的限额，与上方 MPC 签名路径的 F-002/F-017 缺口是**不同路径**——AI 路径已 fail-closed，签名路径仍未强制定量限额。
 
 ---
 
@@ -239,7 +287,7 @@
 | 编号 | 主题 | 关键文件 | 状态 |
 |---|---|---|---|
 | F-005 | 移除泄露密钥 | `.env.example` | ✅ 代码层 |
-| F-007 | 推送注册 IDOR | `routes/push.rs` | ✅ |
+| F-007 | 推送发送 IDOR | `routes/push.rs` | ✅ |
 | F-008 | 交易历史 IDOR | `routes/tx_history.rs`,`tx.rs` | ✅ |
 | F-009 | JWT 黑名单失败关闭 | `middleware/auth.rs` | ✅ |
 | F-010 | 设备绑定 + WS 票据 | `middleware/auth.rs`,`routes/mpc_ws.rs` | ✅ |

@@ -1,0 +1,603 @@
+/* Phone simulator styles - scoped under .phone-scope */
+@layer components {
+  .phone-scope {
+    --ps-paper: #faf9f5;
+    --ps-ink-1: #141008;
+    --ps-ink-2: #4a3f32;
+    --ps-ink-3: #8a7a6c;
+    --ps-ink-4: #b8a898;
+    --ps-line: #e7dfcd;
+    --ps-line-strong: #d5c9b0;
+    --ps-accent: #D97757;
+    --ps-accent-hover: #c96744;
+    --ps-accent-soft: #f7e3d8;
+    --ps-success: #5a7a4e;
+    --ps-success-soft: #e1ecd9;
+    --ps-warn: #b8832b;
+    --ps-warn-soft: #f4e8cd;
+    --ps-info: #3d6b8c;
+    --ps-gold: #a88a4a;
+    --ps-danger: #c0392b;
+    --ps-danger-soft: #f7dcd8;
+
+    font-family: "Inter", -apple-system, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .phone-frame {
+    position: relative;
+    width: 100%;
+    max-width: 390px;
+    aspect-ratio: 9 / 19.5;
+    background: var(--ps-paper);
+    border-radius: 48px;
+    border: 11px solid #1a1612;
+    overflow: hidden;
+    box-shadow:
+      0 50px 100px -30px rgba(20, 16, 8, 0.45),
+      0 20px 40px -15px rgba(20, 16, 8, 0.25),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .phone-notch {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 28px;
+    background: #1a1612;
+    border-radius: 20px;
+    z-index: 30;
+  }
+
+  .phone-screen {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+  }
+  .phone-screen::-webkit-scrollbar { display: none; }
+
+  .phone-home-indicator {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 134px;
+    height: 4px;
+    background: var(--ps-ink-1);
+    border-radius: 4px;
+    opacity: 0.25;
+    z-index: 30;
+  }
+
+  /* Status bar */
+  .ps-status-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ps-ink-1);
+    background: var(--ps-paper);
+  }
+  .ps-status-bar .right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .ps-status-bar .right svg { width: 16px; height: 16px; }
+
+  /* Tab bar */
+  .ps-tabbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: 68px;
+    padding-bottom: 14px;
+    background: var(--ps-paper);
+    border-top: 1px solid var(--ps-line);
+    z-index: 20;
+  }
+  .ps-tabbar-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    color: var(--ps-ink-4);
+    cursor: pointer;
+    transition: color 0.15s;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    font-family: inherit;
+  }
+  .ps-tabbar-item.active { color: var(--ps-ink-1); }
+  .ps-tabbar-item svg { width: 22px; height: 22px; }
+  .ps-tabbar-item span { font-size: 10px; font-weight: 500; }
+
+  .ps-ask-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    position: relative;
+    top: -8px;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .ps-ask-orb {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffbfa6 0%, #D97757 55%, #9a4a31 100%);
+    box-shadow: 0 6px 20px -4px rgba(217, 119, 87, 0.5);
+    animation: ps-orb-breathe 3.8s ease-in-out infinite;
+  }
+  @keyframes ps-orb-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+  .ps-ask-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ps-accent);
+    font-weight: 600;
+  }
+
+  /* App header */
+  .ps-app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 20px 12px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .ps-app-header .title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "Fraunces", serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ps-ink-2);
+  }
+  .ps-app-header .orb-mini {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffbfa6, #D97757);
+    box-shadow: 0 0 0 3px var(--ps-accent-soft);
+  }
+
+  /* Body scroll area */
+  .ps-body {
+    padding: 0 20px;
+    padding-bottom: 80px;
+  }
+
+  /* Section label */
+  .ps-section-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 0 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ps-ink-3);
+    font-weight: 500;
+  }
+
+  /* Onboarding stages */
+  .ps-stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .ps-stage.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .ps-onb-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 20px;
+  }
+
+  .ps-onb-h1 {
+    font-family: "Noto Serif SC", "Fraunces", serif;
+    font-weight: 500;
+    font-size: 24px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--ps-ink-1);
+    margin-bottom: 8px;
+  }
+
+  .ps-onb-sub {
+    font-size: 14px;
+    color: var(--ps-ink-2);
+    line-height: 1.55;
+    margin-bottom: 20px;
+  }
+
+  .ps-onb-footer {
+    padding: 16px 20px 30px;
+  }
+
+  /* Buttons inside phone */
+  .ps-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.08s;
+    font-family: inherit;
+  }
+  .ps-btn:active { transform: scale(0.98); }
+  .ps-btn-accent {
+    background: var(--ps-accent);
+    color: #fff;
+    box-shadow: 0 4px 14px -2px rgba(217, 119, 87, 0.35);
+  }
+  .ps-btn-outline {
+    background: transparent;
+    color: var(--ps-ink-1);
+    border: 1px solid var(--ps-line-strong);
+  }
+
+  /* Option card (used in onboarding) */
+  .ps-opt-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 14px;
+    background: #fff;
+    border: 1px solid var(--ps-line);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: left;
+    font-family: inherit;
+    margin-bottom: 8px;
+  }
+  .ps-opt-card:hover { border-color: var(--ps-line-strong); background: #efe7d3; }
+  .ps-opt-card:active { transform: scale(0.99); }
+
+  .ps-opt-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: #fff;
+  }
+  .ps-opt-icon svg { width: 22px; height: 22px; }
+
+  .ps-opt-title {
+    font-family: "Noto Serif SC", "Fraunces", serif;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--ps-ink-1);
+  }
+  .ps-opt-desc {
+    font-size: 12.5px;
+    color: var(--ps-ink-2);
+    line-height: 1.55;
+    margin-top: 3px;
+  }
+  .ps-opt-tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--ps-accent-soft);
+    color: var(--ps-accent-hover);
+    font-weight: 600;
+    margin-left: 6px;
+  }
+
+  /* Home view */
+  .ps-home-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--ps-success-soft);
+    border-radius: 999px;
+    font-size: 11.5px;
+    color: var(--ps-success);
+    font-family: "JetBrains Mono", monospace;
+    letter-spacing: 0.02em;
+    margin: 8px 0 16px;
+  }
+  .ps-home-status .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ps-success);
+    box-shadow: 0 0 0 3px rgba(90, 122, 78, 0.15);
+  }
+
+  .ps-home-greet {
+    font-family: "Noto Serif SC", "Fraunces", serif;
+    font-weight: 500;
+    font-size: 28px;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    color: var(--ps-ink-1);
+  }
+  .ps-home-greet em {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    color: var(--ps-accent);
+    font-weight: 500;
+  }
+
+  .ps-home-balance {
+    margin: 18px 0;
+    padding: 18px 0;
+    border-top: 1px solid var(--ps-line);
+    border-bottom: 1px solid var(--ps-line);
+  }
+  .ps-home-balance-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ps-ink-3);
+    margin-bottom: 6px;
+  }
+  .ps-home-balance-amt {
+    font-family: "Fraunces", serif;
+    font-weight: 500;
+    font-size: 34px;
+    letter-spacing: -0.02em;
+    color: var(--ps-ink-1);
+  }
+
+  /* Chat */
+  .ps-msg-user {
+    align-self: flex-end;
+    max-width: 80%;
+    background: var(--ps-ink-1);
+    color: var(--ps-paper);
+    padding: 10px 14px;
+    border-radius: 18px 18px 4px 18px;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+  .ps-msg-ai {
+    max-width: 100%;
+    margin-bottom: 10px;
+  }
+  .ps-msg-ai .who {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ps-ink-3);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ps-msg-ai .who::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffbfa6 0%, #D97757 55%, #9a4a31 100%);
+    box-shadow: 0 0 0 2px var(--ps-accent-soft);
+  }
+  .ps-msg-ai .body {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ps-ink-1);
+  }
+
+  .ps-intent-card {
+    background: #fff;
+    border: 2px solid var(--ps-accent);
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 10px;
+  }
+  .ps-intent-card .hd {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ps-accent-hover);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .ps-intent-card h4 {
+    font-family: "Noto Serif SC", "Fraunces", serif;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--ps-ink-1);
+    margin-bottom: 6px;
+  }
+  .ps-intent-card .sub {
+    font-size: 13px;
+    color: var(--ps-ink-2);
+    line-height: 1.55;
+  }
+  .ps-intent-card .actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .ps-intent-card .actions button {
+    flex: 1;
+    padding: 9px;
+    font-size: 12.5px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+    border: none;
+  }
+  .ps-intent-card .actions .yes-btn {
+    background: var(--ps-accent);
+    color: #fff;
+  }
+  .ps-intent-card .actions .no-btn {
+    background: transparent;
+    border: 1px solid var(--ps-line-strong);
+    color: var(--ps-ink-1);
+  }
+
+  /* Composer */
+  .ps-composer {
+    position: absolute;
+    bottom: 68px;
+    left: 0;
+    right: 0;
+    padding: 10px 14px;
+    background: var(--ps-paper);
+    border-top: 1px solid var(--ps-line);
+    z-index: 15;
+  }
+  .ps-composer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid var(--ps-line);
+    border-radius: 24px;
+    padding: 6px 10px 6px 14px;
+  }
+  .ps-composer-row input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 14px;
+    color: var(--ps-ink-1);
+    font-family: inherit;
+  }
+  .ps-composer-row input::placeholder { color: var(--ps-ink-4); }
+  .ps-send-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--ps-accent);
+    color: #fff;
+    border: none;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ps-send-btn svg { width: 14px; height: 14px; }
+  .ps-tool-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--ps-ink-3);
+    border: none;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ps-tool-btn svg { width: 16px; height: 16px; }
+
+  /* Thinking dots */
+  .ps-thinking-dots {
+    display: inline-flex;
+    gap: 3px;
+    align-items: center;
+    padding: 4px 0;
+  }
+  .ps-thinking-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ps-ink-3);
+    animation: ps-think-dot 1.3s ease-in-out infinite;
+  }
+  .ps-thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .ps-thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes ps-think-dot {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* Chip */
+  .ps-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    font-weight: 500;
+  }
+  .ps-chip-green {
+    background: var(--ps-success-soft);
+    color: var(--ps-success);
+    border: 1px solid #c9d7bc;
+  }
+  .ps-chip-amber {
+    background: var(--ps-warn-soft);
+    color: var(--ps-warn);
+    border: 1px solid #e4d2a8;
+  }
+
+  /* View transition */
+  .ps-view {
+    display: none;
+  }
+  .ps-view.active {
+    display: block;
+    animation: ps-view-in 0.25s ease-out;
+  }
+  @keyframes ps-view-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}

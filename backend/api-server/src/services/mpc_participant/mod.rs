@@ -494,9 +494,17 @@ impl MpcParticipant {
                 //       user has an explicit block (single_limit_usd <= 0)
                 // NOTE: the QUANTITATIVE USD value/limit check is NOT performed here —
                 // this struct has no price oracle or HTTP client, only a DB handle.
-                // That check is enforced in routes/tx.rs before broadcast. The
-                // hash-match above still guarantees the signed bytes are exactly the
-                // disclosed tx, so a signature cannot be obtained for a hidden digest.
+                // KNOWN GAP (v1-audit F-002/F-017): the per-tx/daily USD limit is
+                // currently enforced NOWHERE on the signing path. routes/tx.rs::submit
+                // only re-checks the freeze flag before broadcast — it does NOT value
+                // the tx in USD or consult user_policies. (A signing-time enforcement
+                // path was scoped but deferred: native-ETH transfers RLP-decode cleanly,
+                // but ERC-20 value lives in calldata and userOps share session_type
+                // "sign" with a non-decodable abi hash preimage, so a naive fail-closed
+                // check would brick userOp signing.) What IS guaranteed here: the
+                // hash-match above binds the signature to exactly the disclosed tx (no
+                // hidden digest), the freeze flag is re-checked, and an explicit
+                // zero/negative single_limit_usd policy blocks all signing.
                 let raw_tx = self.extract_raw_tx(payload)?;
                 let derived = alloy_primitives::keccak256(&raw_tx);
                 if derived.as_slice() != msg_hash.as_slice() {
@@ -850,12 +858,15 @@ impl MpcParticipant {
     /// already bound to the disclosed `raw_tx` via the keccak256 hash-match in
     /// the caller, and the wallet freeze flag is re-checked there.
     ///
-    /// Full USD valuation of the tx value/calldata requires the alloy-consensus
-    /// RLP decoder, which is not a dependency of this crate; that quantitative
-    /// limit is enforced in `routes/tx.rs` before broadcast. Here we guarantee a
-    /// policy row is consulted and rejected sessions are auditable, and we reject
-    /// outright if the user has been assigned a zero single-tx limit (an explicit
-    /// "block all signing" policy).
+    /// Full USD valuation of the tx value/calldata is NOT performed here, and —
+    /// contrary to a previous note — it is NOT performed in `routes/tx.rs` either:
+    /// `submit` only re-checks the wallet freeze flag before broadcast. The
+    /// per-tx/daily USD limit is therefore a KNOWN GAP on the signing path
+    /// (v1-audit F-002/F-017). Here we guarantee a policy row is consulted,
+    /// rejected sessions are auditable, and we reject outright if the user has
+    /// been assigned a zero/negative single-tx limit (an explicit "block all
+    /// signing" policy). The signature is bound to the disclosed `raw_tx` via the
+    /// keccak256 hash-match in the caller, and the freeze flag is re-checked there.
     async fn enforce_sign_policy(&self, user_id: Uuid, _raw_tx: &[u8]) -> Result<(), String> {
         let limits: Option<(f64, f64)> = sqlx::query_as(
             "SELECT single_limit_usd, daily_limit_usd FROM user_policies WHERE user_id = $1"

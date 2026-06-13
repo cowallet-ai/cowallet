@@ -1,0 +1,84 @@
+@import "tailwindcss";
+@import "../styles/phone.css";
+
+@theme {
+  /* Colors - Paper/Ink palette */
+  --color-paper: #faf9f5;
+  --color-paper-subtle: #f1ead9;
+  --color-paper-card: #ffffff;
+  --color-paper-hover: #efe7d3;
+  --color-ink-1: #141008;
+  --color-ink-2: #4a3f32;
+  --color-ink-3: #8a7a6c;
+  --color-ink-4: #b8a898;
+  --color-line: #e7dfcd;
+  --color-line-strong: #d5c9b0;
+
+  /* Accent */
+  --color-accent: #D97757;
+  --color-accent-hover: #c96744;
+  --color-accent-soft: #f7e3d8;
+  --color-accent-soft-2: #fbefe4;
+
+  /* Signals */
+  --color-danger: #c0392b;
+  --color-danger-soft: #f7dcd8;
+  --color-success: #5a7a4e;
+  --color-success-soft: #e1ecd9;
+  --color-warn: #b8832b;
+  --color-warn-soft: #f4e8cd;
+  --color-gold: #a88a4a;
+  --color-gold-soft: #f4ecd5;
+  --color-info: #3d6b8c;
+  --color-info-soft: #dce8f0;
+
+  /* Typography */
+  --font-serif: "Noto Serif SC", "Fraunces", Georgia, serif;
+  --font-serif-en: "Fraunces", "Noto Serif SC", Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Border radius */
+  --radius-card: 16px;
+  --radius-btn: 14px;
+  --radius-pill: 999px;
+  --radius-phone: 48px;
+
+  /* Animations */
+  --animate-orb-breathe: orb-breathe 3.8s ease-in-out infinite;
+  --animate-pulse-dot: pulse-dot 2.4s ease-in-out infinite;
+  --animate-view-in: view-in 0.25s ease-out;
+}
+
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  50% { box-shadow: 0 0 0 6px var(--color-accent-soft); }
+}
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink-1);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-ink-1);
+}
