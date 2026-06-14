@@ -1,6 +1,6 @@
 use crate::services::ai_provider::{
     ChatMessage, ChatRole, ToolDef,
-    ToolCallInfo as ProviderToolCallInfo, StreamEvent, ProviderKind,
+    ToolCallInfo as ProviderToolCallInfo, StreamEvent,
 };
 use crate::services::ai_executor::{ToolContext, ToolExecutionResult};
 use crate::services::chat_store::ChatStore;
@@ -529,7 +529,7 @@ pub struct ChatRequest {
     #[serde(default)]
     pub lang: Option<String>,
     #[serde(default)]
-    pub model: Option<ProviderKind>,
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
