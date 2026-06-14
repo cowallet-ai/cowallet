@@ -636,8 +636,7 @@ async fn ai_action(
     }
 
     // Fall back to AI chat if confidence is low or entities insufficient
-    let ai = state.ai_bedrock.as_ref()
-        .or(state.ai_deepseek.as_ref())
+    let ai = state.ai_deepseek.as_ref()
         .ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -740,12 +739,8 @@ async fn chat_stream(
             return;
         }
 
-        let provider_kind = req.model.unwrap_or_default();
-        let ai = match provider_kind {
-            ProviderKind::Bedrock => state.ai_bedrock.as_ref().or(state.ai_deepseek.as_ref()),
-            ProviderKind::DeepSeek => state.ai_deepseek.as_ref().or(state.ai_bedrock.as_ref()),
-        };
-        let ai = match ai {
+        let _ = req.model;
+        let ai = match state.ai_deepseek.as_ref() {
             Some(c) => Arc::clone(c),
             None => {
                 yield sse_event("error", &serde_json::json!({"message": "AI 服务未配置"}));

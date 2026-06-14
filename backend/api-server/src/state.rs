@@ -24,7 +24,6 @@ pub struct AppState {
     pub price_cache: PriceCache,
     pub yield_cache: YieldCache,
     pub http: reqwest::Client,
-    pub ai_bedrock: Option<Arc<dyn AiProvider>>,
     pub ai_deepseek: Option<Arc<dyn AiProvider>>,
     pub nats: Option<async_nats::Client>,
     pub rate_limiter: AnyRateLimiter,
@@ -100,15 +99,7 @@ impl AppState {
             }
         };
 
-        // Initialize AI providers (both available, client selects)
-        let ai_bedrock: Option<Arc<dyn AiProvider>> =
-            match crate::services::bedrock_provider::BedrockProvider::from_env().await {
-                Ok(provider) => Some(Arc::new(provider)),
-                Err(e) => {
-                    tracing::warn!("Bedrock AI provider not configured: {}", e);
-                    None
-                }
-            };
+        // Initialize AI provider (DeepSeek)
         let ai_deepseek: Option<Arc<dyn AiProvider>> =
             match crate::services::claude::AiClient::from_env() {
                 Ok(client) => Some(Arc::new(client)),
@@ -193,7 +184,6 @@ impl AppState {
             price_cache: PriceCache::new(),
             yield_cache: YieldCache::new(),
             http: http_client,
-            ai_bedrock,
             ai_deepseek,
             nats,
             rate_limiter: AnyRateLimiter::from_env().unwrap_or_else(|_| AnyRateLimiter::in_memory()),

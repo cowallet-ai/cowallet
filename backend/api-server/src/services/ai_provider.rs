@@ -85,11 +85,10 @@ pub trait AiProvider: Send + Sync {
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     DeepSeek,
-    Bedrock,
 }
 
 impl Default for ProviderKind {
     fn default() -> Self {
-        Self::Bedrock
+        Self::DeepSeek
     }
 }
