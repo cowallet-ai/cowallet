@@ -758,10 +758,12 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mpc-core",
+ "p256 0.13.2",
  "policy-engine",
  "rand 0.8.6",
  "redis",
  "reqwest 0.12.28",
+ "rsa",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1316,7 +1318,7 @@ dependencies = [
  "hmac 0.13.0",
  "http 0.2.12",
  "http 1.4.0",
- "p256",
+ "p256 0.11.1",
  "percent-encoding",
  "ring",
  "sha2 0.11.0",
@@ -2721,6 +2723,7 @@ dependencies = [
  "generic-array",
  "group 0.13.0",
  "hkdf",
+ "pem-rfc7468",
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
  "sec1 0.7.3",
@@ -4455,6 +4458,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "p256"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9863ad85fa8f4460f9c48cb909d38a0d689dba1f6f6988a5e3e0d31071bcd4b"
+dependencies = [
+ "ecdsa 0.16.9",
+ "elliptic-curve 0.13.8",
+ "primeorder",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "parity-scale-codec"
 version = "3.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4740,6 +4755,15 @@ checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "primeorder"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "353e1ca18966c16d9deb1c69278edbc5f194139612772bd9537af60ac231e1e6"
+dependencies = [
+ "elliptic-curve 0.13.8",
 ]
 
 [[package]]
@@ -5274,6 +5298,7 @@ dependencies = [
  "pkcs1",
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
+ "sha2 0.10.9",
  "signature 2.2.0",
  "spki 0.7.3",
  "subtle",
