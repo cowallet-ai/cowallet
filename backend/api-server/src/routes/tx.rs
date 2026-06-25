@@ -719,7 +719,7 @@ struct SubmitSignedUserOpResponse {
 /// Submits an already-signed UserOperation to a bundler via eth_sendUserOperation.
 async fn submit_signed_userop(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Json(body): Json<SubmitSignedUserOpRequest>,
 ) -> Result<Json<SubmitSignedUserOpResponse>, (StatusCode, Json<ErrorResponse>)> {
     let _chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
@@ -754,6 +754,57 @@ async fn submit_signed_userop(
     };
 
     let sender = parse_address("sender")?;
+
+    // Authorize: the sender wallet must belong to the caller and not be frozen.
+    let db = state.db.as_ref().ok_or_else(db_unavailable)?;
+    let caller_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
+        .map_err(|_| rpc_error("invalid user id in token"))?;
+    let sender_bytes = sender.as_slice().to_vec();
+    let wallet: Option<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT user_id, status FROM wallets WHERE eth_address = $1",
+    )
+    .bind(&sender_bytes)
+    .fetch_optional(db)
+    .await
+    .map_err(|_| rpc_error("wallet lookup failed"))?;
+    match wallet {
+        Some((owner, status)) => {
+            if owner != caller_id {
+                tracing::warn!(
+                    "User {} attempted to submit userop for wallet {} owned by {}",
+                    caller_id,
+                    sender,
+                    owner
+                );
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse {
+                        error: "sender wallet does not belong to caller".into(),
+                    }),
+                ));
+            }
+            if status == "frozen" {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse {
+                        error: "wallet is frozen".into(),
+                    }),
+                ));
+            }
+        }
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "unknown sender wallet".into(),
+                }),
+            ));
+        }
+    }
+
     let nonce = parse_u256("nonce")?;
     let init_code = parse_bytes("initCode")?;
     let call_data = parse_bytes("callData")?;
