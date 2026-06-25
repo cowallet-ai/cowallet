@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:convert/convert.dart';
 import '../api/mpc_api.dart';
 import '../bridge/mpc_bridge.dart';
 import '../network/mpc_websocket.dart';
@@ -218,7 +219,29 @@ class MpcWalletService implements WalletService {
   /// 执行分布式签名协议 (2-party ECDSA, 私钥从未被重组)
   /// [msgHash] 32字节消息哈希
   /// [walletId] 可选，指定使用哪个钱包的密钥分片签名
-  Future<List<int>> runSign(List<int> msgHash, {String? walletId}) async {
+  /// Build the MPC sign Round 1 payload as structured JSON bytes.
+  ///
+  /// Shape (matches backend `extract_signing_request`):
+  /// `{ "r0": "0x..", "msg_hash": [..32 bytes..], "tx": {..Eip1559Fields..} }`.
+  /// `r0` is the serialized client SignRound1Message; `msg_hash` is the
+  /// device-computed digest (server cross-checks, never trusts); `tx` is the
+  /// authoritative transaction the server recomputes the hash from.
+  static List<int> buildSignRound1Payload(
+    List<int> r0,
+    List<int> msgHash,
+    SignTxFields? txFields,
+  ) {
+    final map = <String, dynamic>{
+      'r0': '0x${hex.encode(r0)}',
+      'msg_hash': msgHash,
+    };
+    if (txFields != null) {
+      map['tx'] = txFields.toJson();
+    }
+    return utf8.encode(jsonEncode(map));
+  }
+
+  Future<List<int>> runSign(List<int> msgHash, {String? walletId, SignTxFields? txFields}) async {
     if (msgHash.length != 32) {
       throw MpcException('Message hash must be exactly 32 bytes');
     }
@@ -233,7 +256,7 @@ class MpcWalletService implements WalletService {
     _operationLock = Completer<void>();
 
     try {
-      return await _runSignInternal(msgHash, walletId: walletId);
+      return await _runSignInternal(msgHash, walletId: walletId, txFields: txFields);
     } finally {
       _signInProgress = false;
       final lock = _operationLock;
@@ -242,7 +265,7 @@ class MpcWalletService implements WalletService {
     }
   }
 
-  Future<List<int>> _runSignInternal(List<int> msgHash, {String? walletId}) async {
+  Future<List<int>> _runSignInternal(List<int> msgHash, {String? walletId, SignTxFields? txFields}) async {
     await ensureShardLoaded();
 
     final sessionResult = await MpcApi.createSession(
@@ -277,14 +300,15 @@ class MpcWalletService implements WalletService {
         metadata: {'msg_hash': msgHash},
       ));
 
-      // Send Round 1 + msg_hash via HTTP (reliable delivery)
-      final round1WithHash = [...round1.payload, ...msgHash];
+      // Send Round 1: structured JSON {r0, msg_hash, tx{...}} so the server
+      // can independently recompute the signing hash and enforce policy.
+      final round1Json = buildSignRound1Payload(round1.payload, msgHash, txFields);
       await MpcApi.sendMessage(
         sessionId: remoteSessionId,
         fromParty: _deviceParty,
         toParty: _serverParty,
         round: 1,
-        payload: round1WithHash,
+        payload: round1Json,
       );
 
       await MpcSessionStore.updateCurrentRound(1);
@@ -671,13 +695,13 @@ class MpcWalletService implements WalletService {
   BackupResult? get lastBackupResult => _lastBackupResult;
 
   @override
-  Future<List<int>> sign(List<int> msgHash) async {
-    return await runSign(msgHash);
+  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields}) async {
+    return await runSign(msgHash, txFields: txFields);
   }
 
   @override
-  Future<SignResult> signWithSession(List<int> msgHash) async {
-    final signature = await runSign(msgHash);
+  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields}) async {
+    final signature = await runSign(msgHash, txFields: txFields);
     return SignResult(signature: signature, sessionId: _currentSessionId);
   }
 

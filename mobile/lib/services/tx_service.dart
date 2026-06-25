@@ -155,9 +155,24 @@ class MpcTxService implements TxService {
     final msgHash = Digest('Keccak/256').process(payload);
     print('[TxService] msgHash computed, starting MPC sign...');
 
+    // Structured tx fields the server independently re-hashes + policy-checks.
+    // Field values mirror the EIP-1559 fields hashed above (empty access list).
+    final signTxFields = SignTxFields(
+      chainId: effectiveChainId,
+      nonce: nonce,
+      gasLimit: gas.toInt(),
+      maxFeePerGas: maxFee,
+      maxPriorityFeePerGas: maxPriority,
+      to: to,
+      value: value,
+      data: (data != null && data.isNotEmpty)
+          ? (data.startsWith('0x') ? data : '0x$data')
+          : '0x',
+    );
+
     // MPC distributed signature (device + server cooperate, no full key ever exists)
     try {
-      final signResult = await _wallet.signWithSession(msgHash.toList());
+      final signResult = await _wallet.signWithSession(msgHash.toList(), txFields: signTxFields);
       print('[TxService] MPC sign complete, sig length=${signResult.signature.length}');
 
       if (signResult.signature.length != 65) {

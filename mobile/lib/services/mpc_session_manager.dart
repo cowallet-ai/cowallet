@@ -4,6 +4,7 @@ import '../bridge/mpc_bridge.dart';
 import '../network/mpc_websocket.dart';
 import 'mpc_session_store.dart';
 import 'mpc_wallet_service.dart';
+import 'wallet_service.dart';
 
 /// Manages MPC session recovery and resumption after interruptions.
 /// Wraps MpcWalletService with automatic session persistence and recovery.
@@ -76,13 +77,13 @@ class MpcSessionManager {
   }
 
   /// Run Sign with automatic session persistence and recovery.
-  Future<List<int>> runSignWithRecovery(List<int> msgHash, {String? walletId}) async {
+  Future<List<int>> runSignWithRecovery(List<int> msgHash, {String? walletId, SignTxFields? txFields}) async {
     // Check for existing session
     final existing = await checkResumableSession();
     if (existing != null && existing.sessionType == 'sign') {
       print('[MpcSessionManager] Attempting to resume Sign session ${existing.remoteSessionId}');
       try {
-        final result = await _resumeSign(existing, msgHash);
+        final result = await _resumeSign(existing, msgHash, txFields: txFields);
         await MpcSessionStore.clearSession();
         return result;
       } catch (e) {
@@ -92,7 +93,7 @@ class MpcSessionManager {
     }
 
     // Start new session with persistence
-    return await _runSignWithPersistence(msgHash, walletId: walletId);
+    return await _runSignWithPersistence(msgHash, walletId: walletId, txFields: txFields);
   }
 
   /// Run Reshare with automatic session persistence and recovery.
@@ -143,9 +144,9 @@ class MpcSessionManager {
 
   // ==================== Sign with Persistence ====================
 
-  Future<List<int>> _runSignWithPersistence(List<int> msgHash, {String? walletId}) async {
+  Future<List<int>> _runSignWithPersistence(List<int> msgHash, {String? walletId, SignTxFields? txFields}) async {
     // Delegate to original service implementation
-    return await _mpcService.runSign(msgHash, walletId: walletId);
+    return await _mpcService.runSign(msgHash, walletId: walletId, txFields: txFields);
   }
 
   /// Resume an interrupted sign session.
@@ -155,7 +156,7 @@ class MpcSessionManager {
   /// normal sign flow against the same session ID (which has been reactivated
   /// with a fresh expiry window). This avoids the complexity of mid-round
   /// state reconstruction since the Rust crypto state is ephemeral.
-  Future<List<int>> _resumeSign(MpcSessionState session, List<int> msgHash) async {
+  Future<List<int>> _resumeSign(MpcSessionState session, List<int> msgHash, {SignTxFields? txFields}) async {
     // Call the resume endpoint to reactivate and reset the session
     final resumeResult = await MpcApi.resumeSession(session.remoteSessionId);
     if (!resumeResult.isSuccess || resumeResult.data == null) {
@@ -179,9 +180,14 @@ class MpcSessionManager {
     try {
       await ws.connect();
 
-      // Send Round 1 + msg_hash
-      final round1WithHash = [...round1.payload, ...msgHash];
-      ws.sendRaw(toParty: 1, round: 1, payload: round1WithHash);
+      // Send Round 1: structured JSON {r0, msg_hash, tx{...}} matching the
+      // backend signing gate (see MpcWalletService._buildSignRound1Payload).
+      final round1Json = MpcWalletService.buildSignRound1Payload(
+        round1.payload,
+        msgHash,
+        txFields,
+      );
+      ws.sendRaw(toParty: 1, round: 1, payload: round1Json);
 
       await MpcSessionStore.updateCurrentRound(1);
 
