@@ -442,4 +442,57 @@ mod tests {
             assert_ne!(tx_hash, B256::ZERO);
         }
     }
+
+    /// The signing gate hinges on the server's `eip1559_signing_hash` producing
+    /// the exact digest the mobile device hashes (keccak256 of
+    /// `0x02 || rlp([chain_id, nonce, max_priority_fee, max_fee, gas, to, value,
+    /// data, access_list])`). This pins that contract two ways:
+    ///   1. it equals alloy's own `signature_hash()` for identical fields
+    ///      (the path the rest of signing already uses), and
+    ///   2. it equals a fixed known-answer constant, so any field-order or
+    ///      encoding regression on either side is caught.
+    #[test]
+    fn signing_hash_matches_alloy_and_known_answer() {
+        let to: Address = "0x1111111111111111111111111111111111111111".parse().unwrap();
+        let fields = Eip1559Fields {
+            chain_id: 8453,
+            nonce: 7,
+            gas_limit: 21000,
+            max_fee_per_gas: 2_000_000_000,
+            max_priority_fee_per_gas: 1_000_000_000,
+            to: Some(to),
+            value: U256::from(1_000_000_000_000_000_000u128), // 1 ETH
+            data: vec![],
+        };
+
+        // (1) Consistency with the existing signing path.
+        let tx_req = TransactionRequest {
+            to,
+            value: U256::from(1_000_000_000_000_000_000u128),
+            data: vec![],
+            chain_id: 8453,
+            gas_limit: None,
+            nonce: None,
+        };
+        let gas = GasEstimate {
+            gas_limit: 21000,
+            max_fee_per_gas: 2_000_000_000,
+            max_priority_fee_per_gas: 1_000_000_000,
+            l1_data_fee: None,
+            estimated_cost_wei: U256::ZERO,
+            estimated_cost_usd: None,
+        };
+        let via_alloy = build_unsigned_eip1559(&tx_req, &gas, 7).signature_hash();
+        let via_helper = eip1559_signing_hash(&fields);
+        assert_eq!(
+            via_helper, via_alloy,
+            "eip1559_signing_hash must match alloy signature_hash for identical fields"
+        );
+
+        // (2) Known-answer: locks the exact bytes the mobile client must keccak.
+        // If this constant ever needs updating, the client RLP layout changed
+        // and BOTH sides must be re-verified together.
+        let expected = "0x11474923bf3b50ea56ba7e0429020ff237adf46e4edb9215e6cc6a9e98fad55d";
+        assert_eq!(format!("{:?}", via_helper), expected);
+    }
 }
