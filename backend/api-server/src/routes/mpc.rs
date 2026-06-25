@@ -198,9 +198,17 @@ pub async fn create_session(
 /// Get session status
 pub async fn get_session(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<Json<SessionResponse>, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let caller = claims_user_id(&claims)?;
+    let owner = fetch_session_owner(db, id).await?;
+    if owner != caller {
+        tracing::warn!("User {} attempted to read session {} owned by {}", caller, id, owner);
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     let row: (String, i32, Option<chrono::DateTime<Utc>>, Option<uuid::Uuid>) = sqlx::query_as(
         "SELECT status, current_round, last_activity, wallet_id FROM mpc_sessions WHERE id = $1"
@@ -222,14 +230,19 @@ pub async fn get_session(
 /// Abort a session
 pub async fn abort_session(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
+    let caller = claims_user_id(&claims)?;
+
     let result = sqlx::query(
-        "UPDATE mpc_sessions SET status = 'failed' WHERE id = $1 AND status IN ('pending', 'active')"
+        "UPDATE mpc_sessions SET status = 'failed'
+         WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'active')"
     )
     .bind(id)
+    .bind(caller)
     .execute(db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -238,8 +251,7 @@ pub async fn abort_session(
         return Err(StatusCode::GONE);
     }
 
-    tracing::info!("Aborted MPC session {}", id);
-
+    tracing::info!("User {} aborted MPC session {}", caller, id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -430,20 +442,18 @@ pub(crate) struct MessageResponse {
 ///   ?after_id=5 — only return messages with id > this value
 pub async fn recv_messages(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(session_id): Path<uuid::Uuid>,
     Query(query): Query<RecvQuery>,
 ) -> Result<Json<Vec<MessageResponse>>, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    // Verify session exists
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM mpc_sessions WHERE id = $1)")
-        .bind(session_id)
-        .fetch_one(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if !exists {
-        return Err(StatusCode::NOT_FOUND);
+    // Verify session exists AND belongs to the caller
+    let caller = claims_user_id(&claims)?;
+    let owner = fetch_session_owner(db, session_id).await?;
+    if owner != caller {
+        tracing::warn!("User {} attempted to read messages of session {} owned by {}", caller, session_id, owner);
+        return Err(StatusCode::FORBIDDEN);
     }
 
     let after_id = query.after_id.unwrap_or(0);
