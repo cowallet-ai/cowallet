@@ -21,7 +21,7 @@ help:
 	@echo "  检查:      make docker-ps       # 显示服务状态"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
-	@echo "📖 详见: DEPLOY.md（本地部署详细指南）"
+	@echo "📖 详见: docs/DEPLOY.md（本地部署详细指南）"
 
 docker-up:
 	@echo "🚀 启动 cowallet 服务..."
@@ -98,7 +98,7 @@ local-init:
 	@echo "📋 检查前置条件..."
 	@command -v /usr/pgsql-16/bin/psql >/dev/null 2>&1 || (echo "❌ 需要安装 PostgreSQL: sudo yum install -y postgresql16-server" && exit 1)
 	@command -v redis-server >/dev/null 2>&1 || (echo "❌ 需要安装 Redis: sudo yum install -y redis" && exit 1)
-	@command -v nats-server >/dev/null 2>&1 || (echo "❌ 需要安装 NATS: 见 DEPLOY.md" && exit 1)
+	@command -v nats-server >/dev/null 2>&1 || (echo "❌ 需要安装 NATS: 见 docs/DEPLOY.md" && exit 1)
 	@command -v cargo >/dev/null 2>&1 || (echo "❌ 需要安装 Rust: https://rustup.rs" && exit 1)
 	@command -v sqlx >/dev/null 2>&1 || (echo "⏳ 安装 sqlx-cli..." && cargo install sqlx-cli --no-default-features --features postgres)
 	@echo "✅ 所有前置条件已满足"
