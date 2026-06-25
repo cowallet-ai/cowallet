@@ -294,6 +294,16 @@ pub async fn send_message(
     let current_round = session.2 as i16;
     let session_user_id = session.3;
 
+    // Enforce session ownership: only the owner may drive their session.
+    let caller = claims_user_id(&claims)?;
+    if session_user_id != caller {
+        tracing::warn!(
+            "User {} attempted to send message to session {} owned by {}",
+            caller, session_id, session_user_id
+        );
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     // Session must be active
     if status != "active" {
         return Err(StatusCode::GONE);
