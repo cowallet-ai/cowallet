@@ -41,6 +41,47 @@ pub fn build_unsigned_eip1559(tx: &TransactionRequest, gas: &GasEstimate, nonce:
     }
 }
 
+/// Fully-specified EIP-1559 transaction fields, as supplied by a client that
+/// wants the MPC server to co-sign. Every field that affects the signing hash
+/// is explicit so the server can reconstruct the transaction byte-for-byte and
+/// recompute the signature hash independently — never trusting a client-supplied
+/// digest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Eip1559Fields {
+    pub chain_id: u64,
+    pub nonce: u64,
+    pub gas_limit: u64,
+    pub max_fee_per_gas: u128,
+    pub max_priority_fee_per_gas: u128,
+    /// Recipient. `None` means contract creation.
+    pub to: Option<Address>,
+    pub value: U256,
+    #[serde(default)]
+    pub data: Vec<u8>,
+}
+
+/// Recompute the EIP-1559 signature hash from fully-specified transaction
+/// fields. This is the digest the client device must have signed; the MPC
+/// server recomputes it server-side to enforce that it only ever contributes
+/// a signature share for a transaction whose contents it has actually seen.
+pub fn eip1559_signing_hash(fields: &Eip1559Fields) -> B256 {
+    let tx = TxEip1559 {
+        chain_id: fields.chain_id,
+        nonce: fields.nonce,
+        gas_limit: fields.gas_limit,
+        max_fee_per_gas: fields.max_fee_per_gas,
+        max_priority_fee_per_gas: fields.max_priority_fee_per_gas,
+        to: match fields.to {
+            Some(addr) => TxKind::Call(addr),
+            None => TxKind::Create,
+        },
+        value: fields.value,
+        access_list: Default::default(),
+        input: Bytes::copy_from_slice(&fields.data),
+    };
+    tx.signature_hash()
+}
+
 /// Build and sign an EIP-1559 transaction, returning the RLP-encoded bytes.
 pub fn sign_eip1559_tx(
     tx: &TransactionRequest,
