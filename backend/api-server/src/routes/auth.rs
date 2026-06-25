@@ -15,6 +15,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
+        .route("/challenge", post(request_challenge))
         .route("/login", post(login))
         .route("/refresh", post(refresh))
         .route("/logout", post(logout))
@@ -148,6 +149,10 @@ struct RegisterRequest {
     force: bool,
     /// SHA-256 hash of the user's backup shard (hex). Required when force=true.
     backup_shard_hash: Option<String>,
+    /// Device's secp256k1 public key (hex, SEC1 — 33-byte compressed or 65-byte
+    /// uncompressed). Registered so challenge-response login can verify the
+    /// device actually holds the matching private key.
+    device_pubkey: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -356,6 +361,23 @@ async fn register(
         new_id
     };
 
+    // Register the device's secp256k1 public key (if supplied) so that
+    // challenge-response login can later verify ownership of the device key.
+    if let Some(pubkey_hex) = &body.device_pubkey {
+        let pubkey_bytes = hex::decode(pubkey_hex.trim_start_matches("0x"))
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        // Reject obviously malformed keys; full validity is checked at login.
+        if pubkey_bytes.len() != 33 && pubkey_bytes.len() != 65 {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        sqlx::query("UPDATE users SET public_key = $1 WHERE id = $2")
+            .bind(&pubkey_bytes)
+            .bind(user_id)
+            .execute(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
     let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -383,8 +405,77 @@ async fn register(
 }
 
 #[derive(Deserialize)]
+struct ChallengeRequest {
+    device_id: String,
+}
+
+#[derive(Serialize)]
+struct ChallengeResponse {
+    /// Random nonce (hex) the device must sign.
+    challenge: String,
+    expires_in: u64,
+}
+
+/// POST /api/v1/auth/challenge
+///
+/// Issues a random nonce bound to a device. The device signs it with its
+/// registered secp256k1 key and presents the signature to `/login`.
+async fn request_challenge(
+    State(state): State<AppState>,
+    Json(body): Json<ChallengeRequest>,
+) -> Result<Json<ChallengeResponse>, StatusCode> {
+    use rand::RngCore;
+    let db = state
+        .require_db()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let mut nonce = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+
+    sqlx::query("INSERT INTO login_challenges (device_id, challenge) VALUES ($1, $2)")
+        .bind(&body.device_id)
+        .bind(&nonce[..])
+        .execute(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(ChallengeResponse {
+        challenge: hex::encode(nonce),
+        expires_in: 120,
+    }))
+}
+
+#[derive(Deserialize)]
 struct LoginRequest {
     device_id: String,
+    /// hex, must match an unconsumed, unexpired challenge for this device.
+    challenge: String,
+    /// hex secp256k1 signature (DER or 64-byte compact) over the challenge bytes.
+    signature: String,
+}
+
+/// Verify a secp256k1 signature over `msg` using the SEC1-encoded `pubkey`.
+///
+/// The device signs the raw challenge bytes; the server hashes them with
+/// SHA-256 (prehash) and verifies, matching the client signing convention.
+fn verify_secp256k1_signature(pubkey: &[u8], msg: &[u8], sig_hex: &str) -> Result<(), String> {
+    use k256::ecdsa::signature::hazmat::PrehashVerifier;
+    use k256::ecdsa::{Signature, VerifyingKey};
+
+    let vk = VerifyingKey::from_sec1_bytes(pubkey)
+        .map_err(|e| format!("invalid device public key: {}", e))?;
+
+    let sig_bytes =
+        hex::decode(sig_hex.trim_start_matches("0x")).map_err(|_| "signature not hex".to_string())?;
+
+    // Accept either DER or 64-byte compact encoding.
+    let sig = Signature::from_der(&sig_bytes)
+        .or_else(|_| Signature::from_slice(&sig_bytes))
+        .map_err(|_| "malformed signature".to_string())?;
+
+    let digest = Sha256::digest(msg);
+    vk.verify_prehash(digest.as_slice(), &sig)
+        .map_err(|_| "signature verification failed".to_string())
 }
 
 async fn login(
@@ -395,16 +486,35 @@ async fn login(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let result: Result<(uuid::Uuid,), StatusCode> = sqlx::query_as("SELECT id FROM users WHERE device_id = $1")
-        .bind(&body.device_id)
-        .fetch_one(db)
-        .await
-        .map_err(|_| StatusCode::UNAUTHORIZED);
+    let challenge_bytes = hex::decode(body.challenge.trim_start_matches("0x"))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let user_id = match result {
-        Ok((id,)) => id,
-        Err(e) => {
-            // Audit log - login failure
+    // Atomically consume a valid, unexpired challenge for this device.
+    let consumed = sqlx::query(
+        "UPDATE login_challenges SET consumed = TRUE
+         WHERE device_id = $1 AND challenge = $2 AND consumed = FALSE AND expires_at > NOW()",
+    )
+    .bind(&body.device_id)
+    .bind(&challenge_bytes)
+    .execute(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if consumed.rows_affected() == 0 {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Load the device's registered public key and verify the signature.
+    let row: Option<(uuid::Uuid, Option<Vec<u8>>)> =
+        sqlx::query_as("SELECT id, public_key FROM users WHERE device_id = $1")
+            .bind(&body.device_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let (user_id, pubkey) = match row {
+        Some((id, Some(pk))) if !pk.is_empty() => (id, pk),
+        // No user, or no registered device key — cannot do challenge-response.
+        _ => {
             let _ = state
                 .audit_logger
                 .log_with_details(
@@ -415,12 +525,29 @@ async fn login(
                     None,
                     None,
                     None,
-                    Some(serde_json::json!({ "device_id": body.device_id })),
+                    Some(serde_json::json!({ "device_id": body.device_id, "reason": "no device key" })),
                 )
                 .await;
-            return Err(e);
+            return Err(StatusCode::UNAUTHORIZED);
         }
     };
+
+    if let Err(e) = verify_secp256k1_signature(&pubkey, &challenge_bytes, &body.signature) {
+        let _ = state
+            .audit_logger
+            .log_with_details(
+                user_id,
+                "auth.login",
+                AuditResult::Denied,
+                None,
+                None,
+                None,
+                None,
+                Some(serde_json::json!({ "device_id": body.device_id, "reason": e })),
+            )
+            .await;
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -951,4 +1078,54 @@ async fn verify_recovery_otp(
         server_reshare_messages_json,
         server_commitment_hex,
     }))
+}
+
+#[cfg(test)]
+mod challenge_login_tests {
+    use super::*;
+    use k256::ecdsa::signature::hazmat::PrehashSigner;
+    use k256::ecdsa::{Signature, SigningKey};
+
+    fn sign_challenge(sk: &SigningKey, challenge: &[u8]) -> String {
+        let digest = Sha256::digest(challenge);
+        let sig: Signature = sk.sign_prehash(digest.as_slice()).expect("sign");
+        hex::encode(sig.to_der().as_bytes())
+    }
+
+    #[test]
+    fn verifies_valid_signature() {
+        let sk = SigningKey::from_slice(&[7u8; 32]).unwrap();
+        let pubkey = sk.verifying_key().to_sec1_bytes().to_vec();
+        let challenge = [42u8; 32];
+        let sig_hex = sign_challenge(&sk, &challenge);
+        assert!(verify_secp256k1_signature(&pubkey, &challenge, &sig_hex).is_ok());
+    }
+
+    #[test]
+    fn rejects_tampered_challenge() {
+        let sk = SigningKey::from_slice(&[7u8; 32]).unwrap();
+        let pubkey = sk.verifying_key().to_sec1_bytes().to_vec();
+        let sig_hex = sign_challenge(&sk, &[42u8; 32]);
+        // Verify against a different challenge → must fail.
+        assert!(verify_secp256k1_signature(&pubkey, &[43u8; 32], &sig_hex).is_err());
+    }
+
+    #[test]
+    fn rejects_wrong_key() {
+        let sk = SigningKey::from_slice(&[7u8; 32]).unwrap();
+        let other = SigningKey::from_slice(&[8u8; 32]).unwrap();
+        let other_pubkey = other.verifying_key().to_sec1_bytes().to_vec();
+        let challenge = [42u8; 32];
+        let sig_hex = sign_challenge(&sk, &challenge);
+        // Signed by sk but verified against a different key → must fail.
+        assert!(verify_secp256k1_signature(&other_pubkey, &challenge, &sig_hex).is_err());
+    }
+
+    #[test]
+    fn rejects_garbage_signature() {
+        let sk = SigningKey::from_slice(&[7u8; 32]).unwrap();
+        let pubkey = sk.verifying_key().to_sec1_bytes().to_vec();
+        assert!(verify_secp256k1_signature(&pubkey, &[42u8; 32], "not-hex").is_err());
+        assert!(verify_secp256k1_signature(&pubkey, &[42u8; 32], "00ff").is_err());
+    }
 }
