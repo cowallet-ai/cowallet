@@ -35,6 +35,30 @@ async fn resolve_wallet_id(
     Err(StatusCode::BAD_REQUEST)
 }
 
+/// Parse the authenticated user's UUID from JWT claims.
+fn claims_user_id(claims: &Claims) -> Result<uuid::Uuid, StatusCode> {
+    uuid::Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)
+}
+
+/// Fetch the owner (user_id) of an MPC session.
+/// Returns NOT_FOUND if the session does not exist.
+async fn fetch_session_owner(
+    db: &sqlx::PgPool,
+    session_id: uuid::Uuid,
+) -> Result<uuid::Uuid, StatusCode> {
+    let row: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "SELECT user_id FROM mpc_sessions WHERE id = $1"
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("fetch_session_owner query failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(row.ok_or(StatusCode::NOT_FOUND)?.0)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/session", post(create_session))
@@ -869,4 +893,34 @@ pub async fn presign_generate(
         generated,
         wallet_id: wallet_id.to_string(),
     }))
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+
+    #[test]
+    fn claims_user_id_parses_valid_uuid() {
+        let claims = Claims {
+            sub: "11111111-1111-1111-1111-111111111111".to_string(),
+            jti: "00000000-0000-0000-0000-000000000000".to_string(),
+            device_id: "DEV0000000000001".to_string(),
+            exp: 9999999999,
+            iat: 0,
+        };
+        let uid = claims_user_id(&claims).expect("should parse");
+        assert_eq!(uid.to_string(), "11111111-1111-1111-1111-111111111111");
+    }
+
+    #[test]
+    fn claims_user_id_rejects_garbage() {
+        let claims = Claims {
+            sub: "not-a-uuid".to_string(),
+            jti: "00000000-0000-0000-0000-000000000000".to_string(),
+            device_id: "DEV0000000000001".to_string(),
+            exp: 9999999999,
+            iat: 0,
+        };
+        assert_eq!(claims_user_id(&claims).unwrap_err(), StatusCode::UNAUTHORIZED);
+    }
 }
