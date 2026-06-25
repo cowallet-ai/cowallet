@@ -323,12 +323,12 @@ pub async fn send_message(
     let verified = if let Some(hmac_value) = &body.hmac {
         use hmac::{Hmac, Mac};
         type HmacSha256 = Hmac<Sha256>;
-        let jwt_secret = std::env::var("JWT_SECRET")
+        let hmac_key = std::env::var("MPC_HMAC_KEY")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        if jwt_secret.is_empty() {
+        if hmac_key.is_empty() {
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-        let mut mac = HmacSha256::new_from_slice(jwt_secret.as_bytes())
+        let mut mac = HmacSha256::new_from_slice(hmac_key.as_bytes())
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         mac.update(session_id.to_string().as_bytes());
         mac.update(&body.round.to_le_bytes());
@@ -371,6 +371,14 @@ pub async fn send_message(
 
     // If this message is addressed to the server (Party 1), trigger the participant
     if body.to_party == 1 {
+        // Messages that drive the server signing state machine MUST be authenticated.
+        if !verified {
+            tracing::warn!(
+                "Rejected unverified message to server for session {}",
+                session_id
+            );
+            return Err(StatusCode::UNAUTHORIZED);
+        }
         if let Some(participant) = &state.mpc_participant {
             match participant.on_message_received(
                 session_id,
