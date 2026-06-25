@@ -182,16 +182,22 @@ impl PresignManager {
         Ok(count)
     }
 
-    /// Also release presignatures that have been reserved too long (>10 min)
-    /// without being consumed — likely from failed sessions.
-    /// Releases them back to 'available' so they can be reused.
+    /// Expire presignatures that have been reserved too long (>10 min) without
+    /// being consumed — likely from failed sessions.
+    ///
+    /// SECURITY: A reserved presignature's ephemeral nonce k_1 may have already
+    /// been exposed to the client as R_1 = k_1*G during a partially-completed
+    /// signing round. Reusing that k_1 for a second signature with a different
+    /// message — combined with a repeated or attacker-controlled client nonce
+    /// k_0 — reuses the aggregate nonce and leaks the private key via the
+    /// classic ECDSA nonce-reuse equation. Therefore stale reservations are
+    /// marked 'expired' (terminal) and NEVER returned to 'available'.
     pub async fn cleanup_stale_reservations(&self) -> Result<u64, String> {
         let result = sqlx::query(
-            "UPDATE presignatures SET status = 'available', reserved_by = NULL, reserved_at = NULL
+            "UPDATE presignatures SET status = 'expired'
              WHERE status = 'reserved'
              AND reserved_at < NOW() - INTERVAL '10 minutes'
-             AND consumed_at IS NULL
-             AND expires_at > NOW()"
+             AND consumed_at IS NULL"
         )
         .execute(&self.db)
         .await
@@ -199,7 +205,7 @@ impl PresignManager {
 
         let count = result.rows_affected();
         if count > 0 {
-            tracing::info!("Released {} stale reserved presignatures back to available", count);
+            tracing::info!("Expired {} stale reserved presignatures (never reused)", count);
         }
         Ok(count)
     }
@@ -310,6 +316,7 @@ impl PresignManager {
 
     /// Decrypt stored presig_data bytes into (k_bytes, R_bytes).
     fn decrypt_presig_data(&self, stored: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+
         if stored.len() < 12 {
             return Err("presig_data too short (missing nonce)".into());
         }
@@ -334,5 +341,25 @@ impl PresignManager {
         let r_bytes = plaintext[32..].to_vec();
 
         Ok((k_bytes, r_bytes))
+    }
+}
+
+#[cfg(test)]
+mod nonce_safety_tests {
+    /// Guards against regressing to releasing stale reservations back to
+    /// 'available'. If someone reintroduces "SET status = 'available'" in the
+    /// stale-cleanup SQL, this test's source-level check fails.
+    #[test]
+    fn stale_cleanup_never_releases_to_available() {
+        let src = include_str!("presign_manager.rs");
+        // Find the cleanup_stale_reservations function body.
+        let start = src.find("pub async fn cleanup_stale_reservations")
+            .expect("function must exist");
+        let body = &src[start..start + 600.min(src.len() - start)];
+        assert!(
+            !body.contains("'available'"),
+            "cleanup_stale_reservations must NOT release nonces back to 'available' (ECDSA nonce-reuse risk)"
+        );
+        assert!(body.contains("'expired'"), "stale reservations must be marked 'expired'");
     }
 }
