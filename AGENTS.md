@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -77,7 +77,7 @@ AppState (`backend/api-server/src/state.rs`) holds: DB pool, per-chain RPC URLs,
 
 ### AI Integration
 
-The AI client (`backend/api-server/src/services/claude.rs`) uses **DeepSeek** via OpenAI-compatible API — not Anthropic despite the filename. Configured via `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
+The AI client (`backend/api-server/src/services/Codex.rs`) uses **DeepSeek** via OpenAI-compatible API — not Anthropic despite the filename. Configured via `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
 
 ### MPC Protocol Flow (DKLS23)
 
@@ -101,26 +101,88 @@ Located in `crates/ffi-mobile/` and `mobile/lib/bridge/`:
 
 ## Development Commands
 
-All workflow targets live in `Makefile` (native/Docker) and `Makefile.local` (macOS + Docker infra) — run `make help` or read the Makefiles for the full list. Key entry points:
+### Quick Start (macOS with Docker for infra)
 
-- **macOS dev**: `make -f Makefile.local dev` (up + migrate + run api-server). Infra ports: Postgres 5433, Redis 6380, NATS 4223.
-- **Linux native**: `make local-init` (one-time setup), then `make local-start`.
-- **Docker full stack**: `make docker-up` / `docker-logs` / `docker-down` / `docker-rebuild`.
-- **Build/test**: `cargo check --workspace`, `cargo test [-p <crate>]`, `cargo clippy -- -D warnings`, `cargo run -p api-server`.
-- **Flutter** (in `mobile/`): `flutter pub get && flutter run`. After editing `crates/ffi-mobile/src/api.rs`, regenerate bindings: `flutter_rust_bridge_codegen generate`.
+```bash
+make -f Makefile.local up       # Start infra via docker compose (Postgres:5433, Redis:6380, NATS:4223)
+make -f Makefile.local migrate  # Run migrations
+make -f Makefile.local dev      # up + migrate + cargo run api-server
+make -f Makefile.local down     # Stop infra
+make -f Makefile.local restart  # down + up + migrate
+```
 
-Prerequisites for Linux native: PostgreSQL 16+, Redis 7+, NATS 2.x, Rust stable, GCC 11+ (for aws-lc-sys).
+### Local Development (CentOS/Linux with native services)
+
+Prerequisites: PostgreSQL 16+, Redis 7+, NATS 2.x, Rust stable, GCC 11+ (for aws-lc-sys)
+
+```bash
+make local-init                 # One-time: start PG/Redis, configure auth, create DB, run migrations
+make local-start                # cargo run --release --bin api-server
+make local-migrate              # sqlx migrate run --source backend/migrations
+make local-stop                 # Kill app processes
+make local-status               # Check service status
+```
+
+### Docker (full stack)
+
+```bash
+make docker-up                  # Start all services (API + infra)
+make docker-logs                # Follow logs
+make docker-down                # Stop
+make docker-clean               # Stop + remove volumes
+make docker-rebuild             # Rebuild from scratch
+make docker-ps                  # Show service status
+```
+
+### Build & Test
+
+```bash
+cargo check --workspace         # Fast type-check
+cargo build --release           # Full build
+cargo test                      # All tests
+cargo test -p mpc-core          # Single crate
+cargo fmt                       # Format
+cargo clippy -- -D warnings     # Lint
+cargo run -p api-server         # Run API server (dev mode)
+cargo run -p mpc-relay          # Run MPC relay
+cargo run -p worker             # Run worker
+```
+
+### Flutter Mobile
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+flutter test
+flutter_rust_bridge_codegen generate  # Regenerate FFI after Rust changes
+```
 
 ## Environment Variables
 
-Full list in `.env.example`. Non-obvious points worth knowing:
+Critical vars (see `.env.example`):
 
-- `ENCRYPTION_KEY` (64 hex chars / 32-byte AES) is **required** — shard encryption fails without it. `JWT_SECRET` min 32 chars.
-- AI uses **DeepSeek**: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
-- `COVALENT_API_KEY` (balances/tx-history) has a hardcoded fallback; `ZEROX_API_KEY` (swap quotes) is optional (free tier if unset); `FCM_SERVER_KEY` for push.
-- Per-chain RPC overrides follow `<CHAIN>_<NET>_RPC_URL` (e.g. `ETH_MAINNET_RPC_URL`, `BASE_SEPOLIA_RPC_URL`).
-- DB pool tuning via `DB_MAX_CONNECTIONS` (20) / `DB_MIN_CONNECTIONS` (5) / `DB_ACQUIRE_TIMEOUT` / `DB_IDLE_TIMEOUT` / `DB_MAX_LIFETIME`.
-- Docker Compose maps non-standard host ports (Postgres 5433, Redis 6380, NATS 4223) to avoid clashing with local services.
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/cowallet
+REDIS_URL=redis://localhost:6379
+NATS_URL=nats://localhost:4222
+RPC_URL=https://sepolia.base.org
+ENCRYPTION_KEY=<64-hex-chars>           # 32-byte AES key for shard encryption (required)
+JWT_SECRET=<min-32-chars>               # For token signing
+DEEPSEEK_API_KEY=<key>                  # AI chat features
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+COVALENT_API_KEY=<key>                  # Balance/tx-history queries (has hardcoded fallback)
+ZEROX_API_KEY=<key>                     # DEX swap quotes (optional, free tier if not set)
+FCM_SERVER_KEY=<key>                    # Firebase push notifications
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+Per-chain RPC overrides: `ETH_MAINNET_RPC_URL`, `BASE_MAINNET_RPC_URL`, `ARB_MAINNET_RPC_URL`, `OP_MAINNET_RPC_URL`, `BSC_MAINNET_RPC_URL`, `POLYGON_MAINNET_RPC_URL`, `ETH_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_RPC_URL`.
+
+DB pool tuning: `DB_MAX_CONNECTIONS` (default 20), `DB_MIN_CONNECTIONS` (default 5), `DB_ACQUIRE_TIMEOUT`, `DB_IDLE_TIMEOUT`, `DB_MAX_LIFETIME`.
+
+Docker Compose maps non-standard host ports (Postgres:5433, Redis:6380, NATS:4223) to avoid conflicts with local services.
 
 ## Database
 
