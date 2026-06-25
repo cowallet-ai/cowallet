@@ -55,7 +55,11 @@ class _AuthDebugPageState extends State<AuthDebugPage> {
       _addLog("📱 使用设备 ID: $deviceId");
 
       _addLog("⏳ 调用 AuthApi.register()...");
-      final result = await AuthApi.register(deviceId: deviceId);
+      final result = await AuthApi.register(
+        deviceId: deviceId,
+        email: "debug@example.com",
+        otp: "000000",
+      );
 
       if (result.isSuccess) {
         _addLog("✅ 注册成功");
