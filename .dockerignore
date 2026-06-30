@@ -34,7 +34,6 @@ prototype/
 # 临时文件
 .env.local
 .omc
-D:/
 
 # CI/CD
 .github/workflows

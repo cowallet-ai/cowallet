@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 cowallet is an **AI-native MPC (Multi-Party Computation) crypto wallet** with three main components:
 
-1. **Rust Backend** — MPC protocol implementation, API server, blockchain indexer, and worker services
+1. **Rust Backend** — MPC protocol implementation, API server, and worker services
 2. **Flutter Mobile App** — iOS/Android client with Rust FFI bridge for cryptographic operations
 3. **HTML Prototype** — Single-file static mockup (`prototype/index.html`) for UI/UX reference
 
@@ -39,7 +39,6 @@ crates/
 backend/
 ├── api-server/         # Axum HTTP API (port 3000)
 ├── mpc-relay/          # NATS-based MPC message relay
-├── indexer/            # Blockchain event indexer
 ├── worker/             # Background job processor
 └── migrations/         # SQL migrations (sqlx, sequential numbered .sql files, 017 as of 2026-05-22)
 
@@ -72,7 +71,6 @@ Protected routes require JWT via `Authorization: Bearer <token>`. Auth middlewar
 
 - **api-server** (port 3000): Axum HTTP with Tower middleware (CORS, tracing, rate limiting, security headers, 10MB body limit, 30s timeout). Requires DB to start. Graceful shutdown on SIGINT/SIGTERM.
 - **mpc-relay**: NATS pub-sub for MPC round messages. Falls back to DB polling if NATS unavailable.
-- **indexer**: Tracks blockchain events (deposits, withdrawals) for balance updates.
 - **worker**: Background jobs (price feeds, pending tx monitoring, presign pool management).
 
 AppState (`backend/api-server/src/state.rs`) holds: DB pool, per-chain RPC URLs, HTTP client, AI client (DeepSeek), NATS, rate limiter, circuit breakers, metrics, MPC participant, presign manager, OKX Wallet API credentials.
@@ -103,62 +101,15 @@ Located in `crates/ffi-mobile/` and `mobile/lib/bridge/`:
 
 ## Development Commands
 
-### Quick Start (macOS with Docker for infra)
+All workflow targets live in `Makefile` (native/Docker) and `Makefile.local` (macOS + Docker infra) — run `make help` or read the Makefiles for the full list. Key entry points:
 
-```bash
-make -f Makefile.local up       # Start infra via docker compose (Postgres:5433, Redis:6380, NATS:4223)
-make -f Makefile.local migrate  # Run migrations
-make -f Makefile.local dev      # up + migrate + cargo run api-server
-make -f Makefile.local down     # Stop infra
-make -f Makefile.local restart  # down + up + migrate
-```
+- **macOS dev**: `make -f Makefile.local dev` (up + migrate + run api-server). Infra ports: Postgres 5433, Redis 6380, NATS 4223.
+- **Linux native**: `make local-init` (one-time setup), then `make local-start`.
+- **Docker full stack**: `make docker-up` / `docker-logs` / `docker-down` / `docker-rebuild`.
+- **Build/test**: `cargo check --workspace`, `cargo test [-p <crate>]`, `cargo clippy -- -D warnings`, `cargo run -p api-server`.
+- **Flutter** (in `mobile/`): `flutter pub get && flutter run`. After editing `crates/ffi-mobile/src/api.rs`, regenerate bindings: `flutter_rust_bridge_codegen generate`.
 
-### Local Development (CentOS/Linux with native services)
-
-Prerequisites: PostgreSQL 16+, Redis 7+, NATS 2.x, Rust stable, GCC 11+ (for aws-lc-sys)
-
-```bash
-make local-init                 # One-time: start PG/Redis, configure auth, create DB, run migrations
-make local-start                # cargo run --release --bin api-server
-make local-migrate              # sqlx migrate run --source backend/migrations
-make local-stop                 # Kill app processes
-make local-status               # Check service status
-```
-
-### Docker (full stack)
-
-```bash
-make docker-up                  # Start all services (API + infra)
-make docker-logs                # Follow logs
-make docker-down                # Stop
-make docker-clean               # Stop + remove volumes
-make docker-rebuild             # Rebuild from scratch
-make docker-ps                  # Show service status
-```
-
-### Build & Test
-
-```bash
-cargo check --workspace         # Fast type-check
-cargo build --release           # Full build
-cargo test                      # All tests
-cargo test -p mpc-core          # Single crate
-cargo fmt                       # Format
-cargo clippy -- -D warnings     # Lint
-cargo run -p api-server         # Run API server (dev mode)
-cargo run -p mpc-relay          # Run MPC relay
-cargo run -p worker             # Run worker
-```
-
-### Flutter Mobile
-
-```bash
-cd mobile
-flutter pub get
-flutter run
-flutter test
-flutter_rust_bridge_codegen generate  # Regenerate FFI after Rust changes
-```
+Prerequisites for Linux native: PostgreSQL 16+, Redis 7+, NATS 2.x, Rust stable, GCC 11+ (for aws-lc-sys).
 
 ## Environment Variables
 

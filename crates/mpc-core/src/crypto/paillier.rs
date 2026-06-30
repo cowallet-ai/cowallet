@@ -55,6 +55,13 @@ impl PaillierKeypair {
         let q = glass_pumpkin::safe_prime::new(bits)
             .expect("safe prime generation failed");
 
+        Self::from_primes(p, q)
+    }
+
+    /// Reconstruct a keypair from its two primes. All other components
+    /// (`n`, `n^2`, `lambda`, `mu`, `g`) are derived deterministically, so the
+    /// primes are the only state that must be persisted.
+    pub fn from_primes(p: BigUint, q: BigUint) -> Self {
         let n = &p * &q;
         let n_squared = &n * &n;
 
@@ -86,6 +93,38 @@ impl PaillierKeypair {
                 q,
             },
         }
+    }
+
+    /// Serialize the keypair to bytes as `[len(p) as u32 BE | p_be | q_be]`.
+    /// Only the two primes are stored; everything else is re-derived on load.
+    /// SECURITY: contains the Paillier secret — store only in protected storage.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let p_bytes = self.secret.p.to_bytes_be();
+        let q_bytes = self.secret.q.to_bytes_be();
+        let mut out = Vec::with_capacity(4 + p_bytes.len() + q_bytes.len());
+        out.extend_from_slice(&(p_bytes.len() as u32).to_be_bytes());
+        out.extend_from_slice(&p_bytes);
+        out.extend_from_slice(&q_bytes);
+        out
+    }
+
+    /// Deserialize a keypair produced by [`to_bytes`], re-deriving all
+    /// non-prime components.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < 4 {
+            return Err("paillier keypair bytes too short".into());
+        }
+        let p_len = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        let rest = &bytes[4..];
+        if p_len == 0 || p_len > rest.len() {
+            return Err("paillier keypair: invalid prime length prefix".into());
+        }
+        let p = BigUint::from_bytes_be(&rest[..p_len]);
+        let q = BigUint::from_bytes_be(&rest[p_len..]);
+        if q.is_zero() {
+            return Err("paillier keypair: missing q".into());
+        }
+        Ok(Self::from_primes(p, q))
     }
 }
 
@@ -222,6 +261,68 @@ fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Benchmark: time `PaillierKeypair::generate()` (two 1024-bit safe primes).
+    /// This is invoked on the DEVICE during Round 2 of every signature today,
+    /// so its cost is the per-signature online latency floor. Run with:
+    ///   cargo test -p mpc-core paillier_keygen_benchmark -- --nocapture --ignored
+    #[test]
+    #[ignore = "timing benchmark; run explicitly with --ignored --nocapture"]
+    fn paillier_keygen_benchmark() {
+        use std::time::Instant;
+
+        const RUNS: usize = 5;
+        let mut total = std::time::Duration::ZERO;
+        let mut min = std::time::Duration::MAX;
+        let mut max = std::time::Duration::ZERO;
+
+        for i in 0..RUNS {
+            let start = Instant::now();
+            let _kp = PaillierKeypair::generate();
+            let elapsed = start.elapsed();
+            total += elapsed;
+            min = min.min(elapsed);
+            max = max.max(elapsed);
+            println!("[paillier keygen] run {}: {:?}", i + 1, elapsed);
+        }
+
+        let mean = total / RUNS as u32;
+        println!(
+            "[paillier keygen] RUNS={} mean={:?} min={:?} max={:?} (2048-bit modulus, safe primes)",
+            RUNS, mean, min, max
+        );
+        println!(
+            "[paillier keygen] NOTE: a desktop/CI mean of N ms typically maps to ~5-20x on mobile ARM."
+        );
+    }
+
+    #[test]
+    fn paillier_keypair_roundtrips_through_bytes() {
+        let kp = PaillierKeypair::generate();
+        let bytes = kp.to_bytes();
+        let restored = PaillierKeypair::from_bytes(&bytes).expect("should deserialize");
+
+        // Public modulus and derived components must match.
+        assert_eq!(kp.public.n, restored.public.n);
+        assert_eq!(kp.secret.p, restored.secret.p);
+        assert_eq!(kp.secret.q, restored.secret.q);
+        assert_eq!(kp.secret.lambda, restored.secret.lambda);
+        assert_eq!(kp.secret.mu, restored.secret.mu);
+
+        // The restored keypair must actually work: encrypt with the original
+        // public key, decrypt with the restored secret.
+        let m = BigUint::from(123456u64);
+        let ct = kp.public.encrypt(&m);
+        let dec = restored.secret.decrypt(&restored.public, &ct);
+        assert_eq!(dec, m, "restored keypair must decrypt ciphertext from original");
+    }
+
+    #[test]
+    fn paillier_from_bytes_rejects_malformed() {
+        assert!(PaillierKeypair::from_bytes(&[]).is_err());
+        assert!(PaillierKeypair::from_bytes(&[0, 0, 0, 5]).is_err()); // len prefix > data
+        assert!(PaillierKeypair::from_bytes(&[0, 0, 0, 0]).is_err()); // zero-length p
+    }
 
     #[test]
     fn test_paillier_encrypt_decrypt() {

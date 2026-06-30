@@ -37,6 +37,14 @@ pub struct KeyShare {
     /// None for the backup shard (Party 2) which doesn't participate in signing.
     #[zeroize(skip)]
     pub paillier_pk: Option<Vec<u8>>,
+
+    /// This party's OWN Paillier keypair (serialized via `PaillierKeypair::to_bytes`).
+    /// Generated once at DKG finalize and reused on every signature, instead of
+    /// regenerating safe primes per-signature (which cost ~2.5s+ on mobile).
+    /// Secret material: memory-locked and zeroized on drop. None for the backup
+    /// shard and for shards created before this field existed (lazy-filled on
+    /// first sign).
+    pub paillier_keypair: Option<SecureVec>,
 }
 
 impl Zeroize for KeyShare {

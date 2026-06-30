@@ -145,7 +145,11 @@ impl AiClient {
 
     pub fn from_env() -> AiResult<Self> {
         let api_key = std::env::var("DEEPSEEK_API_KEY")
-            .map_err(|_| "DEEPSEEK_API_KEY not set")?;
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                "DEEPSEEK_API_KEY not set".into()
+            })?;
         let base_url = std::env::var("DEEPSEEK_BASE_URL").ok();
         let model = std::env::var("DEEPSEEK_MODEL").ok();
         tracing::info!(

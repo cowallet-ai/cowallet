@@ -136,9 +136,13 @@ async fn build_userop_handler(
 /// POST /api/v1/userop/submit
 ///
 /// Attach signature to a UserOperation and submit it to the bundler.
+///
+/// SECURITY: like `/tx/userop/submit`, the sender smart-account must belong to
+/// the authenticated caller and must not be frozen. Without this an authed user
+/// could relay a UserOperation for any wallet to the bundler.
 async fn submit_userop_handler(
     State(state): State<AppState>,
-    claims: axum::Extension<Claims>,
+    claims: axum::Extension<crate::middleware::auth::Claims>,
     Json(req): Json<SubmitUserOpRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Check if bundler is configured
@@ -147,22 +151,42 @@ async fn submit_userop_handler(
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("ERC-4337 bundler not configured"))?;
 
-    // The userOp sender MUST belong to the authenticated user (F-019): without
-    // this, any user could relay a signed userOp for another account / paymaster.
-    let db = state.require_db()?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
-        .map_err(|_| ApiError::auth_invalid_token("invalid user id in token"))?;
+    // Authorize: the sender smart account must belong to the caller and not be frozen.
+    let db = state
+        .db
+        .as_ref()
+        .ok_or_else(|| ApiError::service_unavailable("database not available"))?;
+    let caller_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
+        .map_err(|_| ApiError::auth_forbidden("invalid user id in token"))?;
     let sender_bytes = req.userop.sender.as_slice().to_vec();
-    let owns_sender: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
+    let wallet: Option<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT user_id, status FROM wallets WHERE eth_address = $1",
     )
     .bind(&sender_bytes)
-    .bind(user_id)
     .fetch_optional(db)
     .await
     .map_err(ApiError::database_error)?;
-    if owns_sender.is_none() {
-        return Err(ApiError::auth_forbidden("sender does not belong to authenticated user"));
+    match wallet {
+        Some((owner, status)) => {
+            if owner != caller_id {
+                tracing::warn!(
+                    "User {} attempted to submit userop for wallet {} owned by {}",
+                    caller_id,
+                    req.userop.sender,
+                    owner
+                );
+                return Err(ApiError::auth_forbidden(
+                    "sender wallet does not belong to caller",
+                ));
+            }
+            if status == "frozen" {
+                return Err(ApiError::auth_forbidden("wallet is frozen"));
+            }
+        }
+        None => return Err(ApiError::not_found("wallet", "sender")),
     }
 
     // Parse and attach signature

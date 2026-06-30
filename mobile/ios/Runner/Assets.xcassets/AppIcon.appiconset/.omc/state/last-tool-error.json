@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git add mobile/ios/Frameworks/ffi_mobile.xcframework/ios-arm64/ffi_mobile.framework/Info.plist mobile/ios/Frameworks/ffi_mobile.xcframework/ios-arm64-simulator/ffi_mobile.framework/Info.pl...",
+  "error": "Exit code 128\nwarning: could not open directory 'mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset/mobile/ios/': No such file or directory\nfatal: pathspec 'mobile/ios/Frameworks/ffi_mobile.xcframework/ios-arm64/ffi_mobile.framework/Info.plist' did not match any files",
+  "timestamp": "2026-05-18T07:30:06.335Z",
+  "retry_count": 2
+}

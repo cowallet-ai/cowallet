@@ -41,6 +41,83 @@ pub fn build_unsigned_eip1559(tx: &TransactionRequest, gas: &GasEstimate, nonce:
     }
 }
 
+/// Fully-specified EIP-1559 transaction fields, as supplied by a client that
+/// wants the MPC server to co-sign. Every field that affects the signing hash
+/// is explicit so the server can reconstruct the transaction byte-for-byte and
+/// recompute the signature hash independently — never trusting a client-supplied
+/// digest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Eip1559Fields {
+    pub chain_id: u64,
+    pub nonce: u64,
+    pub gas_limit: u64,
+    pub max_fee_per_gas: u128,
+    pub max_priority_fee_per_gas: u128,
+    /// Recipient. `None` means contract creation.
+    pub to: Option<Address>,
+    pub value: U256,
+    #[serde(default)]
+    pub data: Vec<u8>,
+}
+
+/// Recompute the EIP-1559 signature hash from fully-specified transaction
+/// fields. This is the digest the client device must have signed; the MPC
+/// server recomputes it server-side to enforce that it only ever contributes
+/// a signature share for a transaction whose contents it has actually seen.
+pub fn eip1559_signing_hash(fields: &Eip1559Fields) -> B256 {
+    let tx = TxEip1559 {
+        chain_id: fields.chain_id,
+        nonce: fields.nonce,
+        gas_limit: fields.gas_limit,
+        max_fee_per_gas: fields.max_fee_per_gas,
+        max_priority_fee_per_gas: fields.max_priority_fee_per_gas,
+        to: match fields.to {
+            Some(addr) => TxKind::Call(addr),
+            None => TxKind::Create,
+        },
+        value: fields.value,
+        access_list: Default::default(),
+        input: Bytes::copy_from_slice(&fields.data),
+    };
+    tx.signature_hash()
+}
+
+/// Authoritative `(to, value, chain_id)` decoded from a signed, EIP-2718
+/// raw transaction. The recipient and value are taken from the bytes that
+/// were actually signed and broadcast — not from any caller-supplied side
+/// channel — so callers (e.g. audit/history recording) cannot be fed values
+/// that disagree with what hit the chain. For an ERC-20 transfer `to` is the
+/// token contract and `value` is 0; decoding the inner transfer is the
+/// caller's concern.
+#[derive(Debug, Clone)]
+pub struct DecodedRawTx {
+    pub to: Option<Address>,
+    pub value: U256,
+    pub chain_id: Option<u64>,
+}
+
+/// Decode a signed raw transaction (hex with or without `0x`) into its
+/// authoritative fields. Returns `None` if the input is not a well-formed
+/// EIP-2718 transaction envelope.
+pub fn decode_raw_tx(raw_tx: &str) -> Option<DecodedRawTx> {
+    use alloy_consensus::TxEnvelope;
+    use alloy_consensus::private::alloy_eips::eip2718::Decodable2718;
+    use alloy_consensus::Transaction as _;
+
+    let bytes = hex::decode(raw_tx.strip_prefix("0x").unwrap_or(raw_tx)).ok()?;
+    let envelope = TxEnvelope::decode_2718(&mut bytes.as_slice()).ok()?;
+
+    let to = match envelope.kind() {
+        TxKind::Call(addr) => Some(addr),
+        TxKind::Create => None,
+    };
+    Some(DecodedRawTx {
+        to,
+        value: envelope.value(),
+        chain_id: envelope.chain_id(),
+    })
+}
+
 /// Build and sign an EIP-1559 transaction, returning the RLP-encoded bytes.
 pub fn sign_eip1559_tx(
     tx: &TransactionRequest,
@@ -271,6 +348,44 @@ mod tests {
     }
 
     #[test]
+    fn decode_raw_tx_recovers_authoritative_fields() {
+        let signer = test_signer();
+        let recipient: Address = "0x1234567890123456789012345678901234567890"
+            .parse()
+            .unwrap();
+        let tx_req = TransactionRequest {
+            to: recipient,
+            value: U256::from(7_000_000_000_000_000_000u128), // 7 ETH
+            data: vec![],
+            chain_id: 84532,
+            gas_limit: Some(21000),
+            nonce: Some(5),
+        };
+        let gas = GasEstimate {
+            gas_limit: 21000,
+            max_fee_per_gas: 1_000_000_000,
+            max_priority_fee_per_gas: 100_000_000,
+            l1_data_fee: None,
+            estimated_cost_wei: U256::ZERO,
+            estimated_cost_usd: None,
+        };
+        let (encoded, _) = sign_eip1559_tx(&tx_req, &gas, 5, &signer).unwrap();
+        let raw_hex = format!("0x{}", hex::encode(&encoded));
+
+        let decoded = decode_raw_tx(&raw_hex).expect("should decode signed tx");
+        assert_eq!(decoded.to, Some(recipient));
+        assert_eq!(decoded.value, U256::from(7_000_000_000_000_000_000u128));
+        assert_eq!(decoded.chain_id, Some(84532));
+    }
+
+    #[test]
+    fn decode_raw_tx_rejects_garbage() {
+        assert!(decode_raw_tx("0xdeadbeef").is_none());
+        assert!(decode_raw_tx("not hex").is_none());
+        assert!(decode_raw_tx("").is_none());
+    }
+
+    #[test]
     fn test_build_unsigned_eip1559_with_different_params() {
         let tx_req = TransactionRequest {
             to: "0x1234567890123456789012345678901234567890"
@@ -400,5 +515,58 @@ mod tests {
             assert_eq!(encoded[0], 0x02, "should be EIP-1559 type for chain {}", chain_id);
             assert_ne!(tx_hash, B256::ZERO);
         }
+    }
+
+    /// The signing gate hinges on the server's `eip1559_signing_hash` producing
+    /// the exact digest the mobile device hashes (keccak256 of
+    /// `0x02 || rlp([chain_id, nonce, max_priority_fee, max_fee, gas, to, value,
+    /// data, access_list])`). This pins that contract two ways:
+    ///   1. it equals alloy's own `signature_hash()` for identical fields
+    ///      (the path the rest of signing already uses), and
+    ///   2. it equals a fixed known-answer constant, so any field-order or
+    ///      encoding regression on either side is caught.
+    #[test]
+    fn signing_hash_matches_alloy_and_known_answer() {
+        let to: Address = "0x1111111111111111111111111111111111111111".parse().unwrap();
+        let fields = Eip1559Fields {
+            chain_id: 8453,
+            nonce: 7,
+            gas_limit: 21000,
+            max_fee_per_gas: 2_000_000_000,
+            max_priority_fee_per_gas: 1_000_000_000,
+            to: Some(to),
+            value: U256::from(1_000_000_000_000_000_000u128), // 1 ETH
+            data: vec![],
+        };
+
+        // (1) Consistency with the existing signing path.
+        let tx_req = TransactionRequest {
+            to,
+            value: U256::from(1_000_000_000_000_000_000u128),
+            data: vec![],
+            chain_id: 8453,
+            gas_limit: None,
+            nonce: None,
+        };
+        let gas = GasEstimate {
+            gas_limit: 21000,
+            max_fee_per_gas: 2_000_000_000,
+            max_priority_fee_per_gas: 1_000_000_000,
+            l1_data_fee: None,
+            estimated_cost_wei: U256::ZERO,
+            estimated_cost_usd: None,
+        };
+        let via_alloy = build_unsigned_eip1559(&tx_req, &gas, 7).signature_hash();
+        let via_helper = eip1559_signing_hash(&fields);
+        assert_eq!(
+            via_helper, via_alloy,
+            "eip1559_signing_hash must match alloy signature_hash for identical fields"
+        );
+
+        // (2) Known-answer: locks the exact bytes the mobile client must keccak.
+        // If this constant ever needs updating, the client RLP layout changed
+        // and BOTH sides must be re-verified together.
+        let expected = "0x11474923bf3b50ea56ba7e0429020ff237adf46e4edb9215e6cc6a9e98fad55d";
+        assert_eq!(format!("{:?}", via_helper), expected);
     }
 }

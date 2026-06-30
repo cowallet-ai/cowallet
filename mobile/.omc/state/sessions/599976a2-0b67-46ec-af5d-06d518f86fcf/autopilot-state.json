@@ -1,0 +1,11 @@
+{
+  "active": true,
+  "started_at": "2026-05-25T08:51:21.924Z",
+  "original_prompt": "/autopilot 现在设置页面切换多语言，状态变了，但是app的字体始终没有变",
+  "session_id": "599976a2-0b67-46ec-af5d-06d518f86fcf",
+  "project_path": "/Users/mac/cat/cowallet/mobile",
+  "reinforcement_count": 4,
+  "awaiting_confirmation": true,
+  "awaiting_confirmation_set_at": "2026-05-25T08:51:21.924Z",
+  "last_checked_at": "2026-05-25T09:00:05.179Z"
+}

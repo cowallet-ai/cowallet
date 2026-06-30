@@ -291,6 +291,11 @@ class S {
       _localizations?.contactSaved(name) ?? _p('✅ 已保存联系人「$name」', '✅ Contact \"$name\" saved');
   static String get releaseToCancel => _localizations?.releaseToCancel ?? _p('松手取消', 'Release to cancel');
   static String get slideUpToSend => _localizations?.slideUpToSend ?? _p('上滑取消,松手发送', 'Slide up to cancel, release to send');
+  static String get voiceListening => _localizations?.voiceListening ?? _p('正在聆听…', 'Listening…');
+  static String get voiceTapToFinish => _localizations?.voiceTapToFinish ?? _p('点击任意处结束', 'Tap anywhere to finish');
+  static String get voiceDone => _localizations?.voiceDone ?? _p('完成', 'Done');
+  static String get voiceUnavailable => _localizations?.voiceUnavailable ?? _p('语音识别不可用,请检查麦克风权限', 'Voice input unavailable, check microphone permission');
+  static String get voiceErrorHint => _localizations?.voiceErrorHint ?? _p('语音识别出错,请重试', 'Voice recognition error, please try again');
   static String get saveContact => _localizations?.saveContact ?? _p('保存联系人', 'Save Contact');
 
   // Chat UI

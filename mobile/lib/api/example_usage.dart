@@ -11,8 +11,12 @@ class AuthExample {
     // 1. 生成/获取设备唯一标识（实际项目中用 device_info_plus 包）
     String deviceId = "device_unique_id_here"; // 替换为实际设备ID
 
-    // 2. 调用注册接口
-    var result = await AuthApi.register(deviceId: deviceId);
+    // 2. 调用注册接口（需邮箱 + 验证码）
+    var result = await AuthApi.register(
+      deviceId: deviceId,
+      email: "user@example.com",
+      otp: "000000",
+    );
 
     if (result.isSuccess) {
       print("注册成功！用户ID: ${result.data?["user_id"]}");

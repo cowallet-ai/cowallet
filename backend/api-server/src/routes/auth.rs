@@ -15,7 +15,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
-        .route("/challenge", post(login_challenge))
+        .route("/challenge", post(request_challenge))
         .route("/login", post(login))
         .route("/refresh", post(refresh))
         .route("/logout", post(logout))
@@ -150,9 +150,14 @@ struct RegisterRequest {
     force: bool,
     /// SHA-256 hash of the user's backup shard (hex). Required when force=true.
     backup_shard_hash: Option<String>,
-    /// Wallet secp256k1 public key (SEC1 hex, compressed or uncompressed).
-    /// Stored so the user can later authenticate via challenge-response login (F-001).
-    public_key: Option<String>,
+    /// Device's hardware public key (hex). For P-256: SEC1 (33-byte compressed
+    /// or 65-byte uncompressed). For RSA: X.509 SubjectPublicKeyInfo DER.
+    /// Registered so challenge-response login can verify the device holds the
+    /// matching private key.
+    device_pubkey: Option<String>,
+    /// Algorithm of `device_pubkey`: "p256" (iOS Secure Enclave) or "rsa"
+    /// (Android StrongBox). Required when `device_pubkey` is present.
+    device_pubkey_alg: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -380,6 +385,41 @@ async fn register(
         new_id
     };
 
+    // Register the device's hardware public key + algorithm (if supplied) so
+    // challenge-response login can later verify ownership of the device key.
+    // iOS Secure Enclave → P-256 (SEC1); Android StrongBox → RSA (SPKI DER).
+    if let Some(pubkey_hex) = &body.device_pubkey {
+        let alg = body
+            .device_pubkey_alg
+            .as_deref()
+            .ok_or(StatusCode::BAD_REQUEST)?;
+        let pubkey_bytes = hex::decode(pubkey_hex.trim_start_matches("0x"))
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        // Validate per algorithm; full cryptographic validity is checked at login.
+        match alg {
+            // SEC1: 33-byte compressed or 65-byte uncompressed point.
+            "p256" => {
+                if pubkey_bytes.len() != 33 && pubkey_bytes.len() != 65 {
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+            }
+            // SPKI/X.509 DER — variable length; reject only the obviously empty.
+            "rsa" => {
+                if pubkey_bytes.is_empty() {
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+            }
+            _ => return Err(StatusCode::BAD_REQUEST),
+        }
+        sqlx::query("UPDATE users SET public_key = $1, device_pubkey_alg = $2 WHERE id = $3")
+            .bind(&pubkey_bytes)
+            .bind(alg)
+            .bind(user_id)
+            .execute(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
     let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -413,63 +453,106 @@ struct ChallengeRequest {
 
 #[derive(Serialize)]
 struct ChallengeResponse {
-    /// Random 32-byte nonce (hex). The client signs SHA-256(nonce) with the
-    /// wallet's secp256k1 private key and returns the signature to /login.
+    /// Random nonce (hex) the device must sign.
     challenge: String,
+    expires_in: u64,
 }
 
-/// POST /api/v1/auth/challenge — issue a login challenge nonce (F-001).
-/// Public endpoint. Always returns a challenge (even for unknown devices) to
-/// avoid leaking which devices are registered; verification happens at /login.
-async fn login_challenge(
+/// POST /api/v1/auth/challenge
+///
+/// Issues a random nonce bound to a device. The device signs it with its
+/// registered secp256k1 key and presents the signature to `/login`.
+async fn request_challenge(
     State(state): State<AppState>,
     Json(body): Json<ChallengeRequest>,
 ) -> Result<Json<ChallengeResponse>, StatusCode> {
+    use rand::RngCore;
     let db = state
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     let mut nonce = [0u8; 32];
-    rand::Rng::fill(&mut rand::thread_rng(), &mut nonce[..]);
-    let expires_at = Utc::now() + chrono::Duration::minutes(5);
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
 
-    sqlx::query(
-        "INSERT INTO login_challenges (device_id, nonce, expires_at) VALUES ($1, $2, $3)"
-    )
-    .bind(&body.device_id)
-    .bind(nonce.as_slice())
-    .bind(expires_at)
-    .execute(db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to store login challenge: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    sqlx::query("INSERT INTO login_challenges (device_id, challenge) VALUES ($1, $2)")
+        .bind(&body.device_id)
+        .bind(&nonce[..])
+        .execute(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(ChallengeResponse {
         challenge: hex::encode(nonce),
+        expires_in: 120,
     }))
 }
 
 #[derive(Deserialize)]
 struct LoginRequest {
     device_id: String,
-    /// The challenge nonce (hex) previously issued by /auth/challenge.
+    /// hex, must match an unconsumed, unexpired challenge for this device.
     challenge: String,
-    /// secp256k1 ECDSA signature (DER or fixed 64-byte, hex) over SHA-256(nonce).
+    /// hex signature over the challenge bytes, produced by the device's
+    /// hardware key. Encoding depends on the registered algorithm:
+    /// P-256 → X9.62/DER ECDSA; RSA → PKCS#1 v1.5.
     signature: String,
 }
 
-/// POST /api/v1/auth/login — public-key challenge-response login (F-001).
+/// Verify a device signature over `msg` using the registered public key,
+/// dispatching on the key algorithm recorded at registration.
 ///
-/// Replaces the previous device_id-only login (which authenticated anyone who
-/// knew a device_id). The client must prove possession of the wallet private
-/// key by signing the challenge nonce. Verification steps:
-///   1. Look up the user by device_id and fetch their stored public_key.
-///   2. Reject if public_key is NULL (user cannot do challenge login).
-///   3. Atomically consume the matching, unexpired, unused challenge nonce.
-///   4. Verify the secp256k1 signature over SHA-256(nonce) with that public key.
-/// Only then are tokens issued.
+/// The device signs the raw challenge bytes; the underlying hardware (iOS
+/// Secure Enclave `.ecdsaSignatureMessageX962SHA256`, Android StrongBox
+/// `SHA256withRSA`) hashes with SHA-256 internally, so the server verifies
+/// against `SHA-256(challenge)`.
+///
+/// - `p256`: SEC1 public key (33-byte compressed or 65-byte uncompressed),
+///   DER-encoded ECDSA signature.
+/// - `rsa`: SPKI (X.509 `SubjectPublicKeyInfo`) public key, PKCS#1 v1.5
+///   signature over SHA-256.
+fn verify_device_signature(
+    alg: &str,
+    pubkey: &[u8],
+    msg: &[u8],
+    sig_hex: &str,
+) -> Result<(), String> {
+    let sig_bytes = hex::decode(sig_hex.trim_start_matches("0x"))
+        .map_err(|_| "signature not hex".to_string())?;
+
+    match alg {
+        "p256" => {
+            use p256::ecdsa::signature::hazmat::PrehashVerifier;
+            use p256::ecdsa::{Signature, VerifyingKey};
+
+            let vk = VerifyingKey::from_sec1_bytes(pubkey)
+                .map_err(|e| format!("invalid P-256 public key: {}", e))?;
+            // Accept either DER or 64-byte compact encoding.
+            let sig = Signature::from_der(&sig_bytes)
+                .or_else(|_| Signature::from_slice(&sig_bytes))
+                .map_err(|_| "malformed P-256 signature".to_string())?;
+            let digest = Sha256::digest(msg);
+            vk.verify_prehash(digest.as_slice(), &sig)
+                .map_err(|_| "P-256 signature verification failed".to_string())
+        }
+        "rsa" => {
+            use rsa::pkcs1v15::{Signature, VerifyingKey};
+            use rsa::pkcs8::DecodePublicKey;
+            use rsa::sha2::Sha256 as RsaSha256;
+            use rsa::signature::Verifier;
+
+            let public_key = rsa::RsaPublicKey::from_public_key_der(pubkey)
+                .map_err(|e| format!("invalid RSA public key: {}", e))?;
+            let vk: VerifyingKey<RsaSha256> = VerifyingKey::new(public_key);
+            let sig = Signature::try_from(sig_bytes.as_slice())
+                .map_err(|_| "malformed RSA signature".to_string())?;
+            // RSA verifier hashes the message itself with SHA-256.
+            vk.verify(msg, &sig)
+                .map_err(|_| "RSA signature verification failed".to_string())
+        }
+        other => Err(format!("unsupported device key algorithm: {}", other)),
+    }
+}
+
 async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
@@ -478,82 +561,68 @@ async fn login(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let audit_denied = |state: AppState, device_id: String| async move {
+    let challenge_bytes = hex::decode(body.challenge.trim_start_matches("0x"))
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Atomically consume a valid, unexpired challenge for this device.
+    let consumed = sqlx::query(
+        "UPDATE login_challenges SET consumed = TRUE
+         WHERE device_id = $1 AND challenge = $2 AND consumed = FALSE AND expires_at > NOW()",
+    )
+    .bind(&body.device_id)
+    .bind(&challenge_bytes)
+    .execute(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if consumed.rows_affected() == 0 {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Load the device's registered public key + algorithm and verify the signature.
+    let row: Option<(uuid::Uuid, Option<Vec<u8>>, Option<String>)> = sqlx::query_as(
+        "SELECT id, public_key, device_pubkey_alg FROM users WHERE device_id = $1",
+    )
+    .bind(&body.device_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let (user_id, pubkey, alg) = match row {
+        Some((id, Some(pk), Some(alg))) if !pk.is_empty() => (id, pk, alg),
+        // No user, or no registered device key/alg — cannot do challenge-response.
+        _ => {
+            let _ = state
+                .audit_logger
+                .log_with_details(
+                    uuid::Uuid::nil(),
+                    "auth.login",
+                    AuditResult::Denied,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(serde_json::json!({ "device_id": body.device_id, "reason": "no device key" })),
+                )
+                .await;
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    if let Err(e) = verify_device_signature(&alg, &pubkey, &challenge_bytes, &body.signature) {
         let _ = state
             .audit_logger
             .log_with_details(
-                uuid::Uuid::nil(),
+                user_id,
                 "auth.login",
                 AuditResult::Denied,
                 None,
                 None,
                 None,
                 None,
-                Some(serde_json::json!({ "device_id": device_id })),
+                Some(serde_json::json!({ "device_id": body.device_id, "reason": e })),
             )
             .await;
-    };
-
-    // 1. Look up user + their stored public key.
-    let user_row: Option<(uuid::Uuid, Option<Vec<u8>>)> =
-        sqlx::query_as("SELECT id, public_key FROM users WHERE device_id = $1")
-            .bind(&body.device_id)
-            .fetch_optional(db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let (user_id, public_key) = match user_row {
-        Some((id, Some(pk))) => (id, pk),
-        // 2. No user, or user has no public_key on file → cannot verify.
-        _ => {
-            audit_denied(state.clone(), body.device_id.clone()).await;
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-    };
-
-    // Parse the challenge nonce and the signature.
-    let nonce = hex::decode(body.challenge.trim_start_matches("0x"))
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
-
-    // 3. Atomically consume a matching, unexpired, unused challenge for this device.
-    let consumed: Option<(uuid::Uuid,)> = sqlx::query_as(
-        "UPDATE login_challenges SET used = TRUE
-         WHERE id = (
-             SELECT id FROM login_challenges
-             WHERE device_id = $1 AND nonce = $2 AND NOT used AND expires_at > NOW()
-             ORDER BY created_at DESC
-             LIMIT 1
-         )
-         RETURNING id"
-    )
-    .bind(&body.device_id)
-    .bind(nonce.as_slice())
-    .fetch_optional(db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if consumed.is_none() {
-        // Challenge not found / expired / already used.
-        audit_denied(state.clone(), body.device_id.clone()).await;
         return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    // 4. Verify the secp256k1 signature over SHA-256(nonce) with the stored key.
-    let verifying_key = k256::ecdsa::VerifyingKey::from_sec1_bytes(&public_key)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let sig_bytes = hex::decode(body.signature.trim_start_matches("0x"))
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
-    // Accept either fixed-size (r||s) or DER-encoded signatures.
-    let signature = k256::ecdsa::Signature::from_slice(&sig_bytes)
-        .or_else(|_| k256::ecdsa::Signature::from_der(&sig_bytes))
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let digest = Sha256::digest(&nonce);
-    {
-        use k256::ecdsa::signature::hazmat::PrehashVerifier;
-        if verifying_key.verify_prehash(digest.as_slice(), &signature).is_err() {
-            audit_denied(state.clone(), body.device_id.clone()).await;
-            return Err(StatusCode::UNAUTHORIZED);
-        }
     }
 
     let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id)
@@ -1159,4 +1228,112 @@ async fn verify_recovery_otp(
         server_reshare_messages_json,
         server_commitment_hex,
     }))
+}
+
+#[cfg(test)]
+mod challenge_login_tests {
+    use super::*;
+
+    // ---- P-256 (iOS Secure Enclave) ----
+    mod p256_tests {
+        use super::*;
+        use p256::ecdsa::signature::hazmat::PrehashSigner;
+        use p256::ecdsa::{Signature, SigningKey};
+
+        fn key(seed: u8) -> SigningKey {
+            SigningKey::from_slice(&[seed; 32]).unwrap()
+        }
+
+        fn sign(sk: &SigningKey, challenge: &[u8]) -> String {
+            let digest = Sha256::digest(challenge);
+            let sig: Signature = sk.sign_prehash(digest.as_slice()).expect("sign");
+            hex::encode(sig.to_der().as_bytes())
+        }
+
+        #[test]
+        fn verifies_valid_signature() {
+            let sk = key(7);
+            let pk = sk.verifying_key().to_sec1_bytes().to_vec();
+            let challenge = [42u8; 32];
+            let sig = sign(&sk, &challenge);
+            assert!(verify_device_signature("p256", &pk, &challenge, &sig).is_ok());
+        }
+
+        #[test]
+        fn rejects_tampered_challenge() {
+            let sk = key(7);
+            let pk = sk.verifying_key().to_sec1_bytes().to_vec();
+            let sig = sign(&sk, &[42u8; 32]);
+            assert!(verify_device_signature("p256", &pk, &[43u8; 32], &sig).is_err());
+        }
+
+        #[test]
+        fn rejects_wrong_key() {
+            let sk = key(7);
+            let other_pk = key(8).verifying_key().to_sec1_bytes().to_vec();
+            let challenge = [42u8; 32];
+            let sig = sign(&sk, &challenge);
+            assert!(verify_device_signature("p256", &other_pk, &challenge, &sig).is_err());
+        }
+
+        #[test]
+        fn rejects_garbage_signature() {
+            let pk = key(7).verifying_key().to_sec1_bytes().to_vec();
+            assert!(verify_device_signature("p256", &pk, &[42u8; 32], "not-hex").is_err());
+            assert!(verify_device_signature("p256", &pk, &[42u8; 32], "00ff").is_err());
+        }
+    }
+
+    // ---- RSA (Android StrongBox, SHA256withRSA / PKCS#1 v1.5) ----
+    mod rsa_tests {
+        use super::*;
+        use rsa::pkcs1v15::SigningKey;
+        use rsa::pkcs8::EncodePublicKey;
+        use rsa::sha2::Sha256 as RsaSha256;
+        use rsa::signature::{SignatureEncoding, Signer};
+        use rsa::RsaPrivateKey;
+
+        // A small (1024-bit) key keeps the test fast; production keys are 2048+.
+        fn keypair(seed: u64) -> (SigningKey<RsaSha256>, Vec<u8>) {
+            use rand::SeedableRng;
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let priv_key = RsaPrivateKey::new(&mut rng, 1024).expect("rsa keygen");
+            let spki = priv_key
+                .to_public_key()
+                .to_public_key_der()
+                .unwrap()
+                .as_bytes()
+                .to_vec();
+            (SigningKey::<RsaSha256>::new(priv_key), spki)
+        }
+
+        #[test]
+        fn verifies_valid_signature() {
+            let (sk, spki) = keypair(1);
+            let challenge = [42u8; 32];
+            let sig = hex::encode(sk.sign(&challenge).to_bytes());
+            assert!(verify_device_signature("rsa", &spki, &challenge, &sig).is_ok());
+        }
+
+        #[test]
+        fn rejects_tampered_challenge() {
+            let (sk, spki) = keypair(1);
+            let sig = hex::encode(sk.sign(&[42u8; 32]).to_bytes());
+            assert!(verify_device_signature("rsa", &spki, &[43u8; 32], &sig).is_err());
+        }
+
+        #[test]
+        fn rejects_wrong_key() {
+            let (sk, _) = keypair(1);
+            let (_, other_spki) = keypair(2);
+            let challenge = [42u8; 32];
+            let sig = hex::encode(sk.sign(&challenge).to_bytes());
+            assert!(verify_device_signature("rsa", &other_spki, &challenge, &sig).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_algorithm() {
+        assert!(verify_device_signature("ed25519", &[1, 2, 3], &[42u8; 32], "00ff").is_err());
+    }
 }

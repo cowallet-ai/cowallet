@@ -38,6 +38,7 @@ fn main() {
         secret_share: share0.secret_share.clone(),
         public_key: share0.public_key.clone(),
         paillier_pk: None,
+        paillier_keypair: share0.paillier_keypair.clone(),
     };
     
     // === SIGN (mimicking exact production message flow) ===

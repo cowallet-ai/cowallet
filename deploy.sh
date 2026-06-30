@@ -101,7 +101,7 @@ echo -e "${GREEN}✅ 代码已更新${NC}"
 
 echo -e "${YELLOW}🔨 构建新镜像...${NC}"
 
-docker compose build --no-cache api-server mpc-relay indexer worker
+docker compose build --no-cache api-server mpc-relay worker
 echo -e "${GREEN}✅ 镜像构建完成${NC}"
 
 # ────────────────────────────────────────────────────────────────────────────

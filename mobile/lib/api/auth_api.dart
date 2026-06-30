@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'package:convert/convert.dart';
 import '../network/dio_client.dart';
 import '../network/result.dart';
+import '../platform/device_identity.dart';
 import '../utils/secure_storage.dart';
 
 /// 认证API - 匹配后端实际接口
@@ -23,6 +25,7 @@ class AuthApi {
   /// [deviceId] 设备唯一标识
   /// [email] 恢复邮箱（必填）
   /// [otp] 邮箱验证码
+  /// 自动附带设备硬件公钥 + 算法，供后续挑战-响应登录验签
   /// 返回 token 和 user_id
   static Future<Result<Map<String, dynamic>>> register({
     required String deviceId,
@@ -31,6 +34,10 @@ class AuthApi {
     bool force = false,
     String? backupShardHash,
   }) async {
+    // Attach the hardware device public key so challenge-response login works.
+    final devicePubkey = await DeviceIdentity.publicKeyHex();
+    final deviceAlg = DeviceIdentity.algorithm;
+
     Result<Map<String, dynamic>> result = await DioClient.post(
       "/auth/register",
       data: {
@@ -39,6 +46,8 @@ class AuthApi {
         "otp": otp,
         if (force) "force": true,
         if (backupShardHash != null) "backup_shard_hash": backupShardHash,
+        if (devicePubkey != null) "device_pubkey": devicePubkey,
+        if (devicePubkey != null && deviceAlg != null) "device_pubkey_alg": deviceAlg,
       },
     );
 
@@ -72,15 +81,56 @@ class AuthApi {
     return result;
   }
 
-  /// 使用设备ID登录
+  /// 请求登录挑战 nonce
+  /// 返回服务器签发的随机挑战(hex)及有效期(秒)
+  static Future<Result<Map<String, dynamic>>> requestChallenge({
+    required String deviceId,
+  }) async {
+    return await DioClient.post(
+      "/auth/challenge",
+      data: {"device_id": deviceId},
+    );
+  }
+
+  /// 挑战-响应登录
   /// [deviceId] 设备唯一标识
+  /// 流程: 请求挑战 → 用设备硬件密钥签名 → 提交 {device_id, challenge, signature}
+  /// 仅持有 device_id 已无法登录,必须证明持有设备私钥。
   /// 返回 token 和 user_id
   static Future<Result<Map<String, dynamic>>> login({
     required String deviceId,
+    String reason = '登录验证',
   }) async {
+    // 1) 向服务器索取一次性挑战 nonce
+    final challengeResult = await requestChallenge(deviceId: deviceId);
+    if (!challengeResult.isSuccess || challengeResult.data == null) {
+      return Result.error(
+        challengeResult.errorMessage ?? 'Failed to request login challenge',
+        challengeResult.errorCode ?? 500,
+      );
+    }
+    final challengeHex = challengeResult.data!["challenge"] as String?;
+    if (challengeHex == null || challengeHex.isEmpty) {
+      return Result.error('Server returned an empty challenge', 500);
+    }
+
+    // 2) 用设备硬件密钥(iOS P-256 / Android RSA)签名挑战
+    final challengeBytes = hex.decode(challengeHex.replaceFirst('0x', ''));
+    final String signatureHex;
+    try {
+      signatureHex = await DeviceIdentity.signChallenge(challengeBytes, reason);
+    } catch (e) {
+      return Result.error('Failed to sign login challenge: $e', 401);
+    }
+
+    // 3) 提交挑战 + 签名换取 token
     Result<Map<String, dynamic>> result = await DioClient.post(
       "/auth/login",
-      data: {"device_id": deviceId},
+      data: {
+        "device_id": deviceId,
+        "challenge": challengeHex,
+        "signature": signatureHex,
+      },
     );
 
     // 登录成功自动存储token

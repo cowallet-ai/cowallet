@@ -77,10 +77,16 @@ async fn send_push(
     Json(req): Json<SendPushRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    // Derive the recipient from the authenticated identity, never from the request
-    // body — trusting body user_id let any user push to anyone's devices (F-007).
-    let user_id: uuid::Uuid = claims.0.sub.parse()
-        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
+    let caller_id: uuid::Uuid = claims.0.sub.parse()
+        .map_err(|_| err(StatusCode::UNAUTHORIZED, "invalid user id in token"))?;
+    let user_id: uuid::Uuid = req.user_id.parse()
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user_id"))?;
+
+    // A user may only send push notifications to their own devices.
+    if caller_id != user_id {
+        tracing::warn!("User {} attempted to push to user {}", caller_id, user_id);
+        return Err(err(StatusCode::FORBIDDEN, "cannot send push to another user"));
+    }
 
     let fcm_server_key = std::env::var("FCM_SERVER_KEY")
         .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "FCM not configured"))?;

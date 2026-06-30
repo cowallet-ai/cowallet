@@ -355,6 +355,19 @@ impl DkgSession {
         let public_key = pubkey_point.to_encoded_point(false).as_bytes().to_vec();
         self.public_key = Some(public_key.clone());
 
+        // Generate this device's Paillier keypair ONCE, here at DKG finalize,
+        // and persist it in the share. The device (Party 0, the lower-indexed
+        // signer) initiates the Paillier-based MtA on every signature; without
+        // this the keypair was regenerated per-signature, costing ~2.5s+ of
+        // safe-prime generation on each transaction. The server (higher index)
+        // and the backup shard never initiate MtA, so they skip this.
+        let paillier_keypair = if self.config.party_index == 0 {
+            let kp = crate::crypto::paillier::PaillierKeypair::generate();
+            Some(crate::security::SecureVec::from(kp.to_bytes()))
+        } else {
+            None
+        };
+
         let key_share = KeyShare {
             party: self.config.party_index,
             threshold: self.config.threshold,
@@ -362,6 +375,7 @@ impl DkgSession {
             secret_share: my_share.to_bytes().to_vec().into(),
             public_key,
             paillier_pk: None,
+            paillier_keypair,
         };
 
         self.state = DkgState::Complete {
@@ -450,6 +464,7 @@ impl DkgSession {
                     secret_share: backup_scalar.to_bytes().to_vec().into(),
                     public_key: share.public_key.clone(),
                     paillier_pk: None,
+                    paillier_keypair: None,
                 })
             }
             _ => Err(MpcError::DkgFailed("DKG not yet complete".into())),
