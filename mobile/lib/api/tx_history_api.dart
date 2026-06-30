@@ -2,7 +2,7 @@ import '../network/dio_client.dart';
 import '../network/result.dart';
 
 class TxHistoryApi {
-  /// Get on-chain transaction history from the backend (via Covalent)
+  /// Get on-chain transaction history from the backend (via OKX)
   ///
   /// Returns a map with:
   /// - transactions: List<Map> with { tx_hash, from, to, value, timestamp, status, gas_used, token_symbol, value_quote }

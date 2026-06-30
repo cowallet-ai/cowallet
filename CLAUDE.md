@@ -57,7 +57,7 @@ prototype/              # Static HTML mockup (bilingual, phone-frame design)
 /api/v1/chains/*                   — Public
 /api/v1/mpc/*                      — Protected + strict rate limit (10 req/min)
 /api/v1/tx/*                       — Protected
-/api/v1/balance/*                  — Protected (Covalent API)
+/api/v1/balance/*                  — Protected (OKX Wallet API)
 /api/v1/wallets/*                  — Protected
 /api/v1/policy/*                   — Protected
 /api/v1/ai/*                       — Protected
@@ -75,7 +75,7 @@ Protected routes require JWT via `Authorization: Bearer <token>`. Auth middlewar
 - **indexer**: Tracks blockchain events (deposits, withdrawals) for balance updates.
 - **worker**: Background jobs (price feeds, pending tx monitoring, presign pool management).
 
-AppState (`backend/api-server/src/state.rs`) holds: DB pool, per-chain RPC URLs, HTTP client, AI client (DeepSeek), NATS, rate limiter, circuit breakers, metrics, MPC participant, presign manager, Covalent API key.
+AppState (`backend/api-server/src/state.rs`) holds: DB pool, per-chain RPC URLs, HTTP client, AI client (DeepSeek), NATS, rate limiter, circuit breakers, metrics, MPC participant, presign manager, OKX Wallet API credentials.
 
 ### AI Integration
 
@@ -174,7 +174,10 @@ JWT_SECRET=<min-32-chars>               # For token signing
 DEEPSEEK_API_KEY=<key>                  # AI chat features
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
-COVALENT_API_KEY=<key>                  # Balance/tx-history queries (has hardcoded fallback)
+OKX_API_KEY=<key>                       # OKX Wallet API — balance/tx-history queries
+OKX_SECRET_KEY=<key>                    # OKX HMAC signing secret
+OKX_PASSPHRASE=<key>                    # OKX API passphrase (3 above required, else 503)
+OKX_PROJECT_ID=<key>                    # Optional: project-scoped WaaS endpoints only
 ZEROX_API_KEY=<key>                     # DEX swap quotes (optional, free tier if not set)
 FCM_SERVER_KEY=<key>                    # Firebase push notifications
 CORS_ALLOWED_ORIGINS=http://localhost:3000
