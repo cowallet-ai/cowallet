@@ -33,7 +33,7 @@ pub struct AppState {
     pub audit_logger: AuditLogger,
     pub mpc_participant: Option<Arc<MpcParticipant>>,
     pub presign_manager: Option<Arc<PresignManager>>,
-    pub covalent_api_key: Option<String>,
+    pub okx_credentials: Option<crate::services::okx::OkxCredentials>,
     pub bridgers_source_flag: String,
     pub bundler_url: Option<String>,
     pub paymaster_url: Option<String>,
@@ -131,13 +131,14 @@ impl AppState {
         let participant = Arc::new(participant);
         participant.spawn_cleanup();
 
-        let covalent_api_key = std::env::var("COVALENT_API_KEY")
-            .ok()
-            .filter(|s| !s.is_empty());
-        if covalent_api_key.is_some() {
-            tracing::info!("Covalent API configured for balance queries");
+        // Balance & tx-history queries use the OKX Web3 Wallet API (Onchain OS).
+        // All four credential vars are required; when unset the field stays None
+        // and balance/tx-history endpoints return 503 (handled at the route layer).
+        let okx_credentials = crate::services::okx::OkxCredentials::from_env();
+        if okx_credentials.is_some() {
+            tracing::info!("OKX Wallet API configured for balance/tx-history queries");
         } else {
-            tracing::warn!("COVALENT_API_KEY not set — balance and tx-history endpoints will return 503");
+            tracing::warn!("OKX_* credentials not fully set — balance and tx-history endpoints will return 503");
         }
 
         let bridgers_source_flag = std::env::var("BRIDGERS_SOURCE_FLAG")
@@ -192,7 +193,7 @@ impl AppState {
             audit_logger: AuditLogger::new(Some(db)),
             mpc_participant: Some(participant),
             presign_manager: Some(presign_manager),
-            covalent_api_key,
+            okx_credentials,
             bridgers_source_flag,
             bundler_url,
             paymaster_url,

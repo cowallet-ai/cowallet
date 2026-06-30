@@ -579,7 +579,7 @@ async fn estimate_gas(
     let estimated_cost_eth = estimated_cost_wei as f64 / 1e18;
 
     // Try to get native token price for USD estimate
-    let native_sym = crate::services::covalent::native_symbol(chain_id);
+    let native_sym = crate::services::okx::native_symbol(chain_id);
     let estimated_cost_usd = state
         .price_cache
         .get_usd_price(&state.http, native_sym)

@@ -6,7 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::errors::{ApiError, Result};
-use crate::services::covalent;
+use crate::services::okx;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -43,7 +43,7 @@ struct TokenInfo {
 }
 
 /// GET /balance?address={addr}&chain_id={chain_id}
-/// Returns token balances from Covalent
+/// Returns token balances from OKX
 async fn get_balance(
     State(state): State<AppState>,
     Query(query): Query<BalanceQuery>,
@@ -55,15 +55,15 @@ async fn get_balance(
 
     let chain_id = query.chain_id.ok_or_else(|| ApiError::bad_request("chain_id is required"))?;
 
-    // When Covalent is not configured, use direct RPC
-    if state.covalent_api_key.is_none() {
+    // When OKX is not configured, use direct RPC
+    if state.okx_credentials.is_none() {
         return get_balance_via_rpc(&state, &query.address, chain_id).await;
     }
 
-    let api_key = state.covalent_api_key.as_ref().unwrap();
+    let creds = state.okx_credentials.as_ref().unwrap();
 
-    // Query Covalent for balances
-    match covalent::get_balances(&state.http, api_key, &query.address, chain_id).await {
+    // Query OKX for balances
+    match okx::get_balances(&state.http, creds, &query.address, chain_id).await {
         Ok(tokens) => {
             let total_usd: f64 = tokens
                 .iter()
@@ -160,7 +160,7 @@ struct ChainInfo {
 }
 
 /// GET /balance/all?address={addr}
-/// Returns token balances across all supported chains from Covalent
+/// Returns token balances across all supported chains from OKX
 async fn get_all_balances(
     State(state): State<AppState>,
     Query(query): Query<AllBalancesQuery>,
@@ -170,14 +170,14 @@ async fn get_all_balances(
         return Err(ApiError::invalid_address(&query.address));
     }
 
-    // Require Covalent API key for cross-chain queries
-    let api_key = state.covalent_api_key.as_ref()
-        .ok_or_else(|| ApiError::service_unavailable("Covalent API not configured"))?;
+    // Require OKX credentials for cross-chain queries
+    let creds = state.okx_credentials.as_ref()
+        .ok_or_else(|| ApiError::service_unavailable("OKX Wallet API not configured"))?;
 
     // Query all supported mainnet chains
     let chain_ids = vec![1, 8453, 42161, 10, 56, 137];
 
-    match covalent::get_all_chain_balances(&state.http, api_key, &query.address, &chain_ids).await {
+    match okx::get_all_chain_balances(&state.http, creds, &query.address, &chain_ids).await {
         Ok(result) => {
             let chains: Vec<ChainInfo> = result
                 .chains

@@ -56,7 +56,7 @@ prototype/              # Static HTML mockup (bilingual, phone-frame design)
 /api/v1/chains/*                   — Public
 /api/v1/mpc/*                      — Protected + strict rate limit (10 req/min)
 /api/v1/tx/*                       — Protected
-/api/v1/balance/*                  — Protected (Covalent API)
+/api/v1/balance/*                  — Protected (OKX Wallet API)
 /api/v1/wallets/*                  — Protected
 /api/v1/policy/*                   — Protected
 /api/v1/ai/*                       — Protected
@@ -73,7 +73,7 @@ Protected routes require JWT via `Authorization: Bearer <token>`. Auth middlewar
 - **mpc-relay**: NATS pub-sub for MPC round messages. Falls back to DB polling if NATS unavailable.
 - **worker**: Background jobs (price feeds, pending tx monitoring, presign pool management).
 
-AppState (`backend/api-server/src/state.rs`) holds: DB pool, per-chain RPC URLs, HTTP client, AI client (DeepSeek), NATS, rate limiter, circuit breakers, metrics, MPC participant, presign manager, Covalent API key.
+AppState (`backend/api-server/src/state.rs`) holds: DB pool, per-chain RPC URLs, HTTP client, AI client (DeepSeek), NATS, rate limiter, circuit breakers, metrics, MPC participant, presign manager, OKX Wallet API credentials.
 
 ### AI Integration
 
@@ -113,14 +113,32 @@ Prerequisites for Linux native: PostgreSQL 16+, Redis 7+, NATS 2.x, Rust stable,
 
 ## Environment Variables
 
-Full list in `.env.example`. Non-obvious points worth knowing:
+Critical vars (see `.env.example`):
 
-- `ENCRYPTION_KEY` (64 hex chars / 32-byte AES) is **required** — shard encryption fails without it. `JWT_SECRET` min 32 chars.
-- AI uses **DeepSeek**: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`.
-- `COVALENT_API_KEY` (balances/tx-history) has a hardcoded fallback; `ZEROX_API_KEY` (swap quotes) is optional (free tier if unset); `FCM_SERVER_KEY` for push.
-- Per-chain RPC overrides follow `<CHAIN>_<NET>_RPC_URL` (e.g. `ETH_MAINNET_RPC_URL`, `BASE_SEPOLIA_RPC_URL`).
-- DB pool tuning via `DB_MAX_CONNECTIONS` (20) / `DB_MIN_CONNECTIONS` (5) / `DB_ACQUIRE_TIMEOUT` / `DB_IDLE_TIMEOUT` / `DB_MAX_LIFETIME`.
-- Docker Compose maps non-standard host ports (Postgres 5433, Redis 6380, NATS 4223) to avoid clashing with local services.
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/cowallet
+REDIS_URL=redis://localhost:6379
+NATS_URL=nats://localhost:4222
+RPC_URL=https://sepolia.base.org
+ENCRYPTION_KEY=<64-hex-chars>           # 32-byte AES key for shard encryption (required)
+JWT_SECRET=<min-32-chars>               # For token signing
+DEEPSEEK_API_KEY=<key>                  # AI chat features
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+OKX_API_KEY=<key>                       # OKX Wallet API — balance/tx-history queries
+OKX_SECRET_KEY=<key>                    # OKX HMAC signing secret
+OKX_PASSPHRASE=<key>                    # OKX API passphrase (3 above required, else 503)
+OKX_PROJECT_ID=<key>                    # Optional: project-scoped WaaS endpoints only
+ZEROX_API_KEY=<key>                     # DEX swap quotes (optional, free tier if not set)
+FCM_SERVER_KEY=<key>                    # Firebase push notifications
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+Per-chain RPC overrides: `ETH_MAINNET_RPC_URL`, `BASE_MAINNET_RPC_URL`, `ARB_MAINNET_RPC_URL`, `OP_MAINNET_RPC_URL`, `BSC_MAINNET_RPC_URL`, `POLYGON_MAINNET_RPC_URL`, `ETH_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_RPC_URL`.
+
+DB pool tuning: `DB_MAX_CONNECTIONS` (default 20), `DB_MIN_CONNECTIONS` (default 5), `DB_ACQUIRE_TIMEOUT`, `DB_IDLE_TIMEOUT`, `DB_MAX_LIFETIME`.
+
+Docker Compose maps non-standard host ports (Postgres:5433, Redis:6380, NATS:4223) to avoid conflicts with local services.
 
 ## Database
 

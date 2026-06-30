@@ -2,7 +2,7 @@ import '../network/dio_client.dart';
 import '../network/result.dart';
 
 class BalanceApi {
-  /// Get token balances for an address from the backend (via Covalent)
+  /// Get token balances for an address from the backend (via OKX)
   ///
   /// Returns a map with:
   /// - address: String
