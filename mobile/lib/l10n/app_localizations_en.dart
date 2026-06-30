@@ -609,6 +609,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get slideUpToSend => 'Slide up to cancel, release to send';
 
   @override
+  String get voiceListening => 'Listening…';
+
+  @override
+  String get voiceTapToFinish => 'Tap anywhere to finish';
+
+  @override
+  String get voiceDone => 'Done';
+
+  @override
+  String get voiceUnavailable => 'Voice input unavailable, check microphone permission';
+
+  @override
+  String get voiceErrorHint => 'Voice recognition error, please try again';
+
+  @override
   String get saveContact => 'Save Contact';
 
   @override

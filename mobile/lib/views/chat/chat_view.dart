@@ -1,6 +1,7 @@
 import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../theme/colors.dart';
@@ -87,6 +88,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
   bool _speechAvailable = false;
+  String _voiceText = '';
+  double _soundLevel = 0.0;
 
   String? _sessionId;
   StreamSubscription? _streamSub;
@@ -108,6 +111,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _pausedAt = DateTime.now();
+      if (_isListening) _cancelListening();
     } else if (state == AppLifecycleState.resumed) {
       // Only clear if the app was in background for >30s (not just biometric/dialog)
       final wasPaused = _pausedAt;
@@ -123,6 +127,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     Services.settings.removeListener(_onSettingsChanged);
+    if (_speech.isListening) _speech.cancel();
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -133,61 +138,106 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   bool get _isEmpty => _messages.isEmpty;
 
-  bool _voiceCancelled = false;
-  String _voiceText = '';
+  // Tap-to-toggle voice dictation. Recognized text is placed in the composer
+  // for the user to review/edit before sending — never auto-sent, since a
+  // misheard amount or address in a wallet command is dangerous.
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _finishListening();
+    } else {
+      await _startListening();
+    }
+  }
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
       _speechAvailable = await _speech.initialize(
         onError: (error) {
-          print('[STT] error: ${error.errorMsg}');
-          _stopListening(cancelled: false);
+          if (!mounted) return;
+          setState(() {
+            _isListening = false;
+            _soundLevel = 0.0;
+          });
+          _showVoiceError(S.voiceErrorHint);
         },
         onStatus: (status) {
-          if (status == 'done' || status == 'notListening') {
-            if (_isListening) _stopListening(cancelled: _voiceCancelled);
+          // Speech engine ends the session itself on a long pause or timeout.
+          if ((status == 'done' || status == 'notListening') &&
+              _isListening) {
+            _finishListening();
           }
         },
       );
-      if (!_speechAvailable) return;
+      if (!_speechAvailable) {
+        if (!mounted) return;
+        _showVoiceError(S.voiceUnavailable);
+        return;
+      }
     }
 
-    _voiceCancelled = false;
     _voiceText = '';
+    _soundLevel = 0.0;
+    HapticFeedback.mediumImpact();
     setState(() => _isListening = true);
 
     await _speech.listen(
       onResult: (result) {
+        if (!mounted) return;
         setState(() => _voiceText = result.recognizedWords);
-        if (result.finalResult) {
-          _stopListening(cancelled: _voiceCancelled);
-        }
       },
-      localeId: S.lang == Lang.zh ? 'zh_CN' : 'en_US',
-      listenMode: stt.ListenMode.dictation,
+      onSoundLevelChange: (level) {
+        if (!mounted) return;
+        setState(() => _soundLevel = level);
+      },
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        localeId: S.lang == Lang.zh ? 'zh_CN' : 'en_US',
+        partialResults: true,
+        cancelOnError: true,
+        listenFor: const Duration(minutes: 1),
+        pauseFor: const Duration(seconds: 4),
+      ),
     );
   }
 
-  Future<void> _stopListening({required bool cancelled}) async {
+  /// Stop listening and keep the transcript — fill it into the composer.
+  Future<void> _finishListening() async {
     await _speech.stop();
     if (!mounted) return;
-    setState(() => _isListening = false);
-    if (!cancelled && _voiceText.trim().isNotEmpty) {
-      _controller.text = _voiceText.trim();
+    HapticFeedback.lightImpact();
+    final text = _voiceText.trim();
+    setState(() {
+      _isListening = false;
+      _soundLevel = 0.0;
+    });
+    if (text.isNotEmpty) {
+      final existing = _controller.text.trim();
+      _controller.text = existing.isEmpty ? text : '$existing $text';
       _controller.selection = TextSelection.fromPosition(
         TextPosition(offset: _controller.text.length),
       );
+      _focusNode.requestFocus();
     }
     _voiceText = '';
   }
 
-  void _onVoiceLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
-    final dy = details.offsetFromOrigin.dy;
-    if (dy < -80 && !_voiceCancelled) {
-      setState(() => _voiceCancelled = true);
-    } else if (dy >= -80 && _voiceCancelled) {
-      setState(() => _voiceCancelled = false);
-    }
+  /// Abort listening and discard the transcript.
+  Future<void> _cancelListening() async {
+    await _speech.cancel();
+    if (!mounted) return;
+    HapticFeedback.lightImpact();
+    setState(() {
+      _isListening = false;
+      _soundLevel = 0.0;
+      _voiceText = '';
+    });
+  }
+
+  void _showVoiceError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   void sendMessage(String message) {
@@ -1083,55 +1133,126 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   }
 
   Widget _buildVoiceOverlay() {
+    // Sound level from speech_to_text is roughly -2..10; normalize to 0..1.
+    final norm = ((_soundLevel + 2) / 12).clamp(0.0, 1.0);
+    final pulse = 110.0 + norm * 60.0;
     return Positioned.fill(
-      child: Container(
-        color: Colors.black54,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: _voiceCancelled ? CwColors.danger : CwColors.accent,
-                shape: BoxShape.circle,
+      child: GestureDetector(
+        // Tap anywhere on the backdrop to stop and keep the transcript.
+        onTap: _finishListening,
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.62),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Spacer(),
+              // Pulsing mic that reacts to mic input level.
+              SizedBox(
+                width: 180,
+                height: 180,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    width: pulse,
+                    height: pulse,
+                    decoration: BoxDecoration(
+                      color: CwColors.accent.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Container(
+                        width: 96,
+                        height: 96,
+                        decoration: const BoxDecoration(
+                          color: CwColors.accent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.mic, size: 40, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              child: Icon(
-                _voiceCancelled ? Icons.close : Icons.mic,
-                size: 48,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (_voiceText.isNotEmpty)
+              const SizedBox(height: 24),
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 40),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                constraints: const BoxConstraints(minHeight: 48),
                 decoration: BoxDecoration(
                   color: CwColors.bgCard,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _voiceText,
-                  style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 15, color: CwColors.ink1),
+                  _voiceText.isEmpty ? S.voiceListening : _voiceText,
+                  style: TextStyle(
+                    fontFamily: CwTypography.serifFamily,
+                    fontSize: 15,
+                    color: _voiceText.isEmpty ? CwColors.ink3 : CwColors.ink1,
+                  ),
                   textAlign: TextAlign.center,
-                  maxLines: 3,
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-            const SizedBox(height: 16),
-            Text(
-              _voiceCancelled
-                  ? S.releaseToCancel
-                  : S.slideUpToSend,
-              style: TextStyle(
-                fontSize: 13,
-                color: _voiceCancelled ? CwColors.danger : Colors.white70,
+              const SizedBox(height: 12),
+              Text(
+                S.voiceTapToFinish,
+                style: const TextStyle(fontSize: 13, color: Colors.white70),
               ),
-            ),
-          ],
+              const Spacer(),
+              // Cancel / Stop controls.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 48),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _voiceCircleButton(
+                      icon: Icons.close,
+                      color: CwColors.danger,
+                      label: S.cancel,
+                      onTap: _cancelListening,
+                    ),
+                    const SizedBox(width: 48),
+                    _voiceCircleButton(
+                      icon: Icons.check,
+                      color: CwColors.accent,
+                      label: S.voiceDone,
+                      onTap: _finishListening,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _voiceCircleButton({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 28, color: Colors.white),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+      ],
     );
   }
 
@@ -1524,16 +1645,15 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             const SizedBox(width: 4),
             if (Services.settings.voiceInputEnabled)
               GestureDetector(
-                onLongPressStart: (_) => _startListening(),
-                onLongPressMoveUpdate: _onVoiceLongPressMoveUpdate,
-                onLongPressEnd: (_) => _stopListening(cancelled: _voiceCancelled),
+                onTap: _toggleListening,
+                behavior: HitTestBehavior.opaque,
                 child: SizedBox(
                   width: 36,
                   height: 36,
                   child: Icon(
                     _isListening ? Icons.mic : Icons.mic_none,
                     size: 20,
-                    color: _isListening ? CwColors.danger : CwColors.ink3,
+                    color: _isListening ? CwColors.accent : CwColors.ink3,
                   ),
                 ),
               ),

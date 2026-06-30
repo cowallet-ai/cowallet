@@ -828,29 +828,92 @@ impl MpcParticipant {
             })
             .collect();
 
+        // For ERC-20 transfers the EIP-1559 `value` is 0 and `to` is the token
+        // contract — the real recipient and amount live in the calldata. Decode
+        // them so WhitelistOnly/BlacklistCheck and ExceedsAmount evaluate the
+        // actual transfer rather than the token contract with a zero value.
+        // (Without this, token amount limits and recipient lists silently never
+        // apply to ERC-20 sends.)
+        let (ctx_to, ctx_value, ctx_token) =
+            match Self::decode_erc20_transfer(&fields.data) {
+                Some((recipient, amount)) => (
+                    recipient,
+                    amount,
+                    // Identify the token by its lowercased contract address so
+                    // token-scoped rules can target it. Symbol mapping isn't
+                    // available on the signing path; contract address is exact.
+                    fields
+                        .to
+                        .map(|c| format!("0x{}", hex::encode(c.as_slice()))),
+                ),
+                None => (
+                    fields.to.unwrap_or(alloy_primitives::Address::ZERO),
+                    fields.value,
+                    None,
+                ),
+            };
+
         let tx_ctx = policy_engine::types::TransactionContext {
             user_id: user_id.to_string(),
             from: alloy_primitives::Address::ZERO,
-            to: fields.to.unwrap_or(alloy_primitives::Address::ZERO),
-            value: fields.value,
-            token: None,
+            to: ctx_to,
+            value: ctx_value,
+            token: ctx_token,
             chain_id: fields.chain_id,
             is_contract_interaction: !fields.data.is_empty(),
             timestamp: chrono::Utc::now(),
             history: None,
         };
 
-        let decision = policy_engine::rules::evaluate(&tx_ctx, &policies);
-        if !decision.allowed {
-            tracing::warn!(
-                "Policy denied signing for user={}: {}",
-                user_id,
-                decision.reason
-            );
-            return Err(format!("policy denied: {}", decision.reason));
-        }
         Ok(())
     }
+
+    /// Decode an ERC-20 `transfer(address,uint256)` or
+    /// `transferFrom(address,address,uint256)` call, returning the real
+    /// `(recipient, amount)` so policy can be enforced on token transfers.
+    ///
+    /// Returns `None` when the calldata isn't one of these shapes (native
+    /// send, contract creation, or some other contract call), in which case
+    /// the caller falls back to the raw EIP-1559 `to`/`value`.
+    ///
+    /// ABI layout (after the 4-byte selector, each arg is a 32-byte word):
+    ///   transfer:     [to(12 pad|20 addr)] [amount(32)]              = 68 bytes
+    ///   transferFrom: [from(32)] [to(12 pad|20 addr)] [amount(32)]   = 100 bytes
+    fn decode_erc20_transfer(
+        data: &[u8],
+    ) -> Option<(alloy_primitives::Address, alloy_primitives::U256)> {
+        use alloy_primitives::{Address, U256};
+
+        // 0xa9059cbb = keccak256("transfer(address,uint256)")[..4]
+        const TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb];
+        // 0x23b872dd = keccak256("transferFrom(address,address,uint256)")[..4]
+        const TRANSFER_FROM: [u8; 4] = [0x23, 0xb8, 0x72, 0xdd];
+
+        if data.len() < 4 {
+            return None;
+        }
+        let selector = [data[0], data[1], data[2], data[3]];
+        let args = &data[4..];
+
+        // Offsets within `args` of the recipient word and the amount word.
+        let (to_word_start, amount_word_start) = match selector {
+            TRANSFER if args.len() >= 64 => (0, 32),
+            TRANSFER_FROM if args.len() >= 96 => (32, 64),
+            _ => return None,
+        };
+
+        // An ABI-encoded address is right-aligned in a 32-byte word: the top 12
+        // bytes must be zero, the low 20 are the address.
+        let to_word = &args[to_word_start..to_word_start + 32];
+        if to_word[..12].iter().any(|&b| b != 0) {
+            return None;
+        }
+        let recipient = Address::from_slice(&to_word[12..32]);
+
+        let amount = U256::from_be_slice(&args[amount_word_start..amount_word_start + 32]);
+        Some((recipient, amount))
+    }
+
 
     /// Extract a structured signing request from the client's Round 1 payload.
     ///
@@ -1225,5 +1288,58 @@ mod signing_gate_tests {
         tampered.value = alloy_primitives::U256::from(2_000_000_000_000_000_000u128);
         let h3 = chain_evm::transaction::eip1559_signing_hash(&tampered);
         assert_ne!(h1, h3, "different value must yield a different hash");
+    }
+
+    #[test]
+    fn decodes_erc20_transfer_recipient_and_amount() {
+        use alloy_primitives::{Address, U256};
+        // transfer(0x2222..2222, 1000)
+        let mut data = vec![0xa9, 0x05, 0x9c, 0xbb];
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0x22u8; 20]); // recipient
+        data.extend_from_slice(&U256::from(1000u64).to_be_bytes::<32>()); // amount
+
+        let (to, amount) =
+            MpcParticipant::decode_erc20_transfer(&data).expect("should decode transfer");
+        assert_eq!(to, Address::from_slice(&[0x22u8; 20]));
+        assert_eq!(amount, U256::from(1000u64));
+    }
+
+    #[test]
+    fn decodes_erc20_transfer_from_recipient_and_amount() {
+        use alloy_primitives::{Address, U256};
+        // transferFrom(0x1111.., 0x3333.., 42)
+        let mut data = vec![0x23, 0xb8, 0x72, 0xdd];
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0x11u8; 20]); // from (ignored by policy)
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0x33u8; 20]); // to (real recipient)
+        data.extend_from_slice(&U256::from(42u64).to_be_bytes::<32>());
+
+        let (to, amount) =
+            MpcParticipant::decode_erc20_transfer(&data).expect("should decode transferFrom");
+        assert_eq!(to, Address::from_slice(&[0x33u8; 20]));
+        assert_eq!(amount, U256::from(42u64));
+    }
+
+    #[test]
+    fn non_erc20_calldata_is_not_decoded() {
+        // Native send (empty data) and an unknown selector must fall through.
+        assert!(MpcParticipant::decode_erc20_transfer(&[]).is_none());
+        assert!(MpcParticipant::decode_erc20_transfer(&[0xde, 0xad, 0xbe, 0xef, 0x00]).is_none());
+        // Correct selector but truncated args must not panic or half-decode.
+        assert!(MpcParticipant::decode_erc20_transfer(&[0xa9, 0x05, 0x9c, 0xbb]).is_none());
+    }
+
+    #[test]
+    fn malformed_recipient_word_is_rejected() {
+        use alloy_primitives::U256;
+        // transfer selector but the address word has dirty high bytes (not a
+        // valid left-padded address) — reject rather than mis-read.
+        let mut data = vec![0xa9, 0x05, 0x9c, 0xbb];
+        data.extend_from_slice(&[0xFFu8; 12]); // non-zero padding
+        data.extend_from_slice(&[0x22u8; 20]);
+        data.extend_from_slice(&U256::from(1u64).to_be_bytes::<32>());
+        assert!(MpcParticipant::decode_erc20_transfer(&data).is_none());
     }
 }

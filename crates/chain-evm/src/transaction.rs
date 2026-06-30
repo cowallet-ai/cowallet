@@ -82,6 +82,42 @@ pub fn eip1559_signing_hash(fields: &Eip1559Fields) -> B256 {
     tx.signature_hash()
 }
 
+/// Authoritative `(to, value, chain_id)` decoded from a signed, EIP-2718
+/// raw transaction. The recipient and value are taken from the bytes that
+/// were actually signed and broadcast — not from any caller-supplied side
+/// channel — so callers (e.g. audit/history recording) cannot be fed values
+/// that disagree with what hit the chain. For an ERC-20 transfer `to` is the
+/// token contract and `value` is 0; decoding the inner transfer is the
+/// caller's concern.
+#[derive(Debug, Clone)]
+pub struct DecodedRawTx {
+    pub to: Option<Address>,
+    pub value: U256,
+    pub chain_id: Option<u64>,
+}
+
+/// Decode a signed raw transaction (hex with or without `0x`) into its
+/// authoritative fields. Returns `None` if the input is not a well-formed
+/// EIP-2718 transaction envelope.
+pub fn decode_raw_tx(raw_tx: &str) -> Option<DecodedRawTx> {
+    use alloy_consensus::TxEnvelope;
+    use alloy_consensus::private::alloy_eips::eip2718::Decodable2718;
+    use alloy_consensus::Transaction as _;
+
+    let bytes = hex::decode(raw_tx.strip_prefix("0x").unwrap_or(raw_tx)).ok()?;
+    let envelope = TxEnvelope::decode_2718(&mut bytes.as_slice()).ok()?;
+
+    let to = match envelope.kind() {
+        TxKind::Call(addr) => Some(addr),
+        TxKind::Create => None,
+    };
+    Some(DecodedRawTx {
+        to,
+        value: envelope.value(),
+        chain_id: envelope.chain_id(),
+    })
+}
+
 /// Build and sign an EIP-1559 transaction, returning the RLP-encoded bytes.
 pub fn sign_eip1559_tx(
     tx: &TransactionRequest,
@@ -309,6 +345,44 @@ mod tests {
         assert_eq!(encoded[0], 0x02);
         assert!(encoded.len() > 1);
         assert_ne!(tx_hash, B256::ZERO);
+    }
+
+    #[test]
+    fn decode_raw_tx_recovers_authoritative_fields() {
+        let signer = test_signer();
+        let recipient: Address = "0x1234567890123456789012345678901234567890"
+            .parse()
+            .unwrap();
+        let tx_req = TransactionRequest {
+            to: recipient,
+            value: U256::from(7_000_000_000_000_000_000u128), // 7 ETH
+            data: vec![],
+            chain_id: 84532,
+            gas_limit: Some(21000),
+            nonce: Some(5),
+        };
+        let gas = GasEstimate {
+            gas_limit: 21000,
+            max_fee_per_gas: 1_000_000_000,
+            max_priority_fee_per_gas: 100_000_000,
+            l1_data_fee: None,
+            estimated_cost_wei: U256::ZERO,
+            estimated_cost_usd: None,
+        };
+        let (encoded, _) = sign_eip1559_tx(&tx_req, &gas, 5, &signer).unwrap();
+        let raw_hex = format!("0x{}", hex::encode(&encoded));
+
+        let decoded = decode_raw_tx(&raw_hex).expect("should decode signed tx");
+        assert_eq!(decoded.to, Some(recipient));
+        assert_eq!(decoded.value, U256::from(7_000_000_000_000_000_000u128));
+        assert_eq!(decoded.chain_id, Some(84532));
+    }
+
+    #[test]
+    fn decode_raw_tx_rejects_garbage() {
+        assert!(decode_raw_tx("0xdeadbeef").is_none());
+        assert!(decode_raw_tx("not hex").is_none());
+        assert!(decode_raw_tx("").is_none());
     }
 
     #[test]

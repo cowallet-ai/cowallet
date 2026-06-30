@@ -47,5 +47,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Required on Android 11+ (API 30) so speech_to_text can discover the
+             on-device speech recognition service. Without this, initialize()
+             silently returns false and the mic button appears unresponsive. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
     </queries>
 </manifest>

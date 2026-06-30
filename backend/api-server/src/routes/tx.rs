@@ -107,6 +107,24 @@ async fn submit(
 
     let raw_bytes = body.raw_tx.strip_prefix("0x").unwrap_or(&body.raw_tx);
 
+    // Decode the signed tx authoritatively so we (a) reject a tx whose embedded
+    // chain_id disagrees with the target chain — broadcasting a tx signed for
+    // another chain is at best a wasted nonce, at worst a replay across chains —
+    // and (b) record the recipient/value that were actually signed rather than
+    // trusting the client-supplied body fields for our audit/history rows.
+    let decoded = chain_evm::transaction::decode_raw_tx(&body.raw_tx);
+    if let Some(d) = &decoded {
+        if let Some(tx_chain) = d.chain_id {
+            if tx_chain != chain_id {
+                return Err(rpc_error(&format!(
+                    "raw_tx chain_id {tx_chain} does not match target chain {chain_id}"
+                )));
+            }
+        }
+    } else {
+        return Err(rpc_error("raw_tx is not a well-formed signed transaction"));
+    }
+
     let rpc_body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "eth_sendRawTransaction",
@@ -167,11 +185,21 @@ async fn submit(
             .as_deref()
             .and_then(|a| hex::decode(a.strip_prefix("0x").unwrap_or(a)).ok())
             .unwrap_or_default();
-        let to_bytes = body
-            .to_addr
-            .as_deref()
-            .and_then(|a| hex::decode(a.strip_prefix("0x").unwrap_or(a)).ok())
+        // Prefer the authoritative recipient/value decoded from the signed tx;
+        // fall back to the client body only if decoding somehow yielded nothing.
+        let to_bytes = decoded
+            .as_ref()
+            .and_then(|d| d.to.map(|a| a.as_slice().to_vec()))
+            .or_else(|| {
+                body.to_addr
+                    .as_deref()
+                    .and_then(|a| hex::decode(a.strip_prefix("0x").unwrap_or(a)).ok())
+            })
             .unwrap_or_default();
+        let value_str = decoded
+            .as_ref()
+            .map(|d| d.value.to_string())
+            .unwrap_or_else(|| body.value.clone().unwrap_or_else(|| "0".into()));
         let hash_bytes = hex::decode(tx_hash.strip_prefix("0x").unwrap_or(&tx_hash))
             .unwrap_or_default();
 
@@ -183,7 +211,7 @@ async fn submit(
         .bind(chain_id as i64)
         .bind(&from_bytes)
         .bind(&to_bytes)
-        .bind(body.value.as_deref().unwrap_or("0"))
+        .bind(&value_str)
         .bind(&body.token)
         .bind(&hash_bytes)
         .execute(db)
