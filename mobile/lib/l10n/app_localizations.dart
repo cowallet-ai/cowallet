@@ -1259,6 +1259,36 @@ abstract class AppLocalizations {
   /// **'Slide up to cancel, release to send'**
   String get slideUpToSend;
 
+  /// No description provided for @voiceListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening…'**
+  String get voiceListening;
+
+  /// No description provided for @voiceTapToFinish.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap anywhere to finish'**
+  String get voiceTapToFinish;
+
+  /// No description provided for @voiceDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get voiceDone;
+
+  /// No description provided for @voiceUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice input unavailable, check microphone permission'**
+  String get voiceUnavailable;
+
+  /// No description provided for @voiceErrorHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice recognition error, please try again'**
+  String get voiceErrorHint;
+
   /// No description provided for @saveContact.
   ///
   /// In en, this message translates to:

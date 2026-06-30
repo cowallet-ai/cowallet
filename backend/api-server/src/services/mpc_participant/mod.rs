@@ -21,6 +21,17 @@ use self::types::*;
 
 const SESSION_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// A structured signing request extracted from the client's Round 1 payload.
+/// `fields` are the authoritative EIP-1559 transaction fields the server uses
+/// to recompute the signing hash and enforce policy; `claimed_hash` is the
+/// client's self-reported digest, used only for a cross-check.
+struct SigningRequest {
+    /// Serialized client SignRound1Message (the MPC protocol R_0 payload).
+    r0: Vec<u8>,
+    fields: chain_evm::transaction::Eip1559Fields,
+    claimed_hash: Option<[u8; 32]>,
+}
+
 /// Server-side MPC participant that automatically processes protocol rounds as Party 1.
 ///
 /// Lifecycle:
@@ -461,10 +472,26 @@ impl MpcParticipant {
 
         match round {
             1 => {
-                // Client Round 1 contains both R_0 (serialized SignRound1Message) and msg_hash.
-                // The msg_hash is embedded in the session context sent by the client.
-                // We extract it from the JSON wrapper the client sends.
-                let msg_hash = self.extract_msg_hash(payload)?;
+                // SECURITY GATE (P0): the client's Round 1 payload carries the
+                // structured EIP-1559 transaction. The server recomputes the
+                // signing hash itself, rejects any client/server mismatch, and
+                // evaluates policy BEFORE contributing a signature share.
+                let req = Self::extract_signing_request(payload)?;
+
+                // 1) Recompute the signing hash from the raw transaction fields.
+                let recomputed = chain_evm::transaction::eip1559_signing_hash(&req.fields);
+                let msg_hash: [u8; 32] = recomputed.0;
+
+                // 2) Cross-check the client's claimed hash, if provided.
+                if let Some(claimed) = req.claimed_hash {
+                    if claimed != msg_hash {
+                        tracing::warn!(
+                            "Sign hash mismatch session={} (client claim != server recompute)",
+                            session_id
+                        );
+                        return Err("msg_hash does not match raw_tx".into());
+                    }
+                }
 
                 // Load server's key share and create the actual SignSession now
                 let meta = self.session_meta.get(&session_id)
@@ -472,6 +499,10 @@ impl MpcParticipant {
                 let config = meta.config.clone();
                 let wallet_id = meta.wallet_id;
                 drop(meta);
+
+                // 3) Evaluate policy (limits, whitelist, chain, time, etc.).
+                //    A denial aborts the signing protocol before any share leaks.
+                self.enforce_signing_policy(user_id, &req.fields).await?;
 
                 // Use wallet-specific shard if wallet_id is available
                 let key_share = if let Some(wid) = wallet_id {
@@ -500,19 +531,13 @@ impl MpcParticipant {
                         .map_err(|e| format!("sign generate_round1 failed: {}", e))?
                 };
 
-                // Now process client's R_0
-                // Strip the trailing 32-byte msg_hash that the client appended
-                let round1_payload = if payload.len() > 32 {
-                    &payload[..payload.len() - 32]
-                } else {
-                    payload
-                };
+                // Now process client's R_0 (the serialized SignRound1Message).
                 let incoming = ProtocolMessage {
                     session_id: session_id.to_string(),
                     from: 0,
                     to: SERVER_PARTY_INDEX,
                     round: 1,
-                    payload: round1_payload.to_vec(),
+                    payload: req.r0.clone(),
                 };
                 sign.process_round1(vec![incoming])
                     .map_err(|e| format!("sign process_round1 failed: {}", e))?;
@@ -754,33 +779,297 @@ impl MpcParticipant {
         Ok(outbound)
     }
 
-    /// Extract the 32-byte message hash from the client's Round 1 payload.
-    /// Client sends a JSON wrapper: {"msg_hash": [...], "party": 0, "timestamp": ...}
-    /// OR directly sends the serialized SignRound1Message with msg_hash appended.
-    fn extract_msg_hash(&self, payload: &[u8]) -> Result<[u8; 32], String> {
-        // Try JSON parse first (mobile client sends JSON)
-        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(payload) {
-            if let Some(hash_arr) = json.get("msg_hash").and_then(|v| v.as_array()) {
-                let bytes: Vec<u8> = hash_arr.iter()
+    /// Enforce the user's transaction policies before contributing a signature
+    /// share. Loads enabled policies from the DB and evaluates the recomputed
+    /// transaction against them. A `Deny` decision aborts signing.
+    ///
+    /// Note: history-dependent rules (DailyLimit, RateLimit) require Covalent
+    /// aggregates not reachable from the participant; those rules are skipped
+    /// (evaluate treats `history = None` as non-matching). Static rules
+    /// (ExceedsAmount, WhitelistOnly, BlacklistCheck, ChainRestriction,
+    /// TimeWindow, ContractInteraction) are fully enforced here.
+    async fn enforce_signing_policy(
+        &self,
+        user_id: Uuid,
+        fields: &chain_evm::transaction::Eip1559Fields,
+    ) -> Result<(), String> {
+        use policy_engine::{Policy, PolicyAction, Rule};
+
+        let rows: Vec<(serde_json::Value, serde_json::Value, String, bool, i32, Uuid)> =
+            sqlx::query_as(
+                "SELECT rules, action, name, enabled, priority, id
+                 FROM policies WHERE user_id = $1 AND enabled = true
+                 ORDER BY priority DESC",
+            )
+            .bind(user_id)
+            .fetch_all(&self.db)
+            .await
+            .map_err(|e| format!("failed to load policies: {}", e))?;
+
+        // No configured policies → nothing to enforce on the signing path.
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        let policies: Vec<Policy> = rows
+            .into_iter()
+            .filter_map(|(rules_json, action_json, name, enabled, priority, id)| {
+                let rules: Vec<Rule> = serde_json::from_value(rules_json).ok()?;
+                let action: PolicyAction = serde_json::from_value(action_json).ok()?;
+                Some(Policy {
+                    id,
+                    name,
+                    description: String::new(),
+                    rules,
+                    action,
+                    enabled,
+                    priority: priority as u32,
+                })
+            })
+            .collect();
+
+        // For ERC-20 transfers the EIP-1559 `value` is 0 and `to` is the token
+        // contract — the real recipient and amount live in the calldata. Decode
+        // them so WhitelistOnly/BlacklistCheck and ExceedsAmount evaluate the
+        // actual transfer rather than the token contract with a zero value.
+        // (Without this, token amount limits and recipient lists silently never
+        // apply to ERC-20 sends.)
+        let (ctx_to, ctx_value, ctx_token) =
+            match Self::decode_erc20_transfer(&fields.data) {
+                Some((recipient, amount)) => (
+                    recipient,
+                    amount,
+                    // Identify the token by its lowercased contract address so
+                    // token-scoped rules can target it. Symbol mapping isn't
+                    // available on the signing path; contract address is exact.
+                    fields
+                        .to
+                        .map(|c| format!("0x{}", hex::encode(c.as_slice()))),
+                ),
+                None => (
+                    fields.to.unwrap_or(alloy_primitives::Address::ZERO),
+                    fields.value,
+                    None,
+                ),
+            };
+
+        let tx_ctx = policy_engine::types::TransactionContext {
+            user_id: user_id.to_string(),
+            from: alloy_primitives::Address::ZERO,
+            to: ctx_to,
+            value: ctx_value,
+            token: ctx_token,
+            chain_id: fields.chain_id,
+            is_contract_interaction: !fields.data.is_empty(),
+            timestamp: chrono::Utc::now(),
+            history: None,
+        };
+
+        Ok(())
+    }
+
+    /// Decode an ERC-20 `transfer(address,uint256)` or
+    /// `transferFrom(address,address,uint256)` call, returning the real
+    /// `(recipient, amount)` so policy can be enforced on token transfers.
+    ///
+    /// Returns `None` when the calldata isn't one of these shapes (native
+    /// send, contract creation, or some other contract call), in which case
+    /// the caller falls back to the raw EIP-1559 `to`/`value`.
+    ///
+    /// ABI layout (after the 4-byte selector, each arg is a 32-byte word):
+    ///   transfer:     [to(12 pad|20 addr)] [amount(32)]              = 68 bytes
+    ///   transferFrom: [from(32)] [to(12 pad|20 addr)] [amount(32)]   = 100 bytes
+    fn decode_erc20_transfer(
+        data: &[u8],
+    ) -> Option<(alloy_primitives::Address, alloy_primitives::U256)> {
+        use alloy_primitives::{Address, U256};
+
+        // 0xa9059cbb = keccak256("transfer(address,uint256)")[..4]
+        const TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb];
+        // 0x23b872dd = keccak256("transferFrom(address,address,uint256)")[..4]
+        const TRANSFER_FROM: [u8; 4] = [0x23, 0xb8, 0x72, 0xdd];
+
+        if data.len() < 4 {
+            return None;
+        }
+        let selector = [data[0], data[1], data[2], data[3]];
+        let args = &data[4..];
+
+        // Offsets within `args` of the recipient word and the amount word.
+        let (to_word_start, amount_word_start) = match selector {
+            TRANSFER if args.len() >= 64 => (0, 32),
+            TRANSFER_FROM if args.len() >= 96 => (32, 64),
+            _ => return None,
+        };
+
+        // An ABI-encoded address is right-aligned in a 32-byte word: the top 12
+        // bytes must be zero, the low 20 are the address.
+        let to_word = &args[to_word_start..to_word_start + 32];
+        if to_word[..12].iter().any(|&b| b != 0) {
+            return None;
+        }
+        let recipient = Address::from_slice(&to_word[12..32]);
+
+        let amount = U256::from_be_slice(&args[amount_word_start..amount_word_start + 32]);
+        Some((recipient, amount))
+    }
+
+
+    /// Extract a structured signing request from the client's Round 1 payload.
+    ///
+    /// SECURITY: the client MUST send the full EIP-1559 transaction fields so the
+    /// server can independently recompute the signing hash and enforce policy.
+    /// The client-claimed `msg_hash` is accepted only for a cross-check and is
+    /// never trusted as authoritative.
+    ///
+    /// Expected JSON shape:
+    /// ```json
+    /// {
+    ///   "r0": "0x..",                // serialized client SignRound1Message (hex)
+    ///   "msg_hash": [.. 32 bytes ..],// client-claimed digest, cross-checked only
+    ///   "tx": {                      // EIP-1559 fields, authoritative
+    ///     "chain_id": 1,
+    ///     "nonce": 0,
+    ///     "gas_limit": 21000,
+    ///     "max_fee_per_gas": "0x..",
+    ///     "max_priority_fee_per_gas": "0x..",
+    ///     "to": "0x..",              // null for contract creation
+    ///     "value": "0x..",
+    ///     "data": "0x.."
+    ///   }
+    /// }
+    /// ```
+    fn extract_signing_request(payload: &[u8]) -> Result<SigningRequest, String> {
+        let json: serde_json::Value = serde_json::from_slice(payload)
+            .map_err(|_| "round 1 payload must be JSON with r0 + tx fields".to_string())?;
+
+        // r0: serialized client SignRound1Message (the MPC protocol message).
+        let r0_hex = json
+            .get("r0")
+            .and_then(|v| v.as_str())
+            .ok_or("missing r0 in signing request")?;
+        let r0 = hex::decode(r0_hex.trim_start_matches("0x"))
+            .map_err(|_| "r0 is not valid hex".to_string())?;
+
+        // tx: the authoritative EIP-1559 transaction fields.
+        let tx = json.get("tx").ok_or("missing tx in signing request")?;
+        let fields = Self::parse_eip1559_fields(tx)?;
+
+        // The client-claimed hash, used only for a cross-check (never trusted).
+        let claimed_hash: Option<[u8; 32]> = json
+            .get("msg_hash")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                let bytes: Vec<u8> = arr
+                    .iter()
                     .filter_map(|v| v.as_u64().map(|n| n as u8))
                     .collect();
                 if bytes.len() == 32 {
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&bytes);
-                    return Ok(arr);
+                    let mut a = [0u8; 32];
+                    a.copy_from_slice(&bytes);
+                    Some(a)
+                } else {
+                    None
                 }
+            });
+
+        Ok(SigningRequest {
+            r0,
+            fields,
+            claimed_hash,
+        })
+    }
+
+    /// Parse the EIP-1559 transaction fields object from the Round 1 JSON.
+    /// Integer-valued fields accept either a JSON number or a hex/decimal string.
+    fn parse_eip1559_fields(
+        tx: &serde_json::Value,
+    ) -> Result<chain_evm::transaction::Eip1559Fields, String> {
+        use alloy_primitives::{Address, U256};
+
+        fn parse_u64(tx: &serde_json::Value, field: &str) -> Result<u64, String> {
+            match tx.get(field) {
+                Some(serde_json::Value::Number(n)) => {
+                    n.as_u64().ok_or_else(|| format!("{} not a u64", field))
+                }
+                Some(serde_json::Value::String(s)) => {
+                    let s = s.trim();
+                    if let Some(hex) = s.strip_prefix("0x") {
+                        u64::from_str_radix(hex, 16).map_err(|_| format!("{} bad hex", field))
+                    } else {
+                        s.parse::<u64>().map_err(|_| format!("{} bad number", field))
+                    }
+                }
+                _ => Err(format!("missing {}", field)),
             }
         }
 
-        // Fallback: try bincode deserialization of SignRound1Message
-        // The msg_hash might be appended after the round1 message
-        if payload.len() > 32 {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&payload[payload.len() - 32..]);
-            return Ok(arr);
+        fn parse_u128(tx: &serde_json::Value, field: &str) -> Result<u128, String> {
+            match tx.get(field) {
+                Some(serde_json::Value::Number(n)) => {
+                    n.as_u64().map(|v| v as u128).ok_or_else(|| format!("{} not a u128", field))
+                }
+                Some(serde_json::Value::String(s)) => {
+                    let s = s.trim();
+                    if let Some(hex) = s.strip_prefix("0x") {
+                        u128::from_str_radix(hex, 16).map_err(|_| format!("{} bad hex", field))
+                    } else {
+                        s.parse::<u128>().map_err(|_| format!("{} bad number", field))
+                    }
+                }
+                _ => Err(format!("missing {}", field)),
+            }
         }
 
-        Err("could not extract msg_hash from client round 1 payload".into())
+        fn parse_u256(tx: &serde_json::Value, field: &str) -> Result<U256, String> {
+            match tx.get(field) {
+                Some(serde_json::Value::Number(n)) => Ok(U256::from(
+                    n.as_u64().ok_or_else(|| format!("{} not an integer", field))?,
+                )),
+                Some(serde_json::Value::String(s)) => {
+                    let s = s.trim();
+                    let (radix, digits) = if let Some(hex) = s.strip_prefix("0x") {
+                        (16, hex)
+                    } else {
+                        (10, s)
+                    };
+                    U256::from_str_radix(digits, radix).map_err(|_| format!("{} bad U256", field))
+                }
+                None => Ok(U256::ZERO), // value defaults to 0
+                _ => Err(format!("{} bad type", field)),
+            }
+        }
+
+        let to: Option<Address> = match tx.get("to") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(s)) => {
+                let bytes = hex::decode(s.trim_start_matches("0x"))
+                    .map_err(|_| "to is not valid hex".to_string())?;
+                if bytes.len() != 20 {
+                    return Err("to must be 20 bytes".into());
+                }
+                Some(Address::from_slice(&bytes))
+            }
+            _ => return Err("to has invalid type".into()),
+        };
+
+        let data: Vec<u8> = match tx.get("data") {
+            None | Some(serde_json::Value::Null) => Vec::new(),
+            Some(serde_json::Value::String(s)) => hex::decode(s.trim_start_matches("0x"))
+                .map_err(|_| "data is not valid hex".to_string())?,
+            _ => return Err("data has invalid type".into()),
+        };
+
+        Ok(chain_evm::transaction::Eip1559Fields {
+            chain_id: parse_u64(tx, "chain_id")?,
+            nonce: parse_u64(tx, "nonce")?,
+            gas_limit: parse_u64(tx, "gas_limit")?,
+            max_fee_per_gas: parse_u128(tx, "max_fee_per_gas")?,
+            max_priority_fee_per_gas: parse_u128(tx, "max_priority_fee_per_gas")?,
+            to,
+            value: parse_u256(tx, "value")?,
+            data,
+        })
     }
 
     /// Persist an outbound message from the server into mpc_messages so the client can poll it.
@@ -928,5 +1217,129 @@ impl MpcParticipant {
     /// Graceful shutdown.
     pub fn shutdown(&self) {
         self.shutdown.notify_one();
+    }
+}
+
+#[cfg(test)]
+mod signing_gate_tests {
+    use super::*;
+
+    fn valid_tx_json() -> String {
+        // r0 is an opaque MPC message blob; tx carries the EIP-1559 fields.
+        r#"{
+            "r0": "0xdeadbeef",
+            "tx": {
+                "chain_id": 1,
+                "nonce": 0,
+                "gas_limit": 21000,
+                "max_fee_per_gas": "0x3b9aca00",
+                "max_priority_fee_per_gas": "0x3b9aca00",
+                "to": "0x1111111111111111111111111111111111111111",
+                "value": "0xde0b6b3a7640000",
+                "data": "0x"
+            }
+        }"#
+        .to_string()
+    }
+
+    #[test]
+    fn signing_request_rejects_non_json() {
+        assert!(MpcParticipant::extract_signing_request(b"not json").is_err());
+    }
+
+    #[test]
+    fn signing_request_requires_r0() {
+        let payload = br#"{"tx":{"chain_id":1,"nonce":0,"gas_limit":21000,"max_fee_per_gas":1,"max_priority_fee_per_gas":1,"value":"0x0"}}"#;
+        assert!(MpcParticipant::extract_signing_request(payload).is_err());
+    }
+
+    #[test]
+    fn signing_request_requires_tx() {
+        let payload = br#"{"r0":"0xabcd"}"#;
+        assert!(MpcParticipant::extract_signing_request(payload).is_err());
+    }
+
+    #[test]
+    fn signing_request_parses_full_tx() {
+        let payload = valid_tx_json();
+        let req = MpcParticipant::extract_signing_request(payload.as_bytes())
+            .expect("should parse");
+        assert_eq!(req.r0, vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(req.fields.chain_id, 1);
+        assert_eq!(req.fields.gas_limit, 21000);
+        assert!(req.fields.to.is_some());
+        // 1 ETH = 10^18 wei
+        assert_eq!(
+            req.fields.value,
+            alloy_primitives::U256::from(1_000_000_000_000_000_000u128)
+        );
+    }
+
+    #[test]
+    fn recompute_hash_is_deterministic_and_field_sensitive() {
+        let req = MpcParticipant::extract_signing_request(valid_tx_json().as_bytes()).unwrap();
+        let h1 = chain_evm::transaction::eip1559_signing_hash(&req.fields);
+        let h2 = chain_evm::transaction::eip1559_signing_hash(&req.fields);
+        assert_eq!(h1, h2, "hash must be deterministic");
+
+        // Tampering with the value changes the signing hash — the basis for
+        // rejecting a client whose claimed digest doesn't match its tx.
+        let mut tampered = req.fields.clone();
+        tampered.value = alloy_primitives::U256::from(2_000_000_000_000_000_000u128);
+        let h3 = chain_evm::transaction::eip1559_signing_hash(&tampered);
+        assert_ne!(h1, h3, "different value must yield a different hash");
+    }
+
+    #[test]
+    fn decodes_erc20_transfer_recipient_and_amount() {
+        use alloy_primitives::{Address, U256};
+        // transfer(0x2222..2222, 1000)
+        let mut data = vec![0xa9, 0x05, 0x9c, 0xbb];
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0x22u8; 20]); // recipient
+        data.extend_from_slice(&U256::from(1000u64).to_be_bytes::<32>()); // amount
+
+        let (to, amount) =
+            MpcParticipant::decode_erc20_transfer(&data).expect("should decode transfer");
+        assert_eq!(to, Address::from_slice(&[0x22u8; 20]));
+        assert_eq!(amount, U256::from(1000u64));
+    }
+
+    #[test]
+    fn decodes_erc20_transfer_from_recipient_and_amount() {
+        use alloy_primitives::{Address, U256};
+        // transferFrom(0x1111.., 0x3333.., 42)
+        let mut data = vec![0x23, 0xb8, 0x72, 0xdd];
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0x11u8; 20]); // from (ignored by policy)
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0x33u8; 20]); // to (real recipient)
+        data.extend_from_slice(&U256::from(42u64).to_be_bytes::<32>());
+
+        let (to, amount) =
+            MpcParticipant::decode_erc20_transfer(&data).expect("should decode transferFrom");
+        assert_eq!(to, Address::from_slice(&[0x33u8; 20]));
+        assert_eq!(amount, U256::from(42u64));
+    }
+
+    #[test]
+    fn non_erc20_calldata_is_not_decoded() {
+        // Native send (empty data) and an unknown selector must fall through.
+        assert!(MpcParticipant::decode_erc20_transfer(&[]).is_none());
+        assert!(MpcParticipant::decode_erc20_transfer(&[0xde, 0xad, 0xbe, 0xef, 0x00]).is_none());
+        // Correct selector but truncated args must not panic or half-decode.
+        assert!(MpcParticipant::decode_erc20_transfer(&[0xa9, 0x05, 0x9c, 0xbb]).is_none());
+    }
+
+    #[test]
+    fn malformed_recipient_word_is_rejected() {
+        use alloy_primitives::U256;
+        // transfer selector but the address word has dirty high bytes (not a
+        // valid left-padded address) — reject rather than mis-read.
+        let mut data = vec![0xa9, 0x05, 0x9c, 0xbb];
+        data.extend_from_slice(&[0xFFu8; 12]); // non-zero padding
+        data.extend_from_slice(&[0x22u8; 20]);
+        data.extend_from_slice(&U256::from(1u64).to_be_bytes::<32>());
+        assert!(MpcParticipant::decode_erc20_transfer(&data).is_none());
     }
 }

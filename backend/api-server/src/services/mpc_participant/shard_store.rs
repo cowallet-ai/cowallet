@@ -275,6 +275,9 @@ impl ShardStore {
             secret_share: SecureVec::from(secret_bytes),
             public_key,
             paillier_pk: None,
+            // Server (Party 1) receives the MtA request and never generates a
+            // Paillier keypair, so it is not persisted server-side.
+            paillier_keypair: None,
         })
     }
 }

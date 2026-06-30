@@ -35,6 +35,30 @@ async fn resolve_wallet_id(
     Err(StatusCode::BAD_REQUEST)
 }
 
+/// Parse the authenticated user's UUID from JWT claims.
+fn claims_user_id(claims: &Claims) -> Result<uuid::Uuid, StatusCode> {
+    uuid::Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)
+}
+
+/// Fetch the owner (user_id) of an MPC session.
+/// Returns NOT_FOUND if the session does not exist.
+async fn fetch_session_owner(
+    db: &sqlx::PgPool,
+    session_id: uuid::Uuid,
+) -> Result<uuid::Uuid, StatusCode> {
+    let row: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "SELECT user_id FROM mpc_sessions WHERE id = $1"
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("fetch_session_owner query failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(row.ok_or(StatusCode::NOT_FOUND)?.0)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/session", post(create_session))
@@ -174,9 +198,17 @@ pub async fn create_session(
 /// Get session status
 pub async fn get_session(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<Json<SessionResponse>, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let caller = claims_user_id(&claims)?;
+    let owner = fetch_session_owner(db, id).await?;
+    if owner != caller {
+        tracing::warn!("User {} attempted to read session {} owned by {}", caller, id, owner);
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     let row: (String, i32, Option<chrono::DateTime<Utc>>, Option<uuid::Uuid>) = sqlx::query_as(
         "SELECT status, current_round, last_activity, wallet_id FROM mpc_sessions WHERE id = $1"
@@ -198,14 +230,19 @@ pub async fn get_session(
 /// Abort a session
 pub async fn abort_session(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
+    let caller = claims_user_id(&claims)?;
+
     let result = sqlx::query(
-        "UPDATE mpc_sessions SET status = 'failed' WHERE id = $1 AND status IN ('pending', 'active')"
+        "UPDATE mpc_sessions SET status = 'failed'
+         WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'active')"
     )
     .bind(id)
+    .bind(caller)
     .execute(db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -214,8 +251,7 @@ pub async fn abort_session(
         return Err(StatusCode::GONE);
     }
 
-    tracing::info!("Aborted MPC session {}", id);
-
+    tracing::info!("User {} aborted MPC session {}", caller, id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -258,6 +294,16 @@ pub async fn send_message(
     let current_round = session.2 as i16;
     let session_user_id = session.3;
 
+    // Enforce session ownership: only the owner may drive their session.
+    let caller = claims_user_id(&claims)?;
+    if session_user_id != caller {
+        tracing::warn!(
+            "User {} attempted to send message to session {} owned by {}",
+            caller, session_id, session_user_id
+        );
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     // Session must be active
     if status != "active" {
         return Err(StatusCode::GONE);
@@ -277,12 +323,12 @@ pub async fn send_message(
     let verified = if let Some(hmac_value) = &body.hmac {
         use hmac::{Hmac, Mac};
         type HmacSha256 = Hmac<Sha256>;
-        let jwt_secret = std::env::var("JWT_SECRET")
+        let hmac_key = std::env::var("MPC_HMAC_KEY")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        if jwt_secret.is_empty() {
+        if hmac_key.is_empty() {
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-        let mut mac = HmacSha256::new_from_slice(jwt_secret.as_bytes())
+        let mut mac = HmacSha256::new_from_slice(hmac_key.as_bytes())
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         mac.update(session_id.to_string().as_bytes());
         mac.update(&body.round.to_le_bytes());
@@ -325,6 +371,14 @@ pub async fn send_message(
 
     // If this message is addressed to the server (Party 1), trigger the participant
     if body.to_party == 1 {
+        // Messages that drive the server signing state machine MUST be authenticated.
+        if !verified {
+            tracing::warn!(
+                "Rejected unverified message to server for session {}",
+                session_id
+            );
+            return Err(StatusCode::UNAUTHORIZED);
+        }
         if let Some(participant) = &state.mpc_participant {
             match participant.on_message_received(
                 session_id,
@@ -406,20 +460,18 @@ pub(crate) struct MessageResponse {
 ///   ?after_id=5 — only return messages with id > this value
 pub async fn recv_messages(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(session_id): Path<uuid::Uuid>,
     Query(query): Query<RecvQuery>,
 ) -> Result<Json<Vec<MessageResponse>>, StatusCode> {
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    // Verify session exists
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM mpc_sessions WHERE id = $1)")
-        .bind(session_id)
-        .fetch_one(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if !exists {
-        return Err(StatusCode::NOT_FOUND);
+    // Verify session exists AND belongs to the caller
+    let caller = claims_user_id(&claims)?;
+    let owner = fetch_session_owner(db, session_id).await?;
+    if owner != caller {
+        tracing::warn!("User {} attempted to read messages of session {} owned by {}", caller, session_id, owner);
+        return Err(StatusCode::FORBIDDEN);
     }
 
     let after_id = query.after_id.unwrap_or(0);
@@ -869,4 +921,34 @@ pub async fn presign_generate(
         generated,
         wallet_id: wallet_id.to_string(),
     }))
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+
+    #[test]
+    fn claims_user_id_parses_valid_uuid() {
+        let claims = Claims {
+            sub: "11111111-1111-1111-1111-111111111111".to_string(),
+            jti: "00000000-0000-0000-0000-000000000000".to_string(),
+            device_id: "DEV0000000000001".to_string(),
+            exp: 9999999999,
+            iat: 0,
+        };
+        let uid = claims_user_id(&claims).expect("should parse");
+        assert_eq!(uid.to_string(), "11111111-1111-1111-1111-111111111111");
+    }
+
+    #[test]
+    fn claims_user_id_rejects_garbage() {
+        let claims = Claims {
+            sub: "not-a-uuid".to_string(),
+            jti: "00000000-0000-0000-0000-000000000000".to_string(),
+            device_id: "DEV0000000000001".to_string(),
+            exp: 9999999999,
+            iat: 0,
+        };
+        assert_eq!(claims_user_id(&claims).unwrap_err(), StatusCode::UNAUTHORIZED);
+    }
 }

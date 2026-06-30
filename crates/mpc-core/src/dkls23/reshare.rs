@@ -286,6 +286,10 @@ impl ReshareSession {
             secret_share: new_share_scalar.to_bytes().to_vec().into(),
             public_key: self.old_share.public_key.clone(),
             paillier_pk: self.old_share.paillier_pk.clone(),
+            // The Paillier keypair is independent of the secret share value
+            // (it only protects the MtA exchange), so it is preserved across a
+            // reshare to avoid regenerating safe primes.
+            paillier_keypair: self.old_share.paillier_keypair.clone(),
         };
 
         self.state = ReshareState::Complete { new_share };

@@ -146,7 +146,7 @@ pub fn dkg_session_new(party_index: u16) -> Result<FfiDkgSession, String> {
     let config = SessionConfig {
         session_id: session_id.clone(),
         threshold: 2,
-        total_parties: 2,
+        total_parties: 3,
         party_index,
     };
     
@@ -677,6 +677,7 @@ pub fn recovery_import_backup_shard(backup_bytes: Vec<u8>) -> Result<(), String>
         secret_share: backup_bytes.into(),
         public_key: Vec::new(), // Will be populated during recovery
         paillier_pk: None, // Backup shard doesn't participate in signing
+        paillier_keypair: None,
     };
 
     state::store_recovery_backup_shard(backup_share);
@@ -839,49 +840,113 @@ pub fn recovery_has_backup_shard() -> bool {
 // Device Shard Export (for hardware-backed persistence)
 // ---------------------------------------------------------------------------
 
-/// Export the device shard (Party 0) secret share bytes for hardware-backed storage.
-/// SECURITY: This should only be called once after DKG to persist to Secure Enclave/StrongBox.
-/// The caller must immediately encrypt and store it via hardware security module.
+/// Export the device shard (Party 0) for hardware-backed storage.
+///
+/// Format: `secret_share(32) || paillier_keypair_bytes`. When no Paillier
+/// keypair is present (legacy shard), only the 32-byte secret share is
+/// returned, so old stored blobs remain valid. The Paillier keypair is the
+/// device's own MtA keypair, generated once at DKG; persisting it avoids
+/// regenerating safe primes (~2.5s+) on every signature.
+///
+/// SECURITY: This should only be called once after DKG to persist to Secure
+/// Enclave/StrongBox. The caller must immediately encrypt and store it via the
+/// hardware security module — it contains the device secret share AND the
+/// Paillier secret.
 pub fn export_device_shard() -> Result<Vec<u8>, String> {
     let share = state::get_share(0)
         .ok_or("device shard not loaded — DKG not complete")?;
-    Ok(share.secret_share.as_bytes().to_vec())
+    let mut out = share.secret_share.as_bytes().to_vec();
+    if let Some(kp) = &share.paillier_keypair {
+        out.extend_from_slice(kp.as_bytes());
+    }
+    Ok(out)
 }
 
 /// Import a device shard (Party 0) from hardware-backed storage into Rust memory.
 /// Called at app startup to restore the shard from Secure Enclave/StrongBox.
+///
+/// Accepts both the new format (`secret_share(32) || paillier_keypair_bytes`)
+/// and the legacy 32-byte-only format. A legacy shard loads with no Paillier
+/// keypair; the first signature then regenerates one (slow, one-time) until the
+/// wallet is re-exported or resharded.
 pub fn import_device_shard(shard_bytes: Vec<u8>, public_key: Vec<u8>) -> Result<(), String> {
     use k256::elliptic_curve::PrimeField;
     use k256::Scalar;
 
-    if shard_bytes.len() != 32 {
+    if shard_bytes.len() < 32 {
         return Err(format!(
-            "invalid device shard length: expected 32 bytes, got {}",
+            "invalid device shard length: expected at least 32 bytes, got {}",
             shard_bytes.len()
         ));
     }
 
     let mut bytes = [0u8; 32];
-    bytes.copy_from_slice(&shard_bytes);
+    bytes.copy_from_slice(&shard_bytes[..32]);
     let _scalar = Option::<Scalar>::from(Scalar::from_repr(bytes.into()))
         .ok_or_else(|| "invalid device shard: not a valid secp256k1 scalar".to_string())?;
+
+    // Anything past the 32-byte secret share is the serialized Paillier keypair.
+    let paillier_keypair = if shard_bytes.len() > 32 {
+        let kp_bytes = shard_bytes[32..].to_vec();
+        // Validate it parses before storing, so a corrupt blob fails loudly here
+        // rather than at first signature.
+        mpc_core::crypto::paillier::PaillierKeypair::from_bytes(&kp_bytes)
+            .map_err(|e| format!("stored paillier keypair is invalid: {}", e))?;
+        Some(mpc_core::security::SecureVec::from(kp_bytes))
+    } else {
+        None
+    };
 
     let device_share = mpc_core::dkls23::KeyShare {
         party: 0,
         threshold: 2,
         total_parties: 3,
-        secret_share: shard_bytes.into(),
+        secret_share: bytes.to_vec().into(),
         public_key,
         paillier_pk: None,
+        paillier_keypair,
     };
 
     state::store_shares(vec![device_share]);
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Backup Shard Verification
-// ---------------------------------------------------------------------------
+/// Migrate a legacy device shard (one created before the Paillier keypair was
+/// persisted) by generating the keypair once and storing it back into the
+/// in-memory share. Returns the new exportable shard bytes
+/// (`secret_share(32) || paillier_keypair_bytes`) so the caller can re-persist
+/// to hardware-backed storage; returns `None` if the shard already has a
+/// keypair (no migration needed).
+///
+/// Intended to be called once in the background after `import_device_shard`,
+/// so the first real signature doesn't pay the ~2.5s+ safe-prime generation.
+pub fn ensure_device_paillier_keypair() -> Result<Option<Vec<u8>>, String> {
+    let share = state::get_share(0).ok_or("device shard not loaded")?;
+    if share.paillier_keypair.is_some() {
+        return Ok(None); // already migrated
+    }
+
+    let kp = mpc_core::crypto::paillier::PaillierKeypair::generate();
+    let kp_bytes = kp.to_bytes();
+
+    let migrated = mpc_core::dkls23::KeyShare {
+        party: share.party,
+        threshold: share.threshold,
+        total_parties: share.total_parties,
+        secret_share: share.secret_share.as_bytes().to_vec().into(),
+        public_key: share.public_key.clone(),
+        paillier_pk: share.paillier_pk.clone(),
+        paillier_keypair: Some(mpc_core::security::SecureVec::from(kp_bytes.clone())),
+    };
+
+    let mut exported = migrated.secret_share.as_bytes().to_vec();
+    exported.extend_from_slice(&kp_bytes);
+
+    state::store_shares(vec![migrated]);
+    Ok(Some(exported))
+}
+
+
 
 /// Verify a backup shard by combining it with the device shard via Lagrange
 /// interpolation to reconstruct the group public key, then comparing against the expected key.
@@ -1197,6 +1262,7 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
         secret_share: plaintext.into(),
         public_key,
         paillier_pk: None,
+        paillier_keypair: None,
     };
 
     state::store_single_share(backup_share);
@@ -1209,7 +1275,10 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
 // ---------------------------------------------------------------------------
 
 /// Legacy: Sign locally for testing (reconstructs full key — NOT for production).
-#[cfg(debug_assertions)]
+///
+/// NOTE: not gated behind `#[cfg(debug_assertions)]` because the generated FRB
+/// bindings (`frb_generated.rs`) reference it unconditionally; gating it broke
+/// `--release` builds. It remains test/legacy-only by convention.
 pub fn sign_hash(msg_hash: Vec<u8>) -> Result<Vec<u8>, String> {
     if msg_hash.len() != 32 {
         return Err("msg_hash must be 32 bytes".into());

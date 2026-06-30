@@ -609,6 +609,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get slideUpToSend => '上滑取消,松手发送';
 
   @override
+  String get voiceListening => '正在聆听…';
+
+  @override
+  String get voiceTapToFinish => '点击任意处结束';
+
+  @override
+  String get voiceDone => '完成';
+
+  @override
+  String get voiceUnavailable => '语音识别不可用,请检查麦克风权限';
+
+  @override
+  String get voiceErrorHint => '语音识别出错,请重试';
+
+  @override
   String get saveContact => '保存联系人';
 
   @override

@@ -117,6 +117,29 @@ fn test_full_dkg_then_sign() {
     assert_eq!(device_share.threshold, 2);
     assert_eq!(device_share.total_parties, 3);
 
+    // Device (Party 0) must carry a persisted Paillier keypair generated once
+    // at DKG finalize; server and backup must not (they never initiate MtA).
+    assert!(
+        device_share.paillier_keypair.is_some(),
+        "device share must carry a persisted Paillier keypair after DKG"
+    );
+    assert!(
+        server_share.paillier_keypair.is_none(),
+        "server share must not carry a Paillier keypair"
+    );
+    assert!(
+        backup_share.paillier_keypair.is_none(),
+        "backup share must not carry a Paillier keypair"
+    );
+
+    // The persisted keypair must be valid and reusable across signatures.
+    let persisted_kp_bytes = device_share
+        .paillier_keypair
+        .as_ref()
+        .unwrap()
+        .as_bytes()
+        .to_vec();
+
     println!("✓ DKG complete: public key derived, shares consistent across all 3 parties");
 
     // ========== PHASE 2: Distributed Threshold Signing ==========
@@ -179,6 +202,46 @@ fn test_full_dkg_then_sign() {
     println!("✓ Distributed signing complete: signature valid");
     println!("  Message: {:?}", String::from_utf8_lossy(message));
     println!("  Recovery ID: {}", final_sig.v);
+
+    // The device share's Paillier keypair must be UNCHANGED after signing —
+    // proving Round 2 reused the persisted keypair instead of regenerating one.
+    assert_eq!(
+        device_share.paillier_keypair.as_ref().unwrap().as_bytes(),
+        persisted_kp_bytes.as_slice(),
+        "device Paillier keypair must be reused (unchanged) across signing"
+    );
+
+    // Sign a SECOND message with the same persisted share to confirm the reused
+    // keypair keeps producing valid signatures.
+    let message2 = b"Transfer 1.0 ETH to 0xBEEF...";
+    let msg_hash2: [u8; 32] = sha3::Keccak256::digest(message2).into();
+    let mut sign_device2 =
+        SignSession::new_distributed(make_config(session_id, 0), device_share.clone(), msg_hash2);
+    let mut sign_server2 =
+        SignSession::new_distributed(make_config(session_id, 1), server_share.clone(), msg_hash2);
+    let r1d = sign_device2.generate_round1().expect("device r1 #2");
+    let r1s = sign_server2.generate_round1().expect("server r1 #2");
+    sign_device2.process_round1(vec![r1s]).expect("device pr1 #2");
+    sign_server2.process_round1(vec![r1d]).expect("server pr1 #2");
+    let r2d = sign_device2.generate_round2().expect("device r2 #2");
+    sign_server2.process_round2(vec![r2d]).expect("server pr2 #2");
+    let resp2 = sign_server2.get_server_response().expect("server resp #2");
+    let final_sig2 = sign_device2
+        .process_round2(vec![ProtocolMessage {
+            session_id: session_id.into(),
+            from: 1,
+            to: 0,
+            round: 2,
+            payload: resp2,
+        }])
+        .expect("device finalize #2");
+    assert!(
+        final_sig2
+            .verify(&msg_hash2, &device_share.public_key)
+            .expect("verify #2"),
+        "second signature with reused keypair must verify"
+    );
+    println!("✓ Second signature with reused Paillier keypair valid");
 }
 
 /// Test 2: Full DKG, then reshare to new shares, then sign with new shares.
@@ -394,6 +457,7 @@ fn test_sign_with_wrong_share_fails() {
         secret_share: corrupted_share_bytes.into(),
         public_key: valid_device_share.public_key.clone(),
         paillier_pk: valid_device_share.paillier_pk.clone(),
+        paillier_keypair: valid_device_share.paillier_keypair.clone(),
     };
 
     // Phase 3: Attempt to sign with corrupted share

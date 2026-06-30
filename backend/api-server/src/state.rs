@@ -133,8 +133,7 @@ impl AppState {
 
         let covalent_api_key = std::env::var("COVALENT_API_KEY")
             .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(|| Some("cqt_rQGHc9RXCJfWxFDffW6qp7xHqcYG".to_string()));
+            .filter(|s| !s.is_empty());
         if covalent_api_key.is_some() {
             tracing::info!("Covalent API configured for balance queries");
         } else {

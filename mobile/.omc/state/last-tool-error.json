@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"git add mobile/lib/services/mpc_wallet_service.dart mobile/lib/services/mpc_session_manager.dart && git commit -m \\\"$(cat <<'EOF'\\nfix: MPC 签名等待按 round 过滤，避免重连重放污染 Round 2\\n\\nWS 重连后服务器按 ro...",
-  "error": "Exit code 128\nwarning: could not open directory 'mobile/mobile/lib/services/': No such file or directory\nfatal: pathspec 'mobile/lib/services/mpc_wallet_service.dart' did not match any files",
-  "timestamp": "2026-05-29T09:30:30.507Z",
+  "tool_input_preview": "{\"command\":\"grep -n \\\"targetSdk\\\\|minSdk\\\\|compileSdk\\\" mobile/android/app/build.gradle* 2>/dev/null; echo \\\"=== Scaffold ancestor in chat tree ===\\\"; grep -n \\\"Scaffold\\\\|ScaffoldMessenger\\\" mobile/l...",
+  "error": "Exit code 1\n(eval):1: no matches found: mobile/android/app/build.gradle*",
+  "timestamp": "2026-06-30T05:48:34.165Z",
   "retry_count": 1
 }

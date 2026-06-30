@@ -224,6 +224,7 @@ impl SignSession {
             secret_share: secret_sum.to_bytes().to_vec().into(),
             public_key: shares[0].public_key.clone(),
             paillier_pk: None,
+            paillier_keypair: None,
         })
     }
 
@@ -483,8 +484,29 @@ impl SignSession {
             .ok_or_else(|| MpcError::SigningFailed("no other party found".into()))?;
 
         if self.party_index < other_party_index {
-            // Device: use Paillier MtA to protect k_0^{-1} and x'_0
-            let paillier = PaillierKeypair::generate();
+            // Device: use Paillier MtA to protect k_0^{-1} and x'_0.
+            //
+            // Reuse the Paillier keypair persisted in the key share (generated
+            // once at DKG finalize) instead of regenerating safe primes on every
+            // signature — the latter cost ~2.5s+ per transaction on mobile. Fall
+            // back to a fresh keypair only for shards created before the keypair
+            // was persisted (legacy wallets), so signing still works while they
+            // migrate.
+            let paillier = match self
+                .my_share
+                .as_ref()
+                .and_then(|s| s.paillier_keypair.as_ref())
+                .map(|sv| PaillierKeypair::from_bytes(sv.as_bytes()))
+            {
+                Some(Ok(kp)) => kp,
+                Some(Err(e)) => {
+                    return Err(MpcError::SigningFailed(format!(
+                        "stored paillier keypair is corrupt: {}",
+                        e
+                    )));
+                }
+                None => PaillierKeypair::generate(),
+            };
 
             // Generate randomness explicitly so we can produce range proofs
             let r1 = gen_coprime_to(&paillier.public.n);
