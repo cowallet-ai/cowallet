@@ -1,0 +1,381 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1782791581998,
+  "projectRoot": "/Users/mac/cat/cowallet",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Rust",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Cargo.toml"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "axum",
+        "version": null,
+        "category": "backend"
+      }
+    ],
+    "packageManager": "cargo",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cd /Users/mac/cat/cowallet; echo \"=== release build (was broken) ===\"; cargo build -p ffi-mobile --release 2>&1 | grep -E \"error\\[|error:|sign_hash|Finished\" | head; echo \"=== debug test ===\"; cargo test -p ffi-mobile 2>&1 | grep -E \"test result|error\\[|Finished\" | head",
+    "testCommand": "cd /Users/mac/cat/cowallet; echo \"=== release build (was broken) ===\"; cargo build -p ffi-mobile --release 2>&1 | grep -E \"error\\[|error:|sign_hash|Finished\" | head; echo \"=== debug test ===\"; cargo test -p ffi-mobile 2>&1 | grep -E \"test result|error\\[|Finished\" | head",
+    "lintCommand": "cargo clippy",
+    "devCommand": "cargo run",
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "backend": {
+      "path": "backend",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782791581980,
+      "keyFiles": []
+    },
+    "crates": {
+      "path": "crates",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782791581981,
+      "keyFiles": []
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1782791581982,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 9,
+      "lastAccessed": 1782791581982,
+      "keyFiles": [
+        "API接入实施方案.md",
+        "DEPLOY.md",
+        "DOCKER.md",
+        "ICLOUD_BACKUP.md",
+        "PUSH_NOTIFICATIONS.md"
+      ]
+    },
+    "k8s": {
+      "path": "k8s",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1782791581982,
+      "keyFiles": [
+        "deployment.yml",
+        "kustomization.yml",
+        "service.yml"
+      ]
+    },
+    "mobile": {
+      "path": "mobile",
+      "purpose": null,
+      "fileCount": 22,
+      "lastAccessed": 1782791581983,
+      "keyFiles": [
+        "BIP39_IMPLEMENTATION.md",
+        "CRITICAL_SERVICES.md",
+        "E2E_TESTING.md",
+        "FAST_START_COMPLETE.md",
+        "FAST_START_OPTIMIZATION.md"
+      ]
+    },
+    "prototype": {
+      "path": "prototype",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782791581983,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1782791581983,
+      "keyFiles": [
+        "build_android.sh",
+        "build_ios.sh",
+        "generate_bindings.sh"
+      ]
+    },
+    "target": {
+      "path": "target",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1782791581984,
+      "keyFiles": [
+        "CACHEDIR.TAG"
+      ]
+    },
+    "website": {
+      "path": "website",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1782791581984,
+      "keyFiles": []
+    },
+    "backend/migrations": {
+      "path": "backend/migrations",
+      "purpose": "Database migrations",
+      "fileCount": 21,
+      "lastAccessed": 1782791581985,
+      "keyFiles": [
+        "001_initial_schema.sql",
+        "002_audit_logs.sql",
+        "003_indexer_state.sql"
+      ]
+    },
+    "website/public": {
+      "path": "website/public",
+      "purpose": "Public files",
+      "fileCount": 0,
+      "lastAccessed": 1782791581989,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "mobile/lib/views/chat/chat_view.dart",
+      "accessCount": 26,
+      "lastAccessed": 1782798539843,
+      "type": "file"
+    },
+    {
+      "path": "crates/ffi-mobile/src/api.rs",
+      "accessCount": 12,
+      "lastAccessed": 1782808437348,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/mpc_participant/mod.rs",
+      "accessCount": 9,
+      "lastAccessed": 1782802467274,
+      "type": "file"
+    },
+    {
+      "path": "crates/chain-evm/src/transaction.rs",
+      "accessCount": 7,
+      "lastAccessed": 1782800673732,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/sign.rs",
+      "accessCount": 7,
+      "lastAccessed": 1782805802529,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/dkg.rs",
+      "accessCount": 7,
+      "lastAccessed": 1782806178219,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/tx.rs",
+      "accessCount": 6,
+      "lastAccessed": 1782800481425,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/crypto/paillier.rs",
+      "accessCount": 6,
+      "lastAccessed": 1782805005978,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/tests/e2e_protocol_flow.rs",
+      "accessCount": 6,
+      "lastAccessed": 1782807007947,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/covalent.rs",
+      "accessCount": 4,
+      "lastAccessed": 1782808955107,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/l10n/s.dart",
+      "accessCount": 3,
+      "lastAccessed": 1782798031557,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/l10n/app_localizations_zh.dart",
+      "accessCount": 2,
+      "lastAccessed": 1782798047617,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/l10n/app_localizations_en.dart",
+      "accessCount": 2,
+      "lastAccessed": 1782798059517,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/l10n/app_localizations.dart",
+      "accessCount": 2,
+      "lastAccessed": 1782798068884,
+      "type": "file"
+    },
+    {
+      "path": "mobile/android/app/src/main/AndroidManifest.xml",
+      "accessCount": 2,
+      "lastAccessed": 1782798494446,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/userop.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782800573761,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/tx_service.dart",
+      "accessCount": 2,
+      "lastAccessed": 1782800854775,
+      "type": "file"
+    },
+    {
+      "path": "Makefile.local",
+      "accessCount": 2,
+      "lastAccessed": 1782801599483,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/state.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782802072398,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/mod.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782803949527,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/reshare.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782804199748,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/protocol.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782804371493,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/mpc_participant/shard_store.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782804496463,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/examples/test_2of2.rs",
+      "accessCount": 2,
+      "lastAccessed": 1782804922860,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/bridge/mpc_bridge.dart",
+      "accessCount": 2,
+      "lastAccessed": 1782807610870,
+      "type": "file"
+    },
+    {
+      "path": "crates/policy-engine/src/rules.rs",
+      "accessCount": 1,
+      "lastAccessed": 1782799383228,
+      "type": "file"
+    },
+    {
+      "path": "crates/policy-engine/src/types.rs",
+      "accessCount": 1,
+      "lastAccessed": 1782799415565,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/mpc_wallet_service.dart",
+      "accessCount": 1,
+      "lastAccessed": 1782800844233,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/mpc.rs",
+      "accessCount": 1,
+      "lastAccessed": 1782801242409,
+      "type": "file"
+    },
+    {
+      "path": "docker-compose.yml",
+      "accessCount": 1,
+      "lastAccessed": 1782801797146,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/presign_pool_service.dart",
+      "accessCount": 1,
+      "lastAccessed": 1782802604984,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/presign_manager.rs",
+      "accessCount": 1,
+      "lastAccessed": 1782802639252,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/security/memory.rs",
+      "accessCount": 1,
+      "lastAccessed": 1782803760832,
+      "type": "file"
+    },
+    {
+      "path": "crates/ffi-mobile/src/tests.rs",
+      "accessCount": 1,
+      "lastAccessed": 1782807726455,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

@@ -1,0 +1,13 @@
+{
+  "active": true,
+  "iteration": 2,
+  "max_iterations": 100,
+  "started_at": "2026-05-15T14:32:22.402Z",
+  "prompt": "cowallet-api-server  | 2026-05-15T14:30:17.576613Z DEBUG api_server::middleware::audit: Audit result: path=/api/v1/ai/chat, status=200 OK, result=success, duration=29ms\ncowallet-api-server  | 2026-05-15T14:30:19.971011Z DEBUG request{request_id=499925d5-ba14-4bec-9561-f53bde4bdf1c}:request{method=POST uri=/api/v1/ai/chat version=HTTP/1.1 request_id=unknown}: api_server::services::ai_executor: Executing tool: get_balance with params: Object {\"chain_id\": Number(137), \"token\": String(\"POL\")}\ncow...",
+  "session_id": "ab42076b-352a-45a6-b148-ff85acf153f8",
+  "project_path": "/Users/mac/cat/cowallet/mobile",
+  "linked_ultrawork": true,
+  "awaiting_confirmation": true,
+  "awaiting_confirmation_set_at": "2026-05-15T14:32:22.402Z",
+  "last_checked_at": "2026-05-15T14:35:50.241Z"
+}

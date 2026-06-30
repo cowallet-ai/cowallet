@@ -1,0 +1,11 @@
+{
+  "active": true,
+  "started_at": "2026-05-26T03:01:36.603Z",
+  "original_prompt": "/autopilot 在重新验证审核逻辑",
+  "session_id": "210de2e3-9b24-4422-b4aa-cbdad9771175",
+  "project_path": "/Users/mac/cat/cowallet/mobile",
+  "reinforcement_count": 0,
+  "awaiting_confirmation": true,
+  "awaiting_confirmation_set_at": "2026-05-26T03:01:36.603Z",
+  "last_checked_at": "2026-05-26T03:01:36.603Z"
+}

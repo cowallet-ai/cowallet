@@ -60,8 +60,6 @@ website/node_modules/
 *.log
 
 # OMC Agent state
-.omc/
-.claude/
 
 # Stray Windows pub cache accidentally committed as a literal path
 # (from `flutter pub get` on Windows writing to D:\PUB\...)
