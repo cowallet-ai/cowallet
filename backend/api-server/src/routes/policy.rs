@@ -433,17 +433,17 @@ async fn update_limits(
     }))
 }
 
-/// Fetch recent transaction history from Covalent and compute aggregates
+/// Fetch recent transaction history from OKX and compute aggregates
 /// for policy evaluation (daily total, tx count in window).
 async fn compute_tx_history(
     state: &AppState,
     from_address: &str,
     chain_id: u64,
 ) -> Option<TransactionHistory> {
-    use crate::services::covalent;
+    use crate::services::okx;
 
-    let api_key = state.covalent_api_key.as_ref()?;
-    let txs = covalent::get_transactions(&state.http, api_key, from_address, chain_id)
+    let creds = state.okx_credentials.as_ref()?;
+    let txs = okx::get_transactions(&state.http, creds, from_address, chain_id)
         .await
         .ok()?;
 
@@ -463,6 +463,8 @@ async fn compute_tx_history(
             let ts_utc = ts.with_timezone(&chrono::Utc);
 
             if ts_utc > day_ago && tx.from.eq_ignore_ascii_case(from_address) {
+                // `value` is a raw integer amount (wei for 18-decimals tokens),
+                // produced by the OKX client to preserve the prior wei semantics.
                 let val = tx.value.parse::<u128>().unwrap_or(0);
                 daily_total += alloy_primitives::U256::from(val);
             }

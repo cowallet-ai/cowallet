@@ -33,7 +33,7 @@ class TxApi {
     );
   }
 
-  /// 获取交易历史记录（多链链上查询 via Covalent）
+  /// 获取交易历史记录（多链链上查询 via OKX）
   /// [address] 钱包地址
   /// [chainId] 可选的链ID筛选
   /// [limit] 每页数量，默认50，最大100

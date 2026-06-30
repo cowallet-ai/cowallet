@@ -7,13 +7,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::middleware::auth::Claims;
-use crate::services::covalent;
+use crate::services::okx;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/history", get(get_history))
-        .route("/tx-history", get(get_covalent_history))
+        .route("/tx-history", get(get_onchain_history))
         .route("/all-history", get(get_all_chain_history))
         .route("/{hash}", get(get_transaction))
 }
@@ -228,22 +228,22 @@ async fn get_transaction(
     }))
 }
 
-// ─── Covalent-based on-chain tx history ──────────────────────────────────────
+// ─── OKX-based on-chain tx history ───────────────────────────────────────────
 
 #[derive(Deserialize)]
-struct CovalentHistoryQuery {
+struct OnchainHistoryQuery {
     address: String,
     chain_id: Option<u64>,
 }
 
 #[derive(Serialize)]
-struct CovalentHistoryResponse {
-    transactions: Vec<CovalentTxInfo>,
+struct OnchainHistoryResponse {
+    transactions: Vec<OnchainTxInfo>,
     total: usize,
 }
 
 #[derive(Serialize)]
-struct CovalentTxInfo {
+struct OnchainTxInfo {
     tx_hash: String,
     from: String,
     to: String,
@@ -254,17 +254,17 @@ struct CovalentTxInfo {
     token_symbol: String,
     value_quote: f64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    token_transfers: Vec<covalent::TokenTransfer>,
+    token_transfers: Vec<okx::TokenTransfer>,
 }
 
 /// GET /api/v1/tx/tx-history?address={addr}&chain_id={id}
 ///
-/// Get on-chain transaction history via Covalent API (no DB required)
-async fn get_covalent_history(
+/// Get on-chain transaction history via OKX Wallet API (no DB required)
+async fn get_onchain_history(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
-    Query(q): Query<CovalentHistoryQuery>,
-) -> Result<Json<CovalentHistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
+    Query(q): Query<OnchainHistoryQuery>,
+) -> Result<Json<OnchainHistoryResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Validate address
     if !q.address.starts_with("0x") || q.address.len() != 42 {
         return Err(validation_error("invalid address format"));
@@ -278,17 +278,17 @@ async fn get_covalent_history(
 
     let chain_id = q.chain_id.ok_or_else(|| validation_error("chain_id is required"))?;
 
-    let api_key = state
-        .covalent_api_key
+    let creds = state
+        .okx_credentials
         .as_ref()
         .ok_or_else(|| (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Covalent API not configured".into(),
+                error: "OKX Wallet API not configured".into(),
             }),
         ))?;
 
-    let items = covalent::get_transactions(&state.http, api_key, &q.address, chain_id)
+    let items = okx::get_transactions(&state.http, creds, &q.address, chain_id)
         .await
         .map_err(|e| (
             StatusCode::BAD_GATEWAY,
@@ -298,9 +298,9 @@ async fn get_covalent_history(
         ))?;
 
     let total = items.len();
-    let transactions: Vec<CovalentTxInfo> = items
+    let transactions: Vec<OnchainTxInfo> = items
         .into_iter()
-        .map(|item| CovalentTxInfo {
+        .map(|item| OnchainTxInfo {
             tx_hash: item.tx_hash,
             from: item.from,
             to: item.to,
@@ -314,7 +314,7 @@ async fn get_covalent_history(
         })
         .collect();
 
-    Ok(Json(CovalentHistoryResponse {
+    Ok(Json(OnchainHistoryResponse {
         transactions,
         total,
     }))
@@ -349,7 +349,7 @@ struct AllChainTxInfo {
     token_symbol: String,
     value_quote: f64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    token_transfers: Vec<covalent::TokenTransfer>,
+    token_transfers: Vec<okx::TokenTransfer>,
 }
 
 /// GET /api/v1/tx/all-history?address={addr}&chains={chain_ids}&limit={n}
@@ -386,17 +386,17 @@ async fn get_all_chain_history(
         return Err(validation_error("no valid chain IDs provided"));
     }
 
-    let api_key = state
-        .covalent_api_key
+    let creds = state
+        .okx_credentials
         .as_ref()
         .ok_or_else(|| (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Covalent API not configured".into(),
+                error: "OKX Wallet API not configured".into(),
             }),
         ))?;
 
-    let items = covalent::get_all_chain_transactions(&state.http, api_key, &q.address, &chain_ids)
+    let items = okx::get_all_chain_transactions(&state.http, creds, &q.address, &chain_ids)
         .await
         .map_err(|e| (
             StatusCode::BAD_GATEWAY,

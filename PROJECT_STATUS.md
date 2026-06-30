@@ -73,7 +73,7 @@
 | Gas 估算 | ✅ 已实现 | 🧪 已验证 | eth_estimateGas + eth_gasPrice 并行查询 |
 | 交易模拟 | ✅ 已实现 | eth_call 预执行检查 |
 | 交易状态追踪 | ✅ 已实现 | 🧪 已验证 | 后台轮询 receipt，广播→确认→失败状态机 |
-| 多链余额查询 | 🧪 已验证 | Covalent API 聚合查询所有链余额 |
+| 多链余额查询 | 🧪 已验证 | OKX Wallet API 聚合查询所有链余额 |
 | 交易历史记录 | 🧪 已验证 | 多链交易记录，ERC-20 Transfer 事件解析 |
 | ERC-4337 Account Abstraction | ✅ 已实现 | UserOp 构建、签名、提交到 Bundler |
 | 多 RPC 回退 | ✅ 已实现 | 🧪 已验证 | 每条链 2-3 个公共 RPC，自动故障切换 |
@@ -191,7 +191,7 @@
 | 交易状态查询 | ✅ 已实现 | /tx/status/:hash |
 | 交易模拟 | ✅ 已实现 | /tx/simulate |
 | Gas 估算 | ✅ 已实现 | /tx/estimate-gas |
-| 交易历史 | ✅ 已实现 | /tx/all-history (Covalent) |
+| 交易历史 | ✅ 已实现 | /tx/all-history (OKX) |
 | 消费摘要 | ✅ 已实现 | /tx/summary |
 | ERC-4337 UserOp | ✅ 已实现 | /tx/userop, /tx/userop/submit |
 | 余额查询 | ✅ 已实现 | /balance/, /balance/all |
@@ -316,7 +316,7 @@
 
 - **后端**: Rust, Axum, SQLx, PostgreSQL, Redis, NATS, Tower
 - **密码学**: DKLS23 (自研), secp256k1, AES-GCM, Noise Protocol
-- **区块链**: Alloy (EVM), Covalent API, Bridgers API (DEX 聚合)
+- **区块链**: Alloy (EVM), OKX Wallet API, Bridgers API (DEX 聚合)
 - **移动端**: Flutter/Dart, flutter_rust_bridge v2
 - **AI**: Bedrock Claude (默认) + DeepSeek (备选), AiProvider trait 抽象, AWS Event Stream 流式, Function Calling
 - **部署**: Docker, GitHub Actions, AWS Cloud ECS
