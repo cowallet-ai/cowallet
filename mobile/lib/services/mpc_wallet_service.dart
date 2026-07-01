@@ -40,6 +40,12 @@ class MpcWalletService implements WalletService {
   /// 执行完整的 DKG 密钥生成协议
   /// [walletId] 可选，用于多钱包场景
   Future<WalletInfo> runDkg({String? walletId}) async {
+    // Ensure the Rust FFI bridge is ready before any DKG FFI call. Background
+    // init may not have finished (or may have timed out) when the user reaches
+    // wallet creation; this awaits/performs init idempotently to avoid the
+    // "flutter_rust_bridge has not been initialized" race.
+    await MpcBridge.ensureInitialized();
+
     final sessionResult = await MpcApi.createSession(
       sessionType: 'keygen',
       parties: [_deviceParty, _serverParty],

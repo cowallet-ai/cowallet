@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import '../bridge/frb_generated/frb_generated.dart';
+import '../bridge/mpc_bridge.dart';
 import '../widgets/pin_verify_dialog.dart';
 import '../platform/biometrics.dart';
 import '../platform/biometrics_impl.dart';
@@ -90,7 +90,7 @@ class Services {
   /// Heavier operations (Rust FFI, cached data) go here.
   static Future<void> initBackground() async {
     try {
-      await RustLib.init(forceSameCodegenVersion: false)
+      await MpcBridge.ensureInitialized()
           .timeout(const Duration(seconds: 5));
       rustReady = true;
     } catch (e) {

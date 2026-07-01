@@ -6,9 +6,31 @@ import 'frb_generated/frb_generated.dart';
 
 /// Wrapper class for MPC FFI operations
 class MpcBridge {
+  static Future<void>? _initFuture;
+
   /// Initialize the Rust FFI bridge. Must be called once at app startup.
   static Future<void> init() async {
-    await RustLib.init();
+    await ensureInitialized();
+  }
+
+  /// Idempotently ensure the Rust FFI bridge is initialized. Safe to call from
+  /// any FFI entry point: the first call performs RustLib.init(), concurrent /
+  /// later calls await the same future. This guards against the race where the
+  /// UI triggers an FFI op (e.g. DKG) before background init finished, which
+  /// surfaced as "flutter_rust_bridge has not been initialized".
+  ///
+  /// A failed init is NOT cached, so a later call (e.g. when the user retries
+  /// wallet creation) can attempt initialization again.
+  static Future<void> ensureInitialized() {
+    final existing = _initFuture;
+    if (existing != null) return existing;
+    final future = RustLib.init(forceSameCodegenVersion: false);
+    _initFuture = future;
+    future.catchError((Object e) {
+      // Drop the cached future on failure so a subsequent call retries.
+      if (identical(_initFuture, future)) _initFuture = null;
+    });
+    return future;
   }
 
   /// Generate a new wallet (local 2-of-3 MPC key)
