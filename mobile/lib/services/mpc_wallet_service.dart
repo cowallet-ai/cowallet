@@ -8,6 +8,7 @@ import '../network/mpc_websocket.dart';
 import '../platform/cloud_backup.dart';
 import '../platform/secure_hardware.dart';
 import '../utils/secure_storage.dart';
+import '../utils/mpc_hmac.dart';
 import 'backup_shard_service.dart';
 import 'key_health_service.dart';
 import 'wallet_service.dart';
@@ -20,6 +21,9 @@ import 'mpc_session_store.dart';
 /// - Party 2: 备份分片 (iCloud Keychain / Google Cloud Backup / 用户离线保管)
 class MpcWalletService implements WalletService {
   String? _currentSessionId;
+  /// Per-session HMAC key (hex) returned by create_session. Used to
+  /// authenticate server-bound MPC messages (F-004).
+  String? _currentHmacKey;
   BackupResult? _lastBackupResult;
   List<int>? _lastBackupShard;
   bool _backupNeedsReExport = false;
@@ -49,6 +53,7 @@ class MpcWalletService implements WalletService {
 
     final sessionId = sessionResult.data!['session_id'] as String;
     _currentSessionId = sessionId;
+    _currentHmacKey = sessionResult.data!['hmac_key'] as String?;
     _lastMessageId = 0;
 
     final ws = MpcWebSocket(sessionId: sessionId, partyIndex: _deviceParty);
@@ -85,10 +90,8 @@ class MpcWalletService implements WalletService {
       final round1Payload = List<int>.from(round1Msg['payload'] as List);
 
       // Send Round 1 via HTTP (reliable delivery)
-      await MpcApi.sendMessage(
+      await _sendToServer(
         sessionId: sessionId,
-        fromParty: _deviceParty,
-        toParty: _serverParty,
         round: 1,
         payload: round1Payload,
       );
@@ -129,10 +132,8 @@ class MpcWalletService implements WalletService {
         if (to == _serverParty) {
           final round2Payload = List<int>.from(msg['payload'] as List);
           // Send Round 2 via HTTP (reliable delivery)
-          await MpcApi.sendMessage(
+          await _sendToServer(
             sessionId: sessionId,
-            fromParty: _deviceParty,
-            toParty: _serverParty,
             round: 2,
             payload: round2Payload,
           );
@@ -281,6 +282,7 @@ class MpcWalletService implements WalletService {
 
     final remoteSessionId = sessionResult.data!['session_id'] as String;
     _currentSessionId = remoteSessionId;
+    _currentHmacKey = sessionResult.data!['hmac_key'] as String?;
     _lastMessageId = 0;
 
     final ws = MpcWebSocket(sessionId: remoteSessionId, partyIndex: _deviceParty);
@@ -303,10 +305,8 @@ class MpcWalletService implements WalletService {
       // Send Round 1: structured JSON {r0, msg_hash, tx{...}} so the server
       // can independently recompute the signing hash and enforce policy.
       final round1Json = buildSignRound1Payload(round1.payload, msgHash, txFields);
-      await MpcApi.sendMessage(
+      await _sendToServer(
         sessionId: remoteSessionId,
-        fromParty: _deviceParty,
-        toParty: _serverParty,
         round: 1,
         payload: round1Json,
       );
@@ -327,10 +327,8 @@ class MpcWalletService implements WalletService {
       );
 
       // Send DeviceContribution via HTTP (reliable delivery)
-      await MpcApi.sendMessage(
+      await _sendToServer(
         sessionId: remoteSessionId,
-        fromParty: _deviceParty,
-        toParty: _serverParty,
         round: 2,
         payload: round2Payload,
       );
@@ -409,6 +407,7 @@ class MpcWalletService implements WalletService {
 
     final remoteSessionId = sessionResult.data!['session_id'] as String;
     _currentSessionId = remoteSessionId;
+    _currentHmacKey = sessionResult.data!['hmac_key'] as String?;
 
     final ws = MpcWebSocket(sessionId: remoteSessionId, partyIndex: _deviceParty);
     try {
@@ -904,5 +903,33 @@ class MpcWalletService implements WalletService {
       'round': msg.round,
       'payload': msg.payload,
     });
+  }
+
+  /// Send a message to the server party, authenticated with the per-session
+  /// HMAC key (F-004). Server rejects server-bound messages without a valid
+  /// HMAC over (session_id ‖ round ‖ payload).
+  Future<void> _sendToServer({
+    required String sessionId,
+    required int round,
+    required List<int> payload,
+  }) async {
+    String? hmac;
+    final key = _currentHmacKey;
+    if (key != null && key.isNotEmpty) {
+      hmac = MpcHmac.compute(
+        sessionHmacKeyHex: key,
+        sessionId: sessionId,
+        round: round,
+        payload: payload,
+      );
+    }
+    await MpcApi.sendMessage(
+      sessionId: sessionId,
+      fromParty: _deviceParty,
+      toParty: _serverParty,
+      round: round,
+      payload: payload,
+      hmac: hmac,
+    );
   }
 }

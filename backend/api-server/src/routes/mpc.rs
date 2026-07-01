@@ -92,6 +92,11 @@ pub(crate) struct SessionResponse {
     last_activity: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     wallet_id: Option<String>,
+    /// Per-session HMAC key (hex), returned only from create_session to the
+    /// authenticated owner. The client signs each server-bound MPC message with
+    /// this key (F-004). Never returned by get_session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hmac_key: Option<String>,
 }
 
 /// Create a new MPC session
@@ -143,9 +148,18 @@ pub async fn create_session(
         }
     }
 
+    // Generate a per-session HMAC key (F-004). Handed to the authenticated
+    // owner in this response only; used to authenticate server-bound messages.
+    let hmac_key_bytes: [u8; 32] = {
+        use rand::RngCore;
+        let mut k = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut k);
+        k
+    };
+
     sqlx::query(
-        "INSERT INTO mpc_sessions (id, user_id, session_type, parties, threshold, status, current_round, wallet_id)
-         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6)"
+        "INSERT INTO mpc_sessions (id, user_id, session_type, parties, threshold, status, current_round, wallet_id, hmac_key)
+         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6, $7)"
     )
     .bind(session_id)
     .bind(user_id)
@@ -153,6 +167,7 @@ pub async fn create_session(
     .bind(&body.parties)
     .bind(threshold)
     .bind(wallet_id)
+    .bind(&hmac_key_bytes[..])
     .execute(db)
     .await
     .map_err(|e| {
@@ -192,6 +207,7 @@ pub async fn create_session(
         current_round: 0,
         last_activity: None,
         wallet_id: wallet_id.map(|w| w.to_string()),
+        hmac_key: Some(hex::encode(hmac_key_bytes)),
     }))
 }
 
@@ -224,6 +240,8 @@ pub async fn get_session(
         current_round: row.1,
         last_activity: row.2.map(|t| t.to_rfc3339()),
         wallet_id: row.3.map(|w| w.to_string()),
+        // Never re-issue the session HMAC key after creation.
+        hmac_key: None,
     }))
 }
 
@@ -281,8 +299,8 @@ pub async fn send_message(
     let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     // Fetch session details
-    let session: (String, Vec<i16>, i32, uuid::Uuid) = sqlx::query_as(
-        "SELECT status, parties, current_round, user_id FROM mpc_sessions WHERE id = $1"
+    let session: (String, Vec<i16>, i32, uuid::Uuid, Option<Vec<u8>>) = sqlx::query_as(
+        "SELECT status, parties, current_round, user_id, hmac_key FROM mpc_sessions WHERE id = $1"
     )
     .bind(session_id)
     .fetch_one(db)
@@ -293,6 +311,7 @@ pub async fn send_message(
     let parties = &session.1;
     let current_round = session.2 as i16;
     let session_user_id = session.3;
+    let session_hmac_key = &session.4;
 
     // Enforce session ownership: only the owner may drive their session.
     let caller = claims_user_id(&claims)?;
@@ -319,24 +338,26 @@ pub async fn send_message(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Verify HMAC if provided
-    let verified = if let Some(hmac_value) = &body.hmac {
-        use hmac::{Hmac, Mac};
-        type HmacSha256 = Hmac<Sha256>;
-        let hmac_key = std::env::var("MPC_HMAC_KEY")
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        if hmac_key.is_empty() {
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    // Verify HMAC against the per-session key (F-004). The key was handed to
+    // the owner at session creation; each server-bound message must carry an
+    // HMAC over (session_id ‖ round ‖ payload). `verify_slice` is constant-time.
+    let verified = match (&body.hmac, session_hmac_key) {
+        (Some(hmac_value), Some(key)) if !key.is_empty() => {
+            use hmac::{Hmac, Mac};
+            type HmacSha256 = Hmac<Sha256>;
+            match hex::decode(hmac_value) {
+                Ok(provided) => {
+                    let mut mac = HmacSha256::new_from_slice(key)
+                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    mac.update(session_id.to_string().as_bytes());
+                    mac.update(&body.round.to_le_bytes());
+                    mac.update(&body.payload);
+                    mac.verify_slice(&provided).is_ok()
+                }
+                Err(_) => false,
+            }
         }
-        let mut mac = HmacSha256::new_from_slice(hmac_key.as_bytes())
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        mac.update(session_id.to_string().as_bytes());
-        mac.update(&body.round.to_le_bytes());
-        mac.update(&body.payload);
-        let expected = hex::encode(mac.finalize().into_bytes());
-        hmac_value == &expected
-    } else {
-        false
+        _ => false,
     };
 
     // Store message

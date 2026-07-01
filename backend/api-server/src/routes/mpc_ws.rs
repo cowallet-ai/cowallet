@@ -343,6 +343,13 @@ async fn handle_client_message(
 
     // If addressed to server (Party 1), trigger the MPC participant
     if ws_msg.to_party == 1 {
+        // NOTE (F-004): unlike the HTTP /msg path, WS messages are NOT HMAC-checked.
+        // The WS connection is authenticated at upgrade by a single-use ws_ticket
+        // bound to the session owner (ticket_user_id == session_user_id) plus a
+        // party-membership check, so the transport itself already proves the
+        // sender is the authenticated owner. The per-session HMAC exists to
+        // authenticate the stateless HTTP path; it is intentionally not required
+        // here. If the WS auth model changes, revisit this.
         if let Some(participant) = &state.mpc_participant {
             match participant.on_message_received(
                 session_id,
