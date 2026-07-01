@@ -66,8 +66,51 @@ mod tests {
         let session_id = crate::api::dkg_session_new(0)
             .expect("Failed to create DKG session")
             .session_id;
-        
+
         assert!(!session_id.is_empty(), "Session ID should not be empty");
         // In a full test, we would process all 3 rounds and finalize
+    }
+
+    #[test]
+    #[serial]
+    fn test_pin_device_shard_roundtrip() {
+        // B: PIN-only device-shard encryption (no hardware/biometric).
+        let wallet = generate_wallet().expect("Failed to generate wallet");
+        let pin = "123456".to_string();
+
+        let blob = export_device_shard_encrypted(pin.clone())
+            .expect("PIN export should succeed");
+        assert!(!blob.is_empty());
+
+        // Clear in-memory state, then restore purely from the PIN blob.
+        clear_wallet();
+        assert!(!has_wallet(), "wallet cleared");
+
+        let ok = import_device_shard_encrypted(blob.clone(), pin, wallet.public_key.clone())
+            .expect("PIN import should succeed");
+        assert!(ok);
+        assert!(has_wallet(), "wallet restored from PIN-encrypted shard");
+    }
+
+    #[test]
+    #[serial]
+    fn test_pin_device_shard_wrong_pin_fails() {
+        let wallet = generate_wallet().expect("Failed to generate wallet");
+        let blob = export_device_shard_encrypted("123456".to_string())
+            .expect("PIN export should succeed");
+        clear_wallet();
+
+        let result = import_device_shard_encrypted(blob, "000000".to_string(), wallet.public_key);
+        assert!(result.is_err(), "wrong PIN must fail to decrypt");
+    }
+
+    #[test]
+    #[serial]
+    fn test_pin_export_rejects_short_pin() {
+        let _wallet = generate_wallet().expect("Failed to generate wallet");
+        assert!(
+            export_device_shard_encrypted("12".to_string()).is_err(),
+            "PIN shorter than 4 chars must be rejected"
+        );
     }
 }

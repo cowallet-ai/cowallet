@@ -1274,6 +1274,121 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
     Ok(true)
 }
 
+/// PIN-encrypt the device shard (Party 0) for storage WITHOUT hardware-backed
+/// biometric protection. This is the "PIN-only" auth path: the shard is
+/// encrypted at the app layer with Argon2id + AES-256-GCM keyed by the user's
+/// PIN, and the resulting blob is stored in ordinary secure storage (no
+/// Secure Enclave / StrongBox auth-bound key, so no biometric prompt).
+///
+/// The blob covers the FULL device shard (`secret_share(32) || paillier_keypair`),
+/// not just the 32-byte scalar, so signing has the Paillier material after
+/// decrypt. Format: `version(1) || salt(16) || nonce(12) || ciphertext`.
+///
+/// Returns base64. Requires DKG to have populated Party 0 in memory.
+pub fn export_device_shard_encrypted(pin: String) -> Result<String, String> {
+    use aes_gcm::{Aes256Gcm, Nonce, aead::{Aead, KeyInit}};
+    use argon2::{Argon2, Algorithm, Version, Params};
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use rand::RngCore;
+
+    if pin.len() < 4 {
+        return Err("pin must be at least 4 characters".into());
+    }
+
+    // Full device shard: secret_share(32) || optional paillier keypair.
+    let share = state::get_share(0)
+        .ok_or("device shard not loaded — DKG not complete")?;
+    let mut plaintext = share.secret_share.as_bytes().to_vec();
+    if let Some(kp) = &share.paillier_keypair {
+        plaintext.extend_from_slice(kp.as_bytes());
+    }
+
+    let mut salt = [0u8; BACKUP_SALT_LEN];
+    let mut nonce_bytes = [0u8; BACKUP_NONCE_LEN];
+    rand::thread_rng().fill_bytes(&mut salt);
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+
+    let params = Params::new(65536, 3, 4, None)
+        .map_err(|e| format!("KDF params: {}", e))?;
+    let mut key = [0u8; 32];
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(pin.as_bytes(), &salt, &mut key)
+        .map_err(|e| format!("KDF failed: {}", e))?;
+
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|e| format!("cipher init failed: {}", e))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_slice())
+        .map_err(|e| format!("encryption failed: {}", e))?;
+
+    key.iter_mut().for_each(|b| *b = 0);
+
+    let mut blob = Vec::with_capacity(1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN + ciphertext.len());
+    blob.push(BACKUP_FORMAT_VERSION);
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&nonce_bytes);
+    blob.extend_from_slice(&ciphertext);
+
+    Ok(STANDARD.encode(&blob))
+}
+
+/// Decrypt a PIN-encrypted device shard produced by [export_device_shard_encrypted]
+/// and load it into memory as Party 0 (mirrors [import_device_shard]).
+///
+/// Returns `true` on success. Wrong PIN → decryption error.
+pub fn import_device_shard_encrypted(
+    encrypted_data: String,
+    pin: String,
+    public_key: Vec<u8>,
+) -> Result<bool, String> {
+    use aes_gcm::{Aes256Gcm, Nonce, aead::{Aead, KeyInit}};
+    use argon2::{Argon2, Algorithm, Version, Params};
+    use base64::{Engine, engine::general_purpose::STANDARD};
+
+    if pin.is_empty() {
+        return Err("pin cannot be empty".into());
+    }
+
+    let blob = STANDARD
+        .decode(encrypted_data.trim())
+        .map_err(|e| format!("invalid base64: {}", e))?;
+
+    let header = 1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN;
+    // version + salt + nonce + at least (32-byte scalar + 16-byte GCM tag)
+    if blob.len() < header + 32 + 16 {
+        return Err(format!("device shard blob too short: {}", blob.len()));
+    }
+    if blob[0] != BACKUP_FORMAT_VERSION {
+        return Err(format!("unsupported format version: {}", blob[0]));
+    }
+
+    let salt = &blob[1..1 + BACKUP_SALT_LEN];
+    let nonce_bytes = &blob[1 + BACKUP_SALT_LEN..header];
+    let ciphertext = &blob[header..];
+
+    let params = Params::new(65536, 3, 4, None)
+        .map_err(|e| format!("KDF params: {}", e))?;
+    let mut key = [0u8; 32];
+    let salt_arr: [u8; 16] = salt.try_into().map_err(|_| "invalid salt length")?;
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(pin.as_bytes(), &salt_arr, &mut key)
+        .map_err(|e| format!("KDF failed: {}", e))?;
+
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|e| format!("cipher init failed: {}", e))?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| "decryption failed — wrong PIN or corrupted data".to_string())?;
+
+    key.iter_mut().for_each(|b| *b = 0);
+
+    // Reuse the same validation + Party-0 loading as the hardware path.
+    import_device_shard(plaintext, public_key)?;
+    Ok(true)
+}
+
 // ---------------------------------------------------------------------------
 // Legacy signing (for testing)
 // ---------------------------------------------------------------------------
