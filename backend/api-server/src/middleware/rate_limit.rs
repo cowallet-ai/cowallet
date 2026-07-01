@@ -24,10 +24,16 @@ pub struct RateLimit {
 }
 
 impl RateLimit {
+    // NOTE (temporary): limits raised ~100x to unblock testing while the
+    // rate-limit KEYING is fixed. Behind the reverse proxy all unauthenticated
+    // requests currently share one `ip:<gateway>` bucket, so the original
+    // strict values throttled real users. Restore the strict values (10/100/5
+    // per 60s) once keying trusts the proxy's real client IP (XFF allowlist)
+    // or keys auth routes by email/device.
     /// Strict limit for MPC signing operations
     pub const fn strict() -> Self {
         Self {
-            max_requests: 10,
+            max_requests: 1000,
             window_secs: 60,
         }
     }
@@ -35,7 +41,7 @@ impl RateLimit {
     /// Standard limit for read endpoints
     pub const fn standard() -> Self {
         Self {
-            max_requests: 100,
+            max_requests: 10000,
             window_secs: 60,
         }
     }
@@ -43,7 +49,7 @@ impl RateLimit {
     /// Very strict limit for auth operations (login, register)
     pub const fn auth() -> Self {
         Self {
-            max_requests: 5,
+            max_requests: 500,
             window_secs: 60,
         }
     }
