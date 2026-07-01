@@ -244,11 +244,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   // ---- Biometric setup ----
-  // NOTE: we intentionally do NOT call biometrics.authenticate() here. The real
-  // biometric prompt happens once, natively, when the device shard is encrypted
-  // with the auth-bound keystore key (Android StrongBox / iOS Secure Enclave)
-  // during shard storage. Prompting here too caused a double biometric prompt.
-  // This stage only records the enable flag and initializes the keystore.
+  // The user reaches this screen AFTER DKG (the device shard is still only in
+  // Rust memory — runDkg no longer auto-persists it). When the user opts into
+  // biometric protection here, we persist the shard under the hardware-backed
+  // auth-bound key, which triggers the biometric/device-credential prompt now —
+  // as a result of the user's explicit choice, not automatically mid-DKG.
   Future<void> _startBioScan() async {
     // Immediately update UI before any async work
     setState(() {
@@ -263,7 +263,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       if (!available) {
         await Services.biometrics.setEnabled(false);
         setState(() => _bioAuthenticating = false);
-        _goTo(_Stage.name);
+        await _persistShardThen(_Stage.name);
         return;
       }
 
@@ -271,15 +271,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       if (!hasEnrolled) {
         await Services.biometrics.setEnabled(false);
         setState(() => _bioAuthenticating = false);
-        _goTo(_Stage.name);
+        await _persistShardThen(_Stage.name);
         return;
       }
 
       if (!mounted) return;
       setState(() => _bioAuthenticating = false);
 
-      // Enable biometrics and initialize the hardware-backed key store. The
-      // actual biometric challenge is deferred to shard encryption (native).
+      // Enable biometrics and initialize the hardware-backed key store.
       await Services.biometrics.setEnabled(true);
 
       final seManager = SecureEnclaveManager();
@@ -293,6 +292,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         return;
       }
 
+      // Persist the device shard now — this fires the biometric prompt as a
+      // direct result of the user enabling protection here.
+      final walletService = Services.wallet as MpcWalletService;
+      await walletService.persistDeviceShard();
+
+      if (!mounted) return;
       setState(() => _bioDone = true);
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) _goTo(_Stage.name);
@@ -306,9 +311,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
   }
 
+  /// Persist the device shard, then advance to [next]. Used on the
+  /// biometric-unavailable / not-enrolled paths where the hardware key falls
+  /// back to a device-credential prompt.
+  Future<void> _persistShardThen(_Stage next) async {
+    try {
+      final walletService = Services.wallet as MpcWalletService;
+      await walletService.persistDeviceShard();
+      if (mounted) _goTo(next);
+    } catch (e) {
+      if (mounted) setState(() => _bioError = true);
+    }
+  }
+
   void _skipBio() {
     Services.biometrics.setEnabled(false);
-    _goTo(_Stage.pin);
+    // Persist under the hardware key (device-credential fallback) before moving
+    // on. NOTE: a true PIN-only, non-hardware path is added in step B.
+    _persistShardThen(_Stage.pin);
   }
 
   // ---- Name ----

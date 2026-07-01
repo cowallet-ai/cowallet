@@ -170,9 +170,11 @@ class MpcWalletService implements WalletService {
       // Fresh DKG: clear stale recovery commitment so verification uses Lagrange
       await SecureStorage.delete('mpc_server_commitment');
 
-      // Persist device shard to hardware-backed storage and public key to secure storage
-      final deviceShardBytes = await MpcBridge.exportDeviceShard();
-      await SecureHardware.storeDeviceShard(Uint8List.fromList(deviceShardBytes));
+      // Save the public key. The device shard is intentionally NOT persisted
+      // here: storing it under a hardware-backed (biometric-bound) key would
+      // trigger a biometric prompt before the user has chosen their auth method
+      // on the bio/pin screen. The shard stays in Rust memory; the onboarding
+      // flow calls persistDeviceShard(...) after the user makes that choice.
       final pubKeyHex = walletInfo.publicKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
       await SecureStorage.save('mpc_public_key', pubKeyHex);
 
@@ -190,6 +192,19 @@ class MpcWalletService implements WalletService {
     } finally {
       await ws.disconnect();
     }
+  }
+
+  /// Persist the device shard (Party 0) after the user has chosen their auth
+  /// method on the bio/pin screen. Called by the onboarding flow once, after
+  /// DKG completes and the choice is made — NOT during DKG — so the biometric
+  /// prompt only appears when the user has opted into biometric protection.
+  ///
+  /// The shard is exported fresh from Rust memory (kept there by runDkg) and
+  /// stored under the hardware-backed, auth-bound key (biometric / device
+  /// credential). Safe to call again on re-provision.
+  Future<void> persistDeviceShard() async {
+    final deviceShardBytes = await MpcBridge.exportDeviceShard();
+    await SecureHardware.storeDeviceShard(Uint8List.fromList(deviceShardBytes));
   }
 
   /// 按需加载设备分片到 Rust 内存（签名前调用）
