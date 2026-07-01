@@ -213,25 +213,62 @@ class MpcWalletService implements WalletService {
     await SecureHardware.storeDeviceShard(Uint8List.fromList(deviceShardBytes));
   }
 
+  /// Persist the device shard encrypted with the user's PIN (app-layer
+  /// Argon2id + AES-256-GCM, NO hardware/biometric key). Used for the PIN-only
+  /// auth path so storing the shard does not trigger a biometric prompt. The
+  /// ciphertext blob is kept in ordinary secure storage.
+  Future<void> persistDeviceShardWithPin(String pin) async {
+    final blob = await MpcBridge.exportDeviceShardEncrypted(pin);
+    await SecureStorage.save(SecureStorage.keyPinEncryptedShard, blob);
+  }
+
+  /// Whether the device shard is stored under the PIN-only (non-hardware) path.
+  Future<bool> hasPinEncryptedShard() async {
+    final blob = await SecureStorage.get(SecureStorage.keyPinEncryptedShard);
+    return blob != null && blob.isNotEmpty;
+  }
+
   /// 按需加载设备分片到 Rust 内存（签名前调用）
   /// Public so MpcSessionManager can call it during sign recovery.
-  Future<void> ensureShardLoaded() async {
-    final shardBytes = await SecureHardware.loadDeviceShard();
-
-    if (shardBytes == null || shardBytes.isEmpty) {
-      throw MpcException('Device shard not found in secure hardware');
-    }
-
+  ///
+  /// If the shard was stored under the PIN-only path, [pinProvider] is invoked
+  /// to obtain the PIN for decryption; otherwise the hardware path is used
+  /// (which prompts for biometric/device-credential natively).
+  Future<void> ensureShardLoaded({Future<String?> Function()? pinProvider}) async {
     final pubKeyHex = await SecureStorage.get('mpc_public_key');
     if (pubKeyHex == null || pubKeyHex.isEmpty) {
       throw MpcException('Public key not found');
     }
-
     final publicKey = List<int>.generate(
       pubKeyHex.length ~/ 2,
       (i) => int.parse(pubKeyHex.substring(i * 2, i * 2 + 2), radix: 16),
     );
 
+    // PIN-only path: decrypt the app-layer blob with the user's PIN (no biometric).
+    final pinBlob = await SecureStorage.get(SecureStorage.keyPinEncryptedShard);
+    if (pinBlob != null && pinBlob.isNotEmpty) {
+      final pin = pinProvider != null
+          ? await pinProvider()
+          : await SecureStorage.get('wallet_pin');
+      if (pin == null || pin.isEmpty) {
+        throw MpcException('PIN required to unlock device shard');
+      }
+      final ok = await MpcBridge.importDeviceShardEncrypted(
+        encryptedData: pinBlob,
+        pin: pin,
+        publicKey: publicKey,
+      );
+      if (!ok) {
+        throw MpcException('Failed to decrypt device shard (wrong PIN?)');
+      }
+      return;
+    }
+
+    // Hardware path (biometric / device credential).
+    final shardBytes = await SecureHardware.loadDeviceShard();
+    if (shardBytes == null || shardBytes.isEmpty) {
+      throw MpcException('Device shard not found in secure hardware');
+    }
     await MpcBridge.importDeviceShard(
       shardBytes: shardBytes.toList(),
       publicKey: publicKey,

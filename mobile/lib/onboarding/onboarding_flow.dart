@@ -326,9 +326,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   void _skipBio() {
     Services.biometrics.setEnabled(false);
-    // Persist under the hardware key (device-credential fallback) before moving
-    // on. NOTE: a true PIN-only, non-hardware path is added in step B.
-    _persistShardThen(_Stage.pin);
+    // Do NOT persist via the hardware key here (that would fire a biometric
+    // prompt). The device shard stays in Rust memory; it is persisted with the
+    // user's PIN in _onPinComplete once they set it — a true no-biometric path.
+    _goTo(_Stage.pin);
   }
 
   // ---- Name ----
@@ -1367,6 +1368,23 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     } else {
       if (pin == _pinFirst) {
         await SecureStorage.save('wallet_pin', pin);
+        // PIN-only auth path: encrypt and persist the device shard with the PIN
+        // (app-layer, no hardware key → no biometric prompt). The shard has been
+        // held in Rust memory since DKG (runDkg no longer auto-persists it).
+        try {
+          final walletService = Services.wallet as MpcWalletService;
+          await walletService.persistDeviceShardWithPin(pin);
+        } catch (e) {
+          if (!mounted) return;
+          setState(() {
+            _pinMismatch = true;
+            _pinInput = '';
+            _pinFirst = null;
+          });
+          showTopToast(context, 'Failed to secure wallet with PIN: $e',
+              backgroundColor: CwColors.danger);
+          return;
+        }
         setState(() {
           _pinDone = true;
           _pinFirst = null;

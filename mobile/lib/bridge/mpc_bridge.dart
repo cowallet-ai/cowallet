@@ -395,6 +395,34 @@ class MpcBridge {
     }
   }
 
+  /// PIN-encrypt the device shard (app-layer Argon2id + AES-256-GCM, no
+  /// hardware/biometric key). Returns a base64 blob. Used for the PIN-only
+  /// auth path so storing the shard does NOT trigger a biometric prompt.
+  static Future<String> exportDeviceShardEncrypted(String pin) async {
+    try {
+      return await frb.exportDeviceShardEncrypted(pin: pin);
+    } catch (e) {
+      throw MpcException('Failed to PIN-encrypt device shard: $e');
+    }
+  }
+
+  /// Decrypt a PIN-encrypted device shard and load it as Party 0.
+  static Future<bool> importDeviceShardEncrypted({
+    required String encryptedData,
+    required String pin,
+    required List<int> publicKey,
+  }) async {
+    try {
+      return await frb.importDeviceShardEncrypted(
+        encryptedData: encryptedData,
+        pin: pin,
+        publicKey: Uint8List.fromList(publicKey),
+      );
+    } catch (e) {
+      throw MpcException('Failed to load PIN-encrypted device shard: $e');
+    }
+  }
+
   /// ===== Backup Shard Verification =====
 
   /// Verify a backup shard by combining it with the device shard via Lagrange
