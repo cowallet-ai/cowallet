@@ -24,7 +24,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 pub struct UploadShardRequest {
-    location: String,  // 'device', 'server', 'backup'
+    location: String,  // 'device' or 'backup' (the 'server' shard is DKG-owned, not uploadable here)
     party_index: i16,
     shard_hex: String,  // Hex-encoded shard data (33 bytes for Shamir)
 }
@@ -121,8 +121,12 @@ async fn upload_shard(
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    // Validate location
-    let valid_locations = ["device", "server", "backup"];
+    // Validate location. The 'server' shard is owned exclusively by the DKG
+    // participant (encrypted with AES-GCM + AAD identity binding via
+    // MpcParticipant/shard_store); allowing it here would let a REST upload
+    // overwrite the DKG-managed row with an unbound, incompatibly-encrypted blob
+    // and brick signing.
+    let valid_locations = ["device", "backup"];
     if !valid_locations.contains(&body.location.as_str()) {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -212,8 +216,11 @@ async fn get_shard(
             StatusCode::BAD_REQUEST
         })?;
 
-    // Validate location
-    let valid_locations = ["device", "server", "backup"];
+    // Validate location. 'server' shards are DKG-owned and encrypted with
+    // AES-GCM + AAD identity binding (see upload_shard); they can never be read
+    // back through this transport path, which decrypts with the unbound
+    // 'default-key' context and would fail.
+    let valid_locations = ["device", "backup"];
     if !valid_locations.contains(&location.as_str()) {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -271,15 +278,21 @@ async fn get_shard(
     // Envelope encryption: ECDH with client's ephemeral key, then AES-GCM
     use k256::ecdh::EphemeralSecret;
     use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
-    use sha2::{Sha256, Digest as Sha256Digest};
+    use hkdf::Hkdf;
+    use sha2::Sha256;
 
     let server_secret = EphemeralSecret::random(&mut rand::thread_rng());
     let server_pk = server_secret.public_key();
     let shared_secret = server_secret.diffie_hellman(&client_pk);
 
-    // Derive AES key from shared secret via SHA-256
-    let aes_key = Sha256::digest(shared_secret.raw_secret_bytes());
-    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+    // Derive AES-256 key via HKDF-SHA256 (RFC 5869).
+    // salt=None (uses HKDF zero-length salt, equivalent to all-zeros),
+    // info binds the key to this protocol context.
+    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+    let mut aes_key_bytes = [0u8; 32];
+    hkdf.expand(b"cowallet-shard-transport-v1", &mut aes_key_bytes)
+        .expect("HKDF expand: 32-byte output is always valid");
+    let cipher = Aes256Gcm::new_from_slice(&aes_key_bytes)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let transport_nonce_bytes: [u8; 12] = rand::random();

@@ -218,11 +218,6 @@ pub async fn get_session(
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    // SECURITY (F-003): enforce session ownership.
-    if row.4 != user_id {
-        return Err(StatusCode::FORBIDDEN);
-    }
-
     Ok(Json(SessionResponse {
         session_id: id.to_string(),
         status: row.0,
@@ -942,6 +937,7 @@ mod ownership_tests {
             device_id: "DEV0000000000001".to_string(),
             exp: 9999999999,
             iat: 0,
+            token_type: crate::middleware::auth::TokenType::Access,
         };
         let uid = claims_user_id(&claims).expect("should parse");
         assert_eq!(uid.to_string(), "11111111-1111-1111-1111-111111111111");
@@ -955,6 +951,7 @@ mod ownership_tests {
             device_id: "DEV0000000000001".to_string(),
             exp: 9999999999,
             iat: 0,
+            token_type: crate::middleware::auth::TokenType::Access,
         };
         assert_eq!(claims_user_id(&claims).unwrap_err(), StatusCode::UNAUTHORIZED);
     }

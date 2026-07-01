@@ -162,16 +162,28 @@ pub(super) async fn chat_stream(
             }
         }
 
-        // Inject portfolio and contacts context into user message if provided
+        // Inject portfolio and contacts context into user message if provided.
+        // SECURITY: this data is client-supplied and untrusted. It is sanitized
+        // (control chars stripped, length-capped) and wrapped in an explicit
+        // untrusted-data boundary so the model does not treat it as instructions
+        // (indirect prompt-injection defense).
         let mut user_content = user_message.clone();
         if let Some(portfolio) = &req.portfolio {
-            let portfolio_str = serde_json::to_string_pretty(portfolio).unwrap_or_default();
-            user_content = format!("{}\n\n[Portfolio Context]\n{}", user_content, portfolio_str);
+            let portfolio_str = serde_json::to_string(portfolio).unwrap_or_default();
+            let clean = sanitize_untrusted(&portfolio_str, 4000);
+            user_content = format!(
+                "{}\n\n<untrusted_data source=\"portfolio\">\n{}\n</untrusted_data>",
+                user_content, clean
+            );
         }
         if let Some(contacts) = &req.contacts {
             if !contacts.is_empty() {
                 let contacts_str = serde_json::to_string(contacts).unwrap_or_default();
-                user_content = format!("{}\n\n[Contacts]\n{}", user_content, contacts_str);
+                let clean = sanitize_untrusted(&contacts_str, 4000);
+                user_content = format!(
+                    "{}\n\n<untrusted_data source=\"contacts\">\n{}\n</untrusted_data>",
+                    user_content, clean
+                );
             }
         }
 
@@ -305,6 +317,9 @@ pub(super) async fn chat_stream(
             user_id: req.user_id.clone(),
             wallet_address: req.wallet_address.clone(),
             auth_method: req.auth_method.clone(),
+            // F-013: pass the user's ORIGINAL typed message (not the context-injected
+            // variant) so tools can cross-validate LLM-chosen recipient addresses.
+            user_message: Some(user_message.clone()),
         };
 
         let mut tool_results: Vec<ToolExecutionResult> = Vec::new();
@@ -578,6 +593,32 @@ pub(super) async fn chat_stream(
 
 fn sse_event(event: &str, data: &serde_json::Value) -> Result<Bytes, Infallible> {
     Ok(Bytes::from(format!("event: {}\ndata: {}\n\n", event, data)))
+}
+
+/// Sanitize client-supplied, untrusted context (portfolio / contacts) before
+/// injecting it into the AI prompt. Strips control characters (which can be used
+/// to spoof role boundaries or smuggle hidden instructions), neutralizes literal
+/// untrusted-data boundary tags so the payload can't close its own wrapper, and
+/// caps length to bound the injection surface.
+fn sanitize_untrusted(input: &str, max_len: usize) -> String {
+    let mut out = String::with_capacity(input.len().min(max_len));
+    for c in input.chars() {
+        // Drop C0/C1 control chars except plain space; keep normal whitespace as space.
+        if c == '\t' || c == '\n' || c == '\r' {
+            out.push(' ');
+        } else if c.is_control() {
+            continue;
+        } else {
+            out.push(c);
+        }
+        if out.len() >= max_len {
+            out.push_str(" …(truncated)");
+            break;
+        }
+    }
+    // Prevent the payload from closing the wrapper element or forging a new one.
+    out.replace("<untrusted_data", "<_untrusted_data")
+        .replace("</untrusted_data", "</_untrusted_data")
 }
 
 #[cfg(test)]

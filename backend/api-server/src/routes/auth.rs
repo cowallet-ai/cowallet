@@ -236,14 +236,27 @@ async fn register(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    // Decode the optional wallet public key (SEC1 hex) used for challenge-response
-    // login (F-001). Reject malformed keys so logins can actually verify later.
-    let public_key_bytes: Option<Vec<u8>> = match &body.public_key {
+    // Decode and validate the device's hardware public key (F-001 challenge-response
+    // login). Its algorithm is P-256 (iOS Secure Enclave) or RSA (Android StrongBox);
+    // login later verifies signatures against this key + `device_pubkey_alg`. Reject
+    // malformed keys or an unknown algorithm so logins can actually verify later.
+    let device_pubkey_bytes: Option<Vec<u8>> = match &body.device_pubkey {
         Some(pk_hex) => {
+            let alg = body.device_pubkey_alg.as_deref().ok_or(StatusCode::BAD_REQUEST)?;
             let bytes = hex::decode(pk_hex.trim_start_matches("0x"))
                 .map_err(|_| StatusCode::BAD_REQUEST)?;
-            k256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)
-                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            match alg {
+                "p256" => {
+                    p256::ecdsa::VerifyingKey::from_sec1_bytes(&bytes)
+                        .map_err(|_| StatusCode::BAD_REQUEST)?;
+                }
+                "rsa" => {
+                    use rsa::pkcs8::DecodePublicKey;
+                    rsa::RsaPublicKey::from_public_key_der(&bytes)
+                        .map_err(|_| StatusCode::BAD_REQUEST)?;
+                }
+                _ => return Err(StatusCode::BAD_REQUEST),
+            }
             Some(bytes)
         }
         None => None,
@@ -359,12 +372,15 @@ async fn register(
         }
 
         // Update device_id and reuse the user.
-        // Set public_key only when provided (don't clobber an existing key with NULL).
+        // Set the device public key + algorithm only when provided (don't clobber an
+        // existing key with NULL).
         sqlx::query(
-            "UPDATE users SET device_id = $1, public_key = COALESCE($2, public_key) WHERE id = $3"
+            "UPDATE users SET device_id = $1, public_key = COALESCE($2, public_key), \
+             device_pubkey_alg = COALESCE($3, device_pubkey_alg) WHERE id = $4"
         )
             .bind(&body.device_id)
-            .bind(public_key_bytes.as_deref())
+            .bind(device_pubkey_bytes.as_deref())
+            .bind(body.device_pubkey_alg.as_deref())
             .bind(existing_id)
             .execute(db)
             .await
@@ -374,11 +390,12 @@ async fn register(
     } else {
         // New user
         let new_id = uuid::Uuid::new_v4();
-        sqlx::query("INSERT INTO users (id, email, device_id, public_key) VALUES ($1, $2, $3, $4)")
+        sqlx::query("INSERT INTO users (id, email, device_id, public_key, device_pubkey_alg) VALUES ($1, $2, $3, $4, $5)")
             .bind(new_id)
             .bind(&body.email)
             .bind(&body.device_id)
-            .bind(public_key_bytes.as_deref())
+            .bind(device_pubkey_bytes.as_deref())
+            .bind(body.device_pubkey_alg.as_deref())
             .execute(db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

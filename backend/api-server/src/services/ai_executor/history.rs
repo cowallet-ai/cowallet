@@ -11,13 +11,13 @@ impl ToolContext {
         let offset: i64 = parse_param(&params, "offset").unwrap_or(0);
         let chain_id_filter: Option<u64> = parse_param(&params, "chain_id");
 
-        // Try Covalent API first if no chain_id filter and wallet address available
+        // Try OKX API first if no chain_id filter and wallet address available
         if chain_id_filter.is_none() {
-            if let (Some(api_key), Some(addr)) = (&self.app_state.covalent_api_key, &self.wallet_address) {
+            if let (Some(creds), Some(addr)) = (&self.app_state.okx_credentials, &self.wallet_address) {
                 let supported_chains = vec![1u64, 8453, 42161, 10, 56, 137];
-                match crate::services::covalent::get_all_chain_transactions(
+                match crate::services::okx::get_all_chain_transactions(
                     &self.app_state.http,
-                    api_key,
+                    creds,
                     addr,
                     &supported_chains,
                 )
@@ -30,7 +30,7 @@ impl ToolContext {
                             .map(|tx| {
                                 let token = &tx.token_symbol;
                                 let decimals: u32 = if token == "USDC" || token == "USDT" { 6 } else { 18 };
-                                let formatted_value = crate::services::covalent::format_value(&tx.value, decimals);
+                                let formatted_value = crate::services::okx::format_value(&tx.value, decimals);
                                 serde_json::json!({
                                     "chain_id": tx.chain_id,
                                     "chain_name": tx.chain_name,
@@ -62,7 +62,7 @@ impl ToolContext {
                         };
                     }
                     Err(e) => {
-                        tracing::warn!("Covalent multi-chain tx query failed, falling back to DB: {}", e);
+                        tracing::warn!("OKX multi-chain tx query failed, falling back to DB: {}", e);
                     }
                 }
             }
@@ -149,7 +149,7 @@ impl ToolContext {
             .into_iter()
             .map(|row| {
                 let chain_id = row.get::<i64, _>("chain_id") as u64;
-                let chain_name = crate::services::covalent::chain_display_name(chain_id);
+                let chain_name = crate::services::okx::chain_display_name(chain_id);
                 serde_json::json!({
                     "id": row.get::<uuid::Uuid, _>("id").to_string(),
                     "chain_id": chain_id,

@@ -1,6 +1,6 @@
 //! Transaction preparation and gas estimation tools.
 
-use super::{format_units, infer_chain_id_from_token, parse_param, parse_wallet_address, ToolContext, ToolExecutionResult};
+use super::{extract_0x_addresses, format_units, infer_chain_id_from_token, parse_decimal_to_smallest, parse_param, parse_wallet_address, validate_evm_address, ToolContext, ToolExecutionResult};
 use serde_json::Value;
 
 /// Gas estimation result
@@ -67,18 +67,22 @@ impl ToolContext {
         };
         let send_all: bool = parse_param(&params, "send_all").unwrap_or(false);
 
-        // Validate contract_address format if provided
-        if let Some(ref ca) = contract_address {
-            if !ca.starts_with("0x") || ca.len() != 42 {
-                return ToolExecutionResult {
-                    tool_id: tool_id.to_string(),
-                    tool_name: "send_transaction".into(),
-                    success: false,
-                    result: Value::Null,
-                    error: Some("Invalid contract_address format. Expected 0x-prefixed 40-char hex address".into()),
-                };
-            }
-        }
+        // Validate contract_address (hex + EIP-55 checksum, F-016) and normalize.
+        let contract_address = match contract_address {
+            Some(ca) => match validate_evm_address(&ca) {
+                Ok(canonical) => Some(canonical),
+                Err(e) => {
+                    return ToolExecutionResult {
+                        tool_id: tool_id.to_string(),
+                        tool_name: "send_transaction".into(),
+                        success: false,
+                        result: Value::Null,
+                        error: Some(format!("Invalid contract_address: {}", e)),
+                    };
+                }
+            },
+            None => None,
+        };
         let from_address = match parse_wallet_address(self.wallet_address.as_deref()) {
             Some(a) => a,
             None => return ToolExecutionResult {
@@ -90,37 +94,68 @@ impl ToolContext {
             },
         };
 
-        // Validate to_address format
-        if !to_address.starts_with("0x") || to_address.len() != 42 {
-            return ToolExecutionResult {
-                tool_id: tool_id.to_string(),
-                tool_name: "send_transaction".into(),
-                success: false,
-                result: Value::Null,
-                error: Some("Invalid to_address format. Expected 0x-prefixed hex address".into()),
-            };
-        }
+        // Validate to_address (hex + EIP-55 checksum, F-016) and normalize.
+        let to_address = match validate_evm_address(&to_address) {
+            Ok(canonical) => canonical,
+            Err(e) => {
+                return ToolExecutionResult {
+                    tool_id: tool_id.to_string(),
+                    tool_name: "send_transaction".into(),
+                    success: false,
+                    result: Value::Null,
+                    error: Some(format!("Invalid to_address: {}", e)),
+                };
+            }
+        };
 
-        // Parse value - support both smallest-unit (integer) and human-readable (decimal) formats
-        let value_wei_str: String;
-        let value_u256 = if value.contains('.') {
-            // Human-readable amount - convert to smallest unit using token decimals
-            let amount: f64 = match value.parse() {
-                Ok(v) => v,
-                Err(_) => {
+        // F-013: Cross-validate the LLM-chosen recipient. If the user's ORIGINAL
+        // message literally contains one or more 0x addresses, the tool-chosen
+        // to_address MUST be one of them. This prevents indirect prompt injection
+        // (e.g. malicious portfolio/contact data injected into the AI context)
+        // from redirecting a transfer the user explicitly addressed to a typed
+        // address. When the user did not type any address (referring to a contact
+        // by name), we fall through to the mandatory user-confirmation card.
+        if let Some(msg) = &self.user_message {
+            let typed_addresses = extract_0x_addresses(msg);
+            if !typed_addresses.is_empty() {
+                let to_lower = to_address.to_lowercase();
+                let matches = typed_addresses.iter().any(|a| a.to_lowercase() == to_lower);
+                if !matches {
+                    tracing::warn!(
+                        "send_transaction to_address {} does not match any address typed by the user; rejecting (possible prompt injection)",
+                        to_address
+                    );
                     return ToolExecutionResult {
                         tool_id: tool_id.to_string(),
                         tool_name: "send_transaction".into(),
                         success: false,
                         result: Value::Null,
-                        error: Some("Invalid value format".into()),
+                        error: Some("收款地址与您消息中提供的地址不一致，已拒绝。请重新确认收款地址。(recipient address does not match the address you provided)".into()),
                     };
                 }
-            };
-            let factor = 10f64.powi(decimals as i32);
-            let smallest = (amount * factor) as u128;
-            value_wei_str = smallest.to_string();
-            alloy_primitives::U256::from(smallest)
+            }
+        }
+
+        // Parse value - support both smallest-unit (integer) and human-readable (decimal) formats
+        let value_wei_str: String;
+        let value_u256 = if value.contains('.') {
+            // Human-readable amount - convert to smallest unit with exact integer
+            // math (F-015). f64 would silently alter the amount the user approved.
+            match parse_decimal_to_smallest(&value, decimals as u32) {
+                Ok(v) => {
+                    value_wei_str = v.to_string();
+                    v
+                }
+                Err(e) => {
+                    return ToolExecutionResult {
+                        tool_id: tool_id.to_string(),
+                        tool_name: "send_transaction".into(),
+                        success: false,
+                        result: Value::Null,
+                        error: Some(format!("Invalid value format: {}", e)),
+                    };
+                }
+            }
         } else {
             match alloy_primitives::U256::from_str_radix(&value, 10) {
                 Ok(v) => {
@@ -363,7 +398,7 @@ impl ToolContext {
         let cost_wei = gas_units as u128 * gas_price_wei;
         let cost_eth = cost_wei as f64 / 1e18;
 
-        let native_sym = crate::services::covalent::native_symbol(chain_id);
+        let native_sym = crate::services::okx::native_symbol(chain_id);
         let cost_usd = self
             .app_state
             .price_cache
@@ -462,7 +497,7 @@ impl ToolContext {
         let cost_eth = cost_wei as f64 / 1e18;
 
         // Try to get native token price for USD conversion
-        let native_sym = crate::services::covalent::native_symbol(chain_id);
+        let native_sym = crate::services::okx::native_symbol(chain_id);
         let cost_usd = self
             .app_state
             .price_cache

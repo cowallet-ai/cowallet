@@ -404,12 +404,8 @@ class IntentExecutor {
               await _waitForTxConfirmation(resetTxHash);
             }
 
-            // Send unlimited approval (MaxUint256)
-            final maxUint256 = BigInt.parse(
-              'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-              radix: 16,
-            );
-            final amountHex = maxUint256.toRadixString(16).padLeft(64, '0');
+            // Approve exact amount required for this swap (not unlimited)
+            final amountHex = amount.toRadixString(16).padLeft(64, '0');
             final approveData = '0x095ea7b3${spenderStripped.padLeft(64, '0')}$amountHex';
 
             final approveTxHash = await _tx.signAndSend(

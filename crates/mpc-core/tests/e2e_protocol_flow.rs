@@ -250,8 +250,10 @@ fn test_full_dkg_then_sign() {
 /// After reshare, old shares are invalidated — attackers with old shares cannot combine
 /// them with new shares to sign.
 ///
-/// Note: Reshare implementation needs refinement. Marked as #[ignore] pending fix.
-/// Also uses slow Paillier operations.
+/// Note: Reshare itself is correct (see the fast `test_dkg_reshare_protocol_flow`
+/// and `test_recovery_reshare_2_of_3`, which run by default). This variant stays
+/// #[ignore] only because the distributed sign afterward uses slow Paillier MtA
+/// (~60-120s). Run with: cargo test test_dkg_then_reshare_then_sign -- --ignored
 #[test]
 #[ignore]
 fn test_dkg_then_reshare_then_sign() {
@@ -630,8 +632,9 @@ fn test_all_party_pairs_can_dkg_and_sign() {
 /// DKG → Reshare1 → Reshare2 → Reshare3 → Sign
 /// Public key must remain constant across all reshares.
 ///
-/// Note: Reshare implementation needs refinement. Marked as #[ignore] pending fix.
-/// Also uses slow Paillier operations.
+/// Note: Reshare itself is correct (proven by the fast reshare tests that run
+/// by default). This variant stays #[ignore] only because it performs 3 reshares
+/// plus a distributed sign using slow Paillier MtA (~250s).
 #[test]
 #[ignore]
 fn test_multiple_sequential_reshares() {
@@ -670,8 +673,10 @@ fn test_multiple_sequential_reshares() {
     let original_pubkey = share_device.public_key.clone();
     println!("✓ Initial DKG complete");
 
-    // Get initial backup share
-    let backup_r2_msgs: Vec<_> = vec![&r2_device, &r2_backup]
+    // Get initial backup share. Backup is party 2, so it must collect the
+    // Round-2 evaluations addressed to it from the OTHER two parties (device
+    // and server) — a party never emits a share addressed to itself.
+    let backup_r2_msgs: Vec<_> = vec![&r2_device, &r2_server]
         .into_iter()
         .flat_map(|msgs| msgs.iter().filter(|m| m.to == 2))
         .cloned()
@@ -875,9 +880,8 @@ fn test_dkg_protocol_with_local_sign() {
 /// 4. Verify shares are different (refreshed)
 /// 5. Sign with new shares using local signing (fast)
 ///
-/// Note: Reshare implementation needs refinement. Marked as #[ignore] pending fix.
+/// Fast (~10s, no Paillier), so it runs by default and guards reshare correctness.
 #[test]
-#[ignore]
 fn test_dkg_reshare_protocol_flow() {
     let dkg_session_id = "e2e-fast-reshare";
 

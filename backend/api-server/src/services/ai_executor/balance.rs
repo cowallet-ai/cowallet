@@ -23,14 +23,14 @@ impl ToolContext {
         };
         let address = format!("0x{:x}", owner);
 
-        // Use Covalent API if configured
-        if let Some(api_key) = &self.app_state.covalent_api_key {
+        // Use OKX API if configured
+        if let Some(creds) = &self.app_state.okx_credentials {
             // Multi-chain query if no chain_id specified
             if chain_id_filter.is_none() {
                 let supported_chains = vec![1u64, 8453, 42161, 10, 56, 137];
-                match crate::services::covalent::get_all_chain_balances(
+                match crate::services::okx::get_all_chain_balances(
                     &self.app_state.http,
-                    api_key,
+                    creds,
                     &address,
                     &supported_chains,
                 )
@@ -40,7 +40,7 @@ impl ToolContext {
                         let mut chains_data: Vec<serde_json::Value> = Vec::new();
 
                         for chain in &all_balances.chains {
-                            let filtered_tokens: Vec<&crate::services::covalent::TokenBalance> =
+                            let filtered_tokens: Vec<&crate::services::okx::TokenBalance> =
                                 if let Some(ref symbol) = token_filter {
                                     let s = symbol.to_uppercase();
                                     chain.tokens.iter().filter(|b| b.symbol.to_uppercase() == s).collect()
@@ -79,22 +79,22 @@ impl ToolContext {
                         };
                     }
                     Err(e) => {
-                        tracing::warn!("Covalent multi-chain balance query failed: {}", e);
+                        tracing::warn!("OKX multi-chain balance query failed: {}", e);
                     }
                 }
             } else {
                 // Single chain query
                 let chain_id = chain_id_filter.unwrap();
-                match crate::services::covalent::get_balances(
+                match crate::services::okx::get_balances(
                     &self.app_state.http,
-                    api_key,
+                    creds,
                     &address,
                     chain_id,
                 )
                 .await
                 {
                     Ok(balances) => {
-                        let filtered: Vec<&crate::services::covalent::TokenBalance> =
+                        let filtered: Vec<&crate::services::okx::TokenBalance> =
                             if let Some(ref symbol) = token_filter {
                                 let s = symbol.to_uppercase();
                                 balances.iter().filter(|b| b.symbol.to_uppercase() == s).collect()
@@ -128,7 +128,7 @@ impl ToolContext {
                         };
                     }
                     Err(e) => {
-                        tracing::warn!("Covalent balance query failed, falling back to RPC: {}", e);
+                        tracing::warn!("OKX balance query failed, falling back to RPC: {}", e);
                     }
                 }
             }
@@ -189,13 +189,13 @@ impl ToolContext {
         // Get balance from Covalent if available
         let mut balance_info = serde_json::json!(null);
         let mut resolved_chain_id = chain_id;
-        if let (Some(api_key), Some(ref addr)) = (&self.app_state.covalent_api_key, &address_str) {
+        if let (Some(creds), Some(ref addr)) = (&self.app_state.okx_credentials, &address_str) {
             if chain_id == 0 {
                 // Multi-chain search: find which chain has this token
                 let all_chains: &[u64] = &[1, 137, 8453, 42161, 10, 56];
                 for &cid in all_chains {
-                    if let Ok(balances) = crate::services::covalent::get_balances(
-                        &self.app_state.http, api_key, addr, cid,
+                    if let Ok(balances) = crate::services::okx::get_balances(
+                        &self.app_state.http, creds, addr, cid,
                     ).await {
                         if let Some(token) = balances.iter().find(|b| b.symbol.to_uppercase() == symbol_upper) {
                             resolved_chain_id = cid;
@@ -214,8 +214,8 @@ impl ToolContext {
                     }
                 }
             } else {
-                if let Ok(balances) = crate::services::covalent::get_balances(
-                    &self.app_state.http, api_key, addr, chain_id,
+                if let Ok(balances) = crate::services::okx::get_balances(
+                    &self.app_state.http, creds, addr, chain_id,
                 ).await {
                     if let Some(token) = balances.iter().find(|b| b.symbol.to_uppercase() == symbol_upper) {
                         resolved_chain_id = chain_id;

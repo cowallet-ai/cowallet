@@ -1119,11 +1119,11 @@ const BACKUP_NONCE_LEN: usize = 12;
 /// Output format: version(1) || salt(16) || nonce(12) || ciphertext(32+16 tag)
 /// The whole blob is then base64-encoded for easy transport (QR code, file, clipboard).
 ///
-/// KDF: Argon2id with default params (19 MiB memory, 2 iterations, 1 parallelism).
+/// KDF: Argon2id with params (m=64 MiB, t=3 iterations, p=4 parallelism).
 /// Cipher: AES-256-GCM with random nonce.
 pub fn export_backup_shard(password: String) -> Result<String, String> {
     use aes_gcm::{Aes256Gcm, Nonce, aead::{Aead, KeyInit}};
-    use argon2::Argon2;
+    use argon2::{Argon2, Algorithm, Version, Params};
     use base64::{Engine, engine::general_purpose::STANDARD};
     use rand::RngCore;
 
@@ -1149,9 +1149,11 @@ pub fn export_backup_shard(password: String) -> Result<String, String> {
     rand::thread_rng().fill_bytes(&mut salt);
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
 
-    // Derive encryption key from password using Argon2id
+    // Derive encryption key from password using Argon2id (m=64MiB, t=3, p=4)
+    let params = Params::new(65536, 3, 4, None)
+        .map_err(|e| format!("KDF params: {}", e))?;
     let mut key = [0u8; 32];
-    Argon2::default()
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(password.as_bytes(), &salt, &mut key)
         .map_err(|e| format!("KDF failed: {}", e))?;
 
@@ -1184,7 +1186,7 @@ pub fn export_backup_shard(password: String) -> Result<String, String> {
 /// Returns `true` on success.
 pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<bool, String> {
     use aes_gcm::{Aes256Gcm, Nonce, aead::{Aead, KeyInit}};
-    use argon2::Argon2;
+    use argon2::{Argon2, Algorithm, Version, Params};
     use base64::{Engine, engine::general_purpose::STANDARD};
     use k256::elliptic_curve::PrimeField;
     use k256::Scalar;
@@ -1218,10 +1220,12 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
     let nonce_bytes = &blob[1 + BACKUP_SALT_LEN..1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN];
     let ciphertext = &blob[1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN..];
 
-    // Derive decryption key from password using Argon2id
+    // Derive decryption key from password using Argon2id (m=64MiB, t=3, p=4)
+    let params = Params::new(65536, 3, 4, None)
+        .map_err(|e| format!("KDF params: {}", e))?;
     let mut key = [0u8; 32];
     let salt_arr: [u8; 16] = salt.try_into().map_err(|_| "invalid salt length")?;
-    Argon2::default()
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(password.as_bytes(), &salt_arr, &mut key)
         .map_err(|e| format!("KDF failed: {}", e))?;
 

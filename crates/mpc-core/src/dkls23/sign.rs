@@ -19,6 +19,15 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
+/// Test-only tripwire counting how many times the full private key is
+/// reconstructed via `combine_shares_locally`. Used by
+/// `test_distributed_path_never_reconstructs_key` to prove the real
+/// distributed signing path never reconstructs the key.
+#[cfg(test)]
+thread_local! {
+    static LOCAL_RECONSTRUCT_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// A distributed signing session implementing DKLS23.
 ///
 /// This implementation follows the 2-round threshold ECDSA protocol
@@ -221,6 +230,14 @@ impl SignSession {
 
     /// Helper: Combine shares locally (for testing/demo only)
     fn combine_shares_locally(indices: &[u16], shares: &[KeyShare]) -> Option<KeyShare> {
+        // Security tripwire (F-crypto): full-private-key reconstruction is the one
+        // operation an MPC signer must NEVER perform on the distributed signing
+        // path. This is the single place the secret is Lagrange-reconstructed, so
+        // we count entries here in test builds. The distributed path
+        // (generate_round1 → process_round2) must leave this counter at zero;
+        // `test_distributed_path_never_reconstructs_key` asserts exactly that.
+        #[cfg(test)]
+        LOCAL_RECONSTRUCT_CALLS.with(|c| c.set(c.get() + 1));
 
         if shares.is_empty() {
             return None;
@@ -1238,6 +1255,102 @@ mod tests {
         assert!(
             sig_device.verify(&hash, &shares[0].public_key).unwrap(),
             "distributed signature verification failed"
+        );
+    }
+
+    /// Security tripwire: the real distributed signing path
+    /// (generate_round1 → process_round1 → generate_round2 → process_round2)
+    /// must NEVER reconstruct the full private key via combine_shares_locally.
+    /// Reconstruction is only reachable through new_local (testing/demo).
+    ///
+    /// This runs a full 2-party distributed signature and asserts the
+    /// reconstruction counter stays at zero, then confirms the counter DOES
+    /// increment for new_local — proving the tripwire actually detects
+    /// reconstruction and isn't silently dead.
+    #[test]
+    fn test_distributed_path_never_reconstructs_key() {
+        use sha3::Digest;
+
+        LOCAL_RECONSTRUCT_CALLS.with(|c| c.set(0));
+
+        let shares = dkg_shares();
+        let hash: [u8; 32] = sha3::Keccak256::digest(b"anti-reconstruct").into();
+
+        let config0 = SessionConfig {
+            session_id: "anti-recon".into(),
+            threshold: 2,
+            total_parties: 3,
+            party_index: 0,
+        };
+        let config1 = SessionConfig {
+            session_id: "anti-recon".into(),
+            threshold: 2,
+            total_parties: 3,
+            party_index: 1,
+        };
+
+        let mut session0 = SignSession::new_distributed(config0, shares[0].clone(), hash);
+        let mut session1 = SignSession::new_distributed(config1, shares[1].clone(), hash);
+
+        let r1_msg0 = session0.generate_round1().unwrap();
+        let r1_msg1 = session1.generate_round1().unwrap();
+        session0.process_round1(vec![r1_msg1]).unwrap();
+        session1.process_round1(vec![r1_msg0]).unwrap();
+
+        let r2_msg0 = session0.generate_round2().unwrap();
+        let _ = session1.process_round2(vec![r2_msg0]).unwrap();
+
+        let server_response_msg = session1
+            .round2_messages
+            .iter()
+            .find_map(|m| {
+                if let SignRound2Message::ServerSignature { session_id, party_index, s } = m {
+                    Some(SignRound2Message::ServerSignature {
+                        session_id: session_id.clone(),
+                        party_index: *party_index,
+                        s: s.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .expect("server should have produced ServerSignature");
+        let payload = bincode::serialize(&server_response_msg).unwrap();
+        let server_response = ProtocolMessage {
+            session_id: "anti-recon".into(),
+            from: 1,
+            to: 0,
+            round: 2,
+            payload,
+        };
+        let sig = session0.process_round2(vec![server_response]).unwrap();
+        assert!(sig.verify(&hash, &shares[0].public_key).unwrap());
+
+        // The whole distributed flow must not have reconstructed the key even once.
+        let after_distributed = LOCAL_RECONSTRUCT_CALLS.with(|c| c.get());
+        assert_eq!(
+            after_distributed, 0,
+            "SECURITY VIOLATION: distributed signing path reconstructed the full private key \
+             ({} call(s) to combine_shares_locally)",
+            after_distributed
+        );
+
+        // Sanity: prove the tripwire is live — new_local DOES reconstruct.
+        let _local = SignSession::new_local(
+            SessionConfig {
+                session_id: "anti-recon-local".into(),
+                threshold: 2,
+                total_parties: 3,
+                party_index: 0,
+            },
+            vec![0, 1],
+            vec![shares[0].clone(), shares[1].clone()],
+            hash,
+        );
+        assert_eq!(
+            LOCAL_RECONSTRUCT_CALLS.with(|c| c.get()),
+            1,
+            "tripwire should register exactly one reconstruction via new_local"
         );
     }
 
