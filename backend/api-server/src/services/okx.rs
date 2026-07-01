@@ -540,8 +540,20 @@ pub async fn get_all_chain_balances(
 
 #[derive(Debug, Deserialize)]
 struct TxData {
-    #[serde(default)]
+    // OKX returns `"transactions": null` for addresses with no history (not an
+    // empty array), and #[serde(default)] does NOT cover an explicit null — it
+    // only covers a missing field. Deserialize as Option and coalesce null→[].
+    #[serde(default, deserialize_with = "null_to_empty_vec")]
     transactions: Vec<OkxTransaction>,
+}
+
+/// Deserialize a field that may be `null` into an empty Vec.
+fn null_to_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[derive(Debug, Deserialize)]
