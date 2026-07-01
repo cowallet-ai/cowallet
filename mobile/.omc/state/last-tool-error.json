@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -n \\\"targetSdk\\\\|minSdk\\\\|compileSdk\\\" mobile/android/app/build.gradle* 2>/dev/null; echo \\\"=== Scaffold ancestor in chat tree ===\\\"; grep -n \\\"Scaffold\\\\|ScaffoldMessenger\\\" mobile/l...",
-  "error": "Exit code 1\n(eval):1: no matches found: mobile/android/app/build.gradle*",
-  "timestamp": "2026-06-30T05:48:34.165Z",
+  "tool_input_preview": "{\"command\":\"grep -nE \\\"MpcApi.sendMessage\\\" mobile/lib/services/mpc_wallet_service.dart\",\"description\":\"找剩余 MpcApi.sendMessage 调用\"}",
+  "error": "Exit code 2\nugrep: warning: mobile/lib/services/mpc_wallet_service.dart: No such file or directory",
+  "timestamp": "2026-07-01T05:27:20.614Z",
   "retry_count": 1
 }

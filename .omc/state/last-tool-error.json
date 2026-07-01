@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"echo \\\"=== cowallet 容器 ===\\\" && docker ps -a --filter \\\"name=cowallet\\\" --format \\\"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Image}}\\\" 2>&1; echo \\\"=== compose 项目容器 (project label) ===\\\" && dock...",
-  "error": "Exit code 127\n=== cowallet 容器 ===\n(eval):1: command not found: docker\n=== compose 项目容器 (project label) ===\n(eval):1: command not found: docker\n=== cowallet 卷 ===\n(eval):1: command not found: docker\n=== cowallet 镜像 ===\n(eval):1: command not found: docker",
-  "timestamp": "2026-07-01T01:37:58.510Z",
+  "tool_input_preview": "{\"command\":\"(nc -z -w 8 github.com 443 && echo \\\"443 OPEN\\\") 2>&1 || echo \\\"443 UNREACHABLE\\\"; echo \\\"=== 本地未推送提交 ===\\\"; git log --oneline origin/release..release | head\",\"timeout\":30000,\"description\"...",
+  "error": "Exit code 143\nCommand timed out after 30s",
+  "timestamp": "2026-07-01T08:55:31.575Z",
   "retry_count": 1
 }
