@@ -188,8 +188,16 @@ impl DkgSession {
             self.round1_messages.push(round1);
         }
 
-        // Check if we have commitments from all parties
-        if self.round1_messages.len() >= self.config.total_parties as usize {
+        // Round 1 completes once every *contributing* party has broadcast its
+        // commitment. Only the online signing parties (device=0, server=1)
+        // contribute polynomials to the joint secret F = f_0 + f_1; the offline
+        // backup share is a derived point F(3), not a polynomial contributor, so
+        // it never broadcasts a round-1 commitment. Expected commitment count is
+        // therefore `threshold`, matching the round-2 gate below (which already
+        // uses `threshold` and works in production). Using `total_parties` here
+        // was the sole inconsistency and left round1 permanently incomplete in
+        // the 2-online-party runtime.
+        if self.round1_messages.len() >= self.config.threshold as usize {
             self.state = DkgState::Round1Done;
         }
 
@@ -549,6 +557,37 @@ mod tests {
     fn test_dkg_session_creation() {
         let session = DkgSession::new(test_config(0));
         assert!(matches!(session.state, DkgState::Initialized));
+    }
+
+    /// Regression (production 2-online-party DKG): device (party 0) and server
+    /// (party 1) are the only online polynomial contributors; the backup share
+    /// is derived, never broadcasting a round-1 commitment. With config
+    /// total_parties=3, round1 must still complete after the device has its own
+    /// commitment (from generate_round1) plus the server's — i.e. `threshold`
+    /// commitments, not `total_parties`. Previously this gated on total_parties
+    /// and left round1 permanently incomplete, so generate_round2 failed with
+    /// "must complete round 1 first".
+    #[test]
+    fn test_round1_completes_with_two_online_parties() {
+        let mut device = DkgSession::new(test_config(0));
+        let mut server = DkgSession::new(test_config(1));
+
+        // Each contributor generates its own round-1 (self-stored internally).
+        let _device_r1 = device.generate_round1().unwrap();
+        let server_r1 = server.generate_round1().unwrap();
+
+        // Device processes ONLY the server's round-1 (no live backup party).
+        device.process_round1(vec![server_r1]).unwrap();
+
+        // Round1 must be complete (2 commitments == threshold), and round2 must
+        // generate without the "must complete round 1 first" error.
+        assert!(
+            matches!(device.state, DkgState::Round1Done),
+            "round1 should complete with device+server commitments (threshold=2)"
+        );
+        device
+            .generate_round2()
+            .expect("round2 must generate after 2-party round1 completes");
     }
 
     #[test]
