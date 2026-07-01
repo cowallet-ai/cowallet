@@ -168,6 +168,7 @@ impl RateLimiter for RedisRateLimiter {
         let result: Result<(usize,), redis::RedisError> = redis::pipe()
             .atomic()
             .zrembyscore(&redis_key, 0, window_start)
+            .ignore()
             .zadd(&redis_key, now, now)
             .ignore()
             .expire(&redis_key, limit.window_secs as i64)
