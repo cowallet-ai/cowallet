@@ -678,11 +678,9 @@ class MpcWalletService implements WalletService {
   bool get backupNeedsReExport => _backupNeedsReExport;
 
   /// 用户选择存储方式后调用此方法。
-  /// [password] 用于通过 Rust 加密导出路径加密备份分片，分片绝不以明文离开安全存储。
   Future<BackupResult> storeBackupShard(
     List<int> shardBytes, {
     required bool useCloud,
-    required String password,
   }) async {
     final backupService = BackupShardService(PlatformCloudBackup());
     final addr = await getAddress();
@@ -692,7 +690,6 @@ class MpcWalletService implements WalletService {
     _lastBackupResult = await backupService.storeBackupShard(
       shardBytes,
       useCloud: useCloud,
-      password: password,
     );
     _lastBackupShard = null;
     _backupNeedsReExport = false;
@@ -701,16 +698,6 @@ class MpcWalletService implements WalletService {
 
   /// 获取上次 DKG 的备份结果
   BackupResult? get lastBackupResult => _lastBackupResult;
-
-  /// 从云端取回已存储的加密备份密文（base64 blob），用于注册其 SHA-256 指纹。
-  Future<String?> retrieveBackupBlob() async {
-    final backupService = BackupShardService(PlatformCloudBackup());
-    final addr = await getAddress();
-    if (addr.isNotEmpty) {
-      backupService.setWalletAddress(addr);
-    }
-    return backupService.retrieveFromCloud();
-  }
 
   @override
   Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields}) async {

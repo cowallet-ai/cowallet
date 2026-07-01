@@ -90,18 +90,13 @@ class _KeysViewState extends State<KeysView> {
   }
 
   Future<void> _testBackupKey() async {
-    // Verifying a backup now requires decrypting it with the user's backup
-    // password (F-002: backups are stored as ciphertext).
-    final password = await _promptBackupPassword();
-    if (password == null) return; // user cancelled
-
     setState(() => _testingBackup = true);
 
     bool? success;
     if (_backupMethod == BackupMethod.file) {
-      success = await _testBackupKeyWithFile(password);
+      success = await _testBackupKeyWithFile();
     } else {
-      success = await _keyHealth.testBackupKey(password);
+      success = await _keyHealth.testBackupKey();
     }
 
     if (mounted) {
@@ -129,11 +124,11 @@ class _KeysViewState extends State<KeysView> {
     }
   }
 
-  Future<bool?> _testBackupKeyWithFile(String password) async {
+  Future<bool?> _testBackupKeyWithFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['enc', 'json'],
+        allowedExtensions: ['json'],
       );
       if (result == null || result.files.isEmpty) return null;
 
@@ -141,45 +136,10 @@ class _KeysViewState extends State<KeysView> {
       if (filePath == null) return null;
 
       final fileContent = await File(filePath).readAsString();
-      return await _keyHealth.testBackupKeyWithFile(fileContent, password);
+      return await _keyHealth.testBackupKeyWithFile(fileContent);
     } catch (_) {
       return false;
     }
-  }
-
-  /// Prompt for the backup-encryption password used to decrypt the backup.
-  Future<String?> _promptBackupPassword() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: CwColors.bgCard,
-        title: Text(
-          S.backupPasswordHint,
-          style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16),
-        ),
-        content: TextField(
-          controller: ctrl,
-          obscureText: true,
-          autofocus: true,
-          decoration: InputDecoration(labelText: S.backupPasswordHint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(S.cancel, style: TextStyle(color: CwColors.ink3)),
-          ),
-          TextButton(
-            onPressed: () {
-              if (ctrl.text.isNotEmpty) Navigator.pop(ctx, ctrl.text);
-            },
-            child: Text(S.backupImport, style: TextStyle(color: CwColors.accent)),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    return result;
   }
 
   Future<void> _saveStatus(String prefix, KeyStatus status) async {

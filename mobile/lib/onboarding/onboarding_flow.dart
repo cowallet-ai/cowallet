@@ -347,82 +347,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _goTo(_Stage.ready);
   }
 
-  /// Prompt the user for a backup-encryption password (min 8 chars, confirmed).
-  /// Returns null if cancelled. The password is used to encrypt the backup
-  /// shard via the Rust Argon2id + AES-256-GCM export path.
-  Future<String?> _promptBackupPassword() async {
-    final pwCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    String? error;
-
-    final result = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          backgroundColor: CwColors.bgCard,
-          title: Text(
-            S.backupPasswordHint,
-            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: pwCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: S.backupPasswordHint),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: S.backupPasswordConfirmHint),
-              ),
-              if (error != null) ...[
-                const SizedBox(height: 8),
-                Text(error!, style: TextStyle(color: CwColors.danger, fontSize: 12)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(S.cancel, style: TextStyle(color: CwColors.ink3)),
-            ),
-            TextButton(
-              onPressed: () {
-                final pw = pwCtrl.text;
-                if (pw.length < 8) {
-                  setLocal(() => error = S.backupPasswordTooShort);
-                  return;
-                }
-                if (pw != confirmCtrl.text) {
-                  setLocal(() => error = S.backupPasswordMismatch);
-                  return;
-                }
-                Navigator.pop(ctx, pw);
-              },
-              child: Text(S.backupExport, style: TextStyle(color: CwColors.accent)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    pwCtrl.dispose();
-    confirmCtrl.dispose();
-    return result;
-  }
-
   // ---- Backup: store 3rd shard ----
   Future<void> _saveBackup({required bool useCloud}) async {
-    // SECURITY (F-002): the backup shard must be encrypted with a user password
-    // before it is uploaded to the cloud or written to disk. Collect that
-    // password up front; without it we never serialize the shard.
-    final password = await _promptBackupPassword();
-    if (password == null) return; // user cancelled
-
     setState(() => _backupSaving = true);
     try {
       final walletService = Services.wallet as MpcWalletService;
@@ -444,7 +370,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       final result = await walletService.storeBackupShard(
         backupBytes,
         useCloud: useCloud,
-        password: password,
       );
 
       // Delete pending backup shard after successful backup
@@ -452,26 +377,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       await SecureStorage.delete(SecureStorage.keyPendingBackupCreatedAt);
       print('[OnboardingFlow] Deleted pending backup shard after successful backup');
 
-      // Store SHA-256 of the stored ciphertext blob on the server for future
-      // force re-register verification. We hash the ciphertext (not the
-      // plaintext shard) so verification works without ever decrypting; the
-      // stored blob is byte-stable, so re-register hashing the retrieved blob
-      // produces the same digest (see _verifyBackupShardForReRegister).
-      if (result.method == BackupMethod.cloud) {
-        final storedBlob = await walletService.retrieveBackupBlob();
-        if (storedBlob != null && storedBlob.isNotEmpty) {
-          final digest = SHA256Digest();
-          final hash = digest.process(Uint8List.fromList(utf8.encode(storedBlob)));
-          final hashHex = convert.hex.encode(hash);
-          final hashResult = await ShardsApi.storeBackupHash(backupShardHashHex: hashHex);
-          if (hashResult.isSuccess) {
-            print('[OnboardingFlow] Stored backup shard hash on server');
-          } else {
-            // Non-fatal: save hash locally for retry later
-            await SecureStorage.save('pending_backup_hash', hashHex);
-            print('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
-          }
-        }
+      // Store SHA-256(backup_shard) on server for future force re-register verification.
+      final digest = SHA256Digest();
+      final hash = digest.process(Uint8List.fromList(backupBytes));
+      final hashHex = convert.hex.encode(hash);
+      final hashResult = await ShardsApi.storeBackupHash(backupShardHashHex: hashHex);
+      if (hashResult.isSuccess) {
+        print('[OnboardingFlow] Stored backup shard hash on server');
+      } else {
+        // Non-fatal: save hash locally for retry later
+        await SecureStorage.save('pending_backup_hash', hashHex);
+        print('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
       }
 
       if (!mounted) return;
@@ -1031,19 +947,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _verifyBackupShardForReRegister() async {
     final backupService = BackupShardService(PlatformCloudBackup());
-    // The cloud now holds the encrypted ciphertext blob (F-002). We prove the
-    // user controls the backup by hashing the ciphertext blob; the matching
-    // hash is registered server-side at backup time (see _saveBackup).
-    final encryptedBlob = await backupService.retrieveFromCloud();
+    final shardBytes = await backupService.retrieveFromCloud();
     if (!mounted) return;
 
-    if (encryptedBlob == null || encryptedBlob.isEmpty) {
+    if (shardBytes == null || shardBytes.isEmpty) {
       showTopToast(context, S.backupShardRequired, backgroundColor: CwColors.danger);
       return;
     }
 
     final digest = SHA256Digest();
-    final hash = digest.process(Uint8List.fromList(utf8.encode(encryptedBlob)));
+    final hash = digest.process(Uint8List.fromList(shardBytes));
     _backupShardHash = convert.hex.encode(hash);
 
     // Re-send OTP with force flag since the initial send was blocked

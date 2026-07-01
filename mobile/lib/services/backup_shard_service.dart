@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:convert/convert.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../bridge/mpc_bridge.dart';
@@ -40,60 +42,47 @@ class BackupShardService {
   }
 
   /// Store the backup shard. Returns the backup method used.
-  ///
-  /// SECURITY: The shard is ALWAYS encrypted with the user's [password] (via
-  /// the Rust Argon2id + AES-256-GCM export path) before it leaves secure
-  /// storage. Only the opaque ciphertext blob is ever uploaded to the cloud or
-  /// written to disk — the raw shard never touches a file or the network.
-  ///
-  /// [password] must be at least 8 characters (enforced by the Rust export).
-  /// For file backups the ciphertext is written to the app's private documents
-  /// directory, never to a world-readable location such as Downloads.
-  Future<BackupResult> storeBackupShard(
-    List<int> shardBytes, {
-    required bool useCloud,
-    required String password,
-  }) async {
-    // Encrypt via Rust FFI (Argon2id KDF + AES-256-GCM). The plaintext shard
-    // stays inside the Rust MpcState and is never serialized in the clear.
-    final encrypted = await exportEncrypted(password);
+  /// If cloud is unavailable, returns a file path for the user to save.
+  Future<BackupResult> storeBackupShard(List<int> shardBytes, {required bool useCloud}) async {
+    final shardHex = hex.encode(shardBytes);
 
     if (useCloud) {
+      final payload = _buildBackupPayload(shardHex);
       if (!await _cloud.isAvailable()) {
         throw BackupException(BackupError.cloudUnavailable);
       }
       try {
-        await _cloud.store(await _getBackupKey(), encrypted);
+        await _cloud.store(await _getBackupKey(), payload);
       } catch (_) {
         throw BackupException(BackupError.cloudStoreFailed);
       }
       await SecureStorage.save(await _getMethodKey(), 'cloud');
-      await SecureStorage.save('backup_exported_at', DateTime.now().toIso8601String());
       return BackupResult(method: BackupMethod.cloud);
     }
 
     try {
-      final filePath = await exportEncryptedToFile(password);
-      return BackupResult(method: BackupMethod.encryptedFile, filePath: filePath);
+      final payload = _buildBackupPayload(shardHex);
+      final filePath = await _writeBackupFile(payload);
+      await SecureStorage.save(await _getMethodKey(), 'file');
+      return BackupResult(method: BackupMethod.file, filePath: filePath);
     } catch (_) {
       throw BackupException(BackupError.fileWriteFailed);
     }
   }
 
-  /// Retrieve the encrypted backup shard ciphertext from cloud storage.
-  /// Returns the base64 ciphertext blob; decrypt it via [importEncrypted]
-  /// (which requires the user's backup password).
-  Future<String?> retrieveFromCloud() async {
+  /// Retrieve the backup shard from cloud storage.
+  Future<List<int>?> retrieveFromCloud() async {
     if (!await _cloud.isAvailable()) return null;
-    return _cloud.retrieve(await _getBackupKey());
+
+    final payload = await _cloud.retrieve(await _getBackupKey());
+    if (payload == null) return null;
+
+    return _parseBackupPayload(payload);
   }
 
-  /// Return the encrypted ciphertext from a user-provided backup file's
-  /// content. The file now contains the password-encrypted base64 blob (no
-  /// longer plaintext JSON); decrypt it via [importEncrypted].
-  String? parseBackupFile(String fileContent) {
-    final trimmed = fileContent.trim();
-    return trimmed.isEmpty ? null : trimmed;
+  /// Parse a backup file (user provides file content).
+  List<int>? parseBackupFile(String fileContent) {
+    return _parseBackupPayload(fileContent);
   }
 
   /// Get the stored backup method (cloud, file, or encrypted_file).
@@ -163,12 +152,52 @@ class BackupShardService {
     return method != null;
   }
 
-  /// Backups are written to the app's private documents directory only. We do
-  /// NOT write to /storage/emulated/0/Download (world-readable) — even though
-  /// the contents are encrypted, keeping the ciphertext app-private avoids
-  /// exposing the backup's existence and metadata to other apps.
   Future<Directory> _getExportDirectory() async {
+    if (Platform.isAndroid) {
+      final dir = Directory('/storage/emulated/0/Download');
+      if (await dir.exists()) return dir;
+    }
     return getApplicationDocumentsDirectory();
+  }
+
+  String _buildBackupPayload(String shardHex) {
+    final data = {
+      'version': 2,
+      'type': 'cowallet_backup_shard',
+      'shard': shardHex,
+      if (_walletAddress != null) 'wallet_address': _walletAddress,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+    return jsonEncode(data);
+  }
+
+  List<int>? _parseBackupPayload(String payload) {
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      if (data['type'] != 'cowallet_backup_shard') return null;
+      final shardHex = data['shard'] as String?;
+      if (shardHex == null) return null;
+      return hex.decode(shardHex);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String> _writeBackupFile(String payload) async {
+    Directory dir;
+    if (Platform.isAndroid) {
+      dir = Directory('/storage/emulated/0/Download');
+      if (!await dir.exists()) {
+        dir = await getApplicationDocumentsDirectory();
+      }
+    } else {
+      dir = await getApplicationDocumentsDirectory();
+    }
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final suffix = _walletAddress != null ? '_${_walletAddress!.substring(0, 10)}' : '';
+    final file = File('${dir.path}/cowallet_backup${suffix}_$timestamp.json');
+    await file.writeAsString(payload);
+    return file.path;
   }
 }
 
