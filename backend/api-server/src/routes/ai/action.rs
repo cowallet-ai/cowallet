@@ -122,7 +122,7 @@ pub(super) async fn ai_action(
     }
 
     // Fall back to AI chat if confidence is low or entities insufficient
-    let ai = state.ai_deepseek.as_ref()
+    let ai = state.select_ai_provider()
         .ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,

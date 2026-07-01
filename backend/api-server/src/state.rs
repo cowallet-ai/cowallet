@@ -24,6 +24,7 @@ pub struct AppState {
     pub price_cache: PriceCache,
     pub yield_cache: YieldCache,
     pub http: reqwest::Client,
+    pub ai_bedrock: Option<Arc<dyn AiProvider>>,
     pub ai_deepseek: Option<Arc<dyn AiProvider>>,
     pub nats: Option<async_nats::Client>,
     pub rate_limiter: AnyRateLimiter,
@@ -99,7 +100,17 @@ impl AppState {
             }
         };
 
-        // Initialize AI provider (DeepSeek)
+        // Initialize AI providers. Bedrock is the default engine; DeepSeek is the
+        // fallback (see `select_ai_provider`). Both are optional — a provider that
+        // fails to configure simply stays None.
+        let ai_bedrock: Option<Arc<dyn AiProvider>> =
+            match crate::services::bedrock_provider::BedrockProvider::from_env().await {
+                Ok(provider) => Some(Arc::new(provider)),
+                Err(e) => {
+                    tracing::warn!("Bedrock AI provider not configured: {}", e);
+                    None
+                }
+            };
         let ai_deepseek: Option<Arc<dyn AiProvider>> =
             match crate::services::claude::AiClient::from_env() {
                 Ok(client) => Some(Arc::new(client)),
@@ -184,6 +195,7 @@ impl AppState {
             price_cache: PriceCache::new(),
             yield_cache: YieldCache::new(),
             http: http_client,
+            ai_bedrock,
             ai_deepseek,
             nats,
             rate_limiter: AnyRateLimiter::from_env().unwrap_or_else(|_| AnyRateLimiter::in_memory()),
@@ -229,5 +241,15 @@ impl AppState {
         self.db
             .as_ref()
             .ok_or_else(|| crate::errors::ApiError::service_unavailable("Database unavailable"))
+    }
+
+    /// Select the AI provider to serve a request. Bedrock is the default engine;
+    /// DeepSeek is the fallback when Bedrock is not configured. Returns None only
+    /// if neither provider is available.
+    pub fn select_ai_provider(&self) -> Option<Arc<dyn AiProvider>> {
+        self.ai_bedrock
+            .as_ref()
+            .or(self.ai_deepseek.as_ref())
+            .map(Arc::clone)
     }
 }

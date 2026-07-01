@@ -1,5 +1,6 @@
 pub mod ai_provider;
 pub mod claude;
+pub mod bedrock_provider;
 pub mod okx;
 pub mod defillama;
 pub mod bridgers;

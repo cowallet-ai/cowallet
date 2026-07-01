@@ -117,8 +117,8 @@ pub(super) async fn chat_stream(
         }
 
         let _ = req.model;
-        let ai = match state.ai_deepseek.as_ref() {
-            Some(c) => Arc::clone(c),
+        let ai = match state.select_ai_provider() {
+            Some(c) => c,
             None => {
                 yield sse_event("error", &serde_json::json!({"message": "AI 服务未配置"}));
                 yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
