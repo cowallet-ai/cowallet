@@ -243,7 +243,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     });
   }
 
-  // ---- Real biometric authentication ----
+  // ---- Biometric setup ----
+  // NOTE: we intentionally do NOT call biometrics.authenticate() here. The real
+  // biometric prompt happens once, natively, when the device shard is encrypted
+  // with the auth-bound keystore key (Android StrongBox / iOS Secure Enclave)
+  // during shard storage. Prompting here too caused a double biometric prompt.
+  // This stage only records the enable flag and initializes the keystore.
   Future<void> _startBioScan() async {
     // Immediately update UI before any async work
     setState(() {
@@ -270,60 +275,28 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         return;
       }
 
-      final authenticated = await Services.biometrics.authenticate(
-        reason: 'Enable biometric protection for your wallet',
-      );
-
       if (!mounted) return;
       setState(() => _bioAuthenticating = false);
 
-      if (authenticated) {
-        // Save biometric enabled status
-        await Services.biometrics.setEnabled(true);
+      // Enable biometrics and initialize the hardware-backed key store. The
+      // actual biometric challenge is deferred to shard encryption (native).
+      await Services.biometrics.setEnabled(true);
 
-        // Initialize hardware-backed key store (required for secure signing)
-        final seManager = SecureEnclaveManager();
-        final sbManager = StrongBoxManager();
-        if (await seManager.isAvailable()) {
-          await seManager.initializeWallet('onboarding');
-        } else if (await sbManager.isAvailable()) {
-          await sbManager.initializeWallet('onboarding');
-        } else {
-          setState(() => _bioError = true);
-          return;
-        }
-
-        setState(() => _bioDone = true);
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted) _goTo(_Stage.name);
-        });
+      final seManager = SecureEnclaveManager();
+      final sbManager = StrongBoxManager();
+      if (await seManager.isAvailable()) {
+        await seManager.initializeWallet('onboarding');
+      } else if (await sbManager.isAvailable()) {
+        await sbManager.initializeWallet('onboarding');
       } else {
         setState(() => _bioError = true);
-        // Show retry option with skip button
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Authentication Failed'),
-            content: const Text('Biometric authentication helps secure your wallet. You can enable it later in Settings.'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _skipBio();
-                },
-                child: const Text('Skip for now'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  setState(() => _bioError = false);
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        );
+        return;
       }
+
+      setState(() => _bioDone = true);
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _goTo(_Stage.name);
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
