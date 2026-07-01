@@ -702,10 +702,18 @@ async fn fetch_transactions_raw(
                     return Err(format!("OKX tx API returned {}", status));
                 }
 
-                let body: OkxEnvelope<TxData> = resp
-                    .json()
+                // Read the raw body first so a schema mismatch logs OKX's actual
+                // JSON (the fields are all Option/defaulted, so a parse failure
+                // means the *shape* differs — capture it to fix precisely).
+                let text = resp
+                    .text()
                     .await
-                    .map_err(|e| format!("OKX tx parse error: {}", e))?;
+                    .map_err(|e| format!("OKX tx read error: {}", e))?;
+                let body: OkxEnvelope<TxData> = serde_json::from_str(&text)
+                    .map_err(|e| {
+                        tracing::error!("[OKX] tx parse error: {} — raw body: {}", e, text);
+                        format!("OKX tx parse error: {}", e)
+                    })?;
 
                 if body.code != "0" {
                     return Err(format!(
