@@ -39,7 +39,7 @@ class DioClient {
           try {
             // 从安全存储拿token，自动加到请求头
             String? token = await SecureStorage.getToken();
-            
+
             if (token != null && token.isNotEmpty) {
               options.headers["Authorization"] = "Bearer $token";
               // Do not log token contents, not even a prefix (F-021): a prefix
@@ -49,6 +49,13 @@ class DioClient {
               print("⚠️  [DioClient] No token found in SecureStorage");
               // 尝试直接检查文件
               print("   Path: ${options.path}");
+            }
+
+            // Mandatory device binding (F-010): protected routes reject requests
+            // without an X-Device-ID header matching the JWT's device_id.
+            final deviceId = await SecureStorage.getDeviceId();
+            if (deviceId != null && deviceId.isNotEmpty) {
+              options.headers["X-Device-ID"] = deviceId;
             }
           } catch (e) {
             print("❌ [DioClient] Error reading token: $e");
@@ -227,6 +234,7 @@ class DioClient {
   }) async {
     try {
       String? token = await SecureStorage.getToken();
+      final deviceId = await SecureStorage.getDeviceId();
       final dio = Dio(BaseOptions(
         baseUrl: ApiConfig.apiBaseUrl,
         connectTimeout: Duration(seconds: ApiConfig.connectTimeout),
@@ -235,6 +243,8 @@ class DioClient {
           "Content-Type": "application/json",
           "Accept": "text/event-stream",
           if (token != null) "Authorization": "Bearer $token",
+          // Mandatory device binding (F-010).
+          if (deviceId != null && deviceId.isNotEmpty) "X-Device-ID": deviceId,
         },
         responseType: ResponseType.stream,
       ));
