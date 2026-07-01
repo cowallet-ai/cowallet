@@ -497,7 +497,7 @@ async fn assert_address_owned(
     address_bytes: &[u8],
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let owned: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
+        "SELECT 1::int8 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
     )
     .bind(address_bytes)
     .bind(user_id)

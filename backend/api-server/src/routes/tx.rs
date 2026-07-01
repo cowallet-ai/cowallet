@@ -302,7 +302,7 @@ async fn tx_status(
     // The caller must own one side of the tx (F-008). Return NOT_FOUND on a
     // non-owned hash so existence isn't leaked.
     let owned: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM wallets WHERE eth_address IN ($1, $2) AND user_id = $3 LIMIT 1"
+        "SELECT 1::int8 FROM wallets WHERE eth_address IN ($1, $2) AND user_id = $3 LIMIT 1"
     )
     .bind(&from_addr)
     .bind(&to_addr)
