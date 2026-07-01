@@ -27,6 +27,32 @@ class DeviceIdentity {
     return null;
   }
 
+  /// Ensure the hardware device identity key exists, creating it if needed.
+  /// Idempotent and safe to call before register (which runs in the OTP stage,
+  /// BEFORE the bio stage's initializeWallet) so the device public key is
+  /// available for challenge-response login registration. Key generation does
+  /// not require a biometric prompt. Returns true if a key is available.
+  static Future<bool> ensureInitialized() async {
+    try {
+      if (Platform.isIOS) {
+        final se = SecureEnclaveManager();
+        if (await se.getDeviceShardKeyId() == null) {
+          await se.initializeWallet('onboarding');
+        }
+        return await se.getDeviceShardKeyId() != null;
+      } else if (Platform.isAndroid) {
+        final sb = StrongBoxManager();
+        if (await sb.getDeviceShardKeyId() == null) {
+          await sb.initializeWallet('onboarding');
+        }
+        return await sb.getDeviceShardKeyId() != null;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// The hardware device public key as hex (no 0x prefix), or null if the
   /// device key has not been initialized / platform unsupported.
   static Future<String?> publicKeyHex() async {

@@ -35,6 +35,10 @@ class AuthApi {
     String? backupShardHash,
   }) async {
     // Attach the hardware device public key so challenge-response login works.
+    // register runs in the OTP stage, BEFORE the bio stage creates the key, so
+    // ensure it exists first — otherwise device_pubkey would be omitted and the
+    // user could never log in via challenge-response.
+    await DeviceIdentity.ensureInitialized();
     final devicePubkey = await DeviceIdentity.publicKeyHex();
     final deviceAlg = DeviceIdentity.algorithm;
 
