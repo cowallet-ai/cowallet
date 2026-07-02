@@ -6,6 +6,7 @@ import '../api/mpc_api.dart';
 import '../bridge/mpc_bridge.dart';
 import '../utils/secure_storage.dart';
 import 'backup_shard_service.dart';
+import 'locator.dart';
 
 enum KeyStatus { ok, warning, error, unknown }
 
@@ -178,14 +179,26 @@ class KeyHealthService {
     }
 
     final deviceShard = await SecureHardware.loadDeviceShard();
-    if (deviceShard == null || deviceShard.length != 32) {
-      throw Exception('Device shard not available');
+    if (deviceShard != null && deviceShard.length == 32) {
+      return await MpcBridge.verifyBackupShard(
+        backupBytes: backupBytes,
+        deviceShardBytes: deviceShard.toList(),
+        expectedPublicKey: publicKey,
+      );
     }
-    return await MpcBridge.verifyBackupShard(
-      backupBytes: backupBytes,
-      deviceShardBytes: deviceShard.toList(),
-      expectedPublicKey: publicKey,
-    );
+
+    // PIN-only path: the device shard is not in hardware. Load it into Rust
+    // memory via the PIN-decrypt path, then verify against the in-memory
+    // Party 0 (empty deviceShardBytes triggers the FFI in-memory fallback).
+    if (await Services.mpcWallet.hasPinEncryptedShard()) {
+      await Services.mpcWallet.ensureShardLoaded();
+      return await MpcBridge.verifyBackupShard(
+        backupBytes: backupBytes,
+        expectedPublicKey: publicKey,
+      );
+    }
+
+    throw Exception('Device shard not available');
   }
 
   Future<bool> testBackupKey() async {

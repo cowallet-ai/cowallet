@@ -262,12 +262,11 @@ async fn register(
         None => None,
     };
 
-    // Mark as verified
-    sqlx::query("UPDATE email_verifications SET verified = TRUE WHERE id = $1")
-        .bind(verification_id)
-        .execute(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // NOTE: OTP is intentionally NOT consumed here. It is marked verified only
+    // after all pre-conditions pass (backup_shard_hash check for force
+    // re-register, device_pubkey validation), so that a recoverable failure
+    // (e.g. 428 needing a hash back-fill) lets the client retry with the SAME
+    // OTP instead of being stranded with a spent code.
 
     // Check if user exists and whether they have a completed wallet
     let existing: Option<(uuid::Uuid,)> = sqlx::query_as(
@@ -401,6 +400,15 @@ async fn register(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         new_id
     };
+
+    // All pre-conditions passed (OTP matched, backup-hash verified for force
+    // re-register, device key valid). Consume the OTP now — deferring to this
+    // point means a 428/400 above leaves the code reusable for a retry.
+    sqlx::query("UPDATE email_verifications SET verified = TRUE WHERE id = $1")
+        .bind(verification_id)
+        .execute(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Register the device's hardware public key + algorithm (if supplied) so
     // challenge-response login can later verify ownership of the device key.

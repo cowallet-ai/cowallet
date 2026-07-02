@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -nE \\\"MpcApi.sendMessage\\\" mobile/lib/services/mpc_wallet_service.dart\",\"description\":\"找剩余 MpcApi.sendMessage 调用\"}",
-  "error": "Exit code 2\nugrep: warning: mobile/lib/services/mpc_wallet_service.dart: No such file or directory",
-  "timestamp": "2026-07-01T05:27:20.614Z",
+  "tool_input_preview": "{\"command\":\"grep -n \\\"import 'dart:io'\\\\|import \\\\\\\"dart:io\\\\\\\"\\\" mobile/lib/views/chat/chat_view.dart\",\"description\":\"Check for duplicate dart:io import\"}",
+  "error": "Exit code 2\nugrep: warning: mobile/lib/views/chat/chat_view.dart: No such file or directory",
+  "timestamp": "2026-07-02T02:04:40.164Z",
   "retry_count": 1
 }

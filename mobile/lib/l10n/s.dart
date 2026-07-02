@@ -296,6 +296,12 @@ class S {
   static String get voiceDone => _localizations?.voiceDone ?? _p('完成', 'Done');
   static String get voiceUnavailable => _localizations?.voiceUnavailable ?? _p('语音识别不可用,请检查麦克风权限', 'Voice input unavailable, check microphone permission');
   static String get voiceErrorHint => _localizations?.voiceErrorHint ?? _p('语音识别出错,请重试', 'Voice recognition error, please try again');
+  static String get voiceEngineMissingTitle => _p('语音识别不可用', 'Voice input unavailable');
+  static String get voiceEngineMissingBody => _p(
+        '你的设备暂不支持语音输入。安装并启用「Google 语音服务」后即可使用。',
+        'Voice input is not supported on your device yet. Install and enable "Speech Services by Google" to use it.',
+      );
+  static String get voiceEngineInstall => _p('去安装', 'Install');
   static String get saveContact => _localizations?.saveContact ?? _p('保存联系人', 'Save Contact');
 
   // Chat UI

@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"(nc -z -w 8 github.com 443 && echo \\\"443 OPEN\\\") 2>&1 || echo \\\"443 UNREACHABLE\\\"; echo \\\"=== 本地未推送提交 ===\\\"; git log --oneline origin/release..release | head\",\"timeout\":30000,\"description\"...",
-  "error": "Exit code 143\nCommand timed out after 30s",
-  "timestamp": "2026-07-01T08:55:31.575Z",
+  "tool_input_preview": "{\"command\":\"sleep 120; tail -25 /private/tmp/claude-502/-Users-mac-cat-cowallet/4c47016d-13c5-4fd9-83a7-9ed3acd4518e/tasks/bjtqoab9k.output 2>/dev/null\",\"description\":\"Check APK build progress\"}",
+  "error": "Exit code 143\nCommand timed out after 2m 0s",
+  "timestamp": "2026-07-02T01:36:30.352Z",
   "retry_count": 1
 }

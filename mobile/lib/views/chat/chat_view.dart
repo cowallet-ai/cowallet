@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'dart:io' show Platform;
 import '../../theme/colors.dart';
 import '../../l10n/s.dart';
 import '../../widgets/cw_orb.dart';
@@ -90,6 +93,11 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   bool _speechAvailable = false;
   String _voiceText = '';
   double _soundLevel = 0.0;
+  // Locale id the recognizer actually supports for the current app language.
+  // Resolved from the engine's own locale list after initialize(); null means
+  // "let the engine pick its default" — never force an unsupported locale, as
+  // that makes the recognizer return empty results silently.
+  String? _speechLocaleId;
 
   String? _sessionId;
   StreamSubscription? _streamSub;
@@ -151,28 +159,44 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
-      _speechAvailable = await _speech.initialize(
-        onError: (error) {
-          if (!mounted) return;
-          setState(() {
-            _isListening = false;
-            _soundLevel = 0.0;
-          });
-          _showVoiceError(S.voiceErrorHint);
-        },
-        onStatus: (status) {
-          // Speech engine ends the session itself on a long pause or timeout.
-          if ((status == 'done' || status == 'notListening') &&
-              _isListening) {
-            _finishListening();
-          }
-        },
-      );
+      try {
+        _speechAvailable = await _speech.initialize(
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _isListening = false;
+              _soundLevel = 0.0;
+            });
+            // Surface the engine's own error id (e.g. error_no_match,
+            // error_language_unavailable) so voice failures are diagnosable
+            // rather than a generic "please retry".
+            _showVoiceError('${S.voiceErrorHint} (${error.errorMsg})');
+          },
+          onStatus: (status) {
+            // Speech engine ends the session itself on a long pause or timeout.
+            if ((status == 'done' || status == 'notListening') &&
+                _isListening) {
+              _finishListening();
+            }
+          },
+        );
+      } catch (_) {
+        // Some devices have no speech recognition engine at all (e.g. Chinese
+        // ROMs with no system SpeechRecognizer); initialize() throws
+        // PlatformException(recognizerNotAvailable) instead of returning false.
+        // Treat any failure as "unavailable" rather than crashing.
+        _speechAvailable = false;
+      }
       if (!_speechAvailable) {
         if (!mounted) return;
-        _showVoiceError(S.voiceUnavailable);
+        _showSpeechUnavailableGuide();
         return;
       }
+      // Resolve a locale the recognizer actually supports. Forcing a locale
+      // the engine hasn't downloaded (e.g. 'zh_CN') makes it return empty
+      // results with no error, so match against the engine's real list and
+      // fall back to null (engine default) when nothing matches.
+      _speechLocaleId = await _resolveSpeechLocale();
     }
 
     _voiceText = '';
@@ -191,13 +215,32 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       },
       listenOptions: stt.SpeechListenOptions(
         listenMode: stt.ListenMode.dictation,
-        localeId: S.lang == Lang.zh ? 'zh_CN' : 'en_US',
+        localeId: _speechLocaleId,
         partialResults: true,
         cancelOnError: true,
         listenFor: const Duration(minutes: 1),
         pauseFor: const Duration(seconds: 4),
       ),
     );
+  }
+
+  /// Pick a locale id the recognizer actually supports for the current app
+  /// language. Returns null when no match is found so the engine uses its own
+  /// default rather than an unsupported locale (which yields empty results).
+  Future<String?> _resolveSpeechLocale() async {
+    try {
+      final locales = await _speech.locales();
+      if (locales.isEmpty) return null;
+      final prefix = S.lang == Lang.zh ? 'zh' : 'en';
+      for (final l in locales) {
+        final id = l.localeId.replaceAll('-', '_').toLowerCase();
+        if (id.startsWith(prefix)) return l.localeId;
+      }
+      // No locale for the app language — let the engine decide.
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Stop listening and keep the transcript — fill it into the composer.
@@ -238,6 +281,60 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
+  }
+
+  /// Shown when the device has no usable system speech-recognition engine
+  /// (common on Chinese ROMs where Google's recognizer is stripped). Rather
+  /// than a dead-end "unavailable" toast, guide the user to install/enable
+  /// Google's Speech Services, which provides the on-device recognizer that
+  /// `speech_to_text` depends on.
+  Future<void> _showSpeechUnavailableGuide() async {
+    if (!mounted) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.voiceEngineMissingTitle),
+        content: Text(S.voiceEngineMissingBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(S.voiceEngineInstall),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return;
+
+    // Deep-link to Google Speech Services. On Android, force the Play Store
+    // (com.android.vending) explicitly — otherwise `market://` is intercepted
+    // by the vendor app store (e.g. OPPO/Xiaomi), which does not carry Google
+    // apps. Fall back to a web Play Store URL if the Play Store app is absent.
+    const pkg = 'com.google.android.tts';
+    final webUri =
+        Uri.parse('https://play.google.com/store/apps/details?id=$pkg');
+    try {
+      if (Platform.isAndroid) {
+        final intent = AndroidIntent(
+          action: 'action_view',
+          data: 'market://details?id=$pkg',
+          package: 'com.android.vending',
+        );
+        try {
+          await intent.launch();
+        } catch (_) {
+          // Play Store app not installed — open the web store in a browser.
+          await launchUrl(webUri, mode: LaunchMode.externalApplication);
+        }
+      } else {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      if (mounted) _showVoiceError(S.voiceUnavailable);
+    }
   }
 
   void sendMessage(String message) {

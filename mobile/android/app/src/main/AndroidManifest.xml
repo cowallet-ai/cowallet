@@ -55,5 +55,19 @@
         <intent>
             <action android:name="android.speech.RecognitionService"/>
         </intent>
+        <!-- Required on Android 11+ so url_launcher / android_intent_plus can
+             resolve the Play Store deep links used to guide users to install
+             Google Speech Services. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="market"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <!-- Explicit Play Store package so the AndroidIntent targeting
+             com.android.vending is resolvable under package visibility. -->
+        <package android:name="com.android.vending"/>
     </queries>
 </manifest>

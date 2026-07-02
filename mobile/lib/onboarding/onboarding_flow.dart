@@ -1,8 +1,10 @@
 import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:pointycastle/digests/sha256.dart';
 import 'package:convert/convert.dart' as convert;
 import '../theme/colors.dart';
@@ -944,11 +946,54 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final shardBytes = await backupService.retrieveFromCloud();
     if (!mounted) return;
 
-    if (shardBytes == null || shardBytes.isEmpty) {
-      showTopToast(context, S.backupShardRequired, backgroundColor: CwColors.danger);
+    // Cloud backup found — proceed directly.
+    if (shardBytes != null && shardBytes.isNotEmpty) {
+      await _continueReRegisterWithShard(shardBytes);
       return;
     }
 
+    // No cloud backup: the shard may have been saved to a local file. Let the
+    // user pick their backup file instead of dead-ending on "backup required".
+    await _pickLocalBackupForReRegister(backupService);
+  }
+
+  /// Prompt the user to select their local backup file, parse the shard from
+  /// it, and continue re-registration. Used when no cloud backup is present.
+  Future<void> _pickLocalBackupForReRegister(
+    BackupShardService backupService,
+  ) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (!mounted) return;
+      if (result == null || result.files.isEmpty) return; // user cancelled
+
+      final filePath = result.files.single.path;
+      if (filePath == null) {
+        showTopToast(context, S.backupShardRequired, backgroundColor: CwColors.danger);
+        return;
+      }
+
+      final content = await File(filePath).readAsString();
+      final shardBytes = backupService.parseBackupFile(content);
+      if (!mounted) return;
+
+      if (shardBytes == null || shardBytes.isEmpty) {
+        showTopToast(context, S.backupFormatInvalid, backgroundColor: CwColors.danger);
+        return;
+      }
+      await _continueReRegisterWithShard(shardBytes);
+    } catch (_) {
+      if (!mounted) return;
+      showTopToast(context, S.backupFormatInvalid, backgroundColor: CwColors.danger);
+    }
+  }
+
+  /// Shared tail of re-registration: hash the backup shard, re-send the OTP
+  /// with the force flag, and advance to the OTP stage.
+  Future<void> _continueReRegisterWithShard(List<int> shardBytes) async {
     final digest = SHA256Digest();
     final hash = digest.process(Uint8List.fromList(shardBytes));
     _backupShardHash = convert.hex.encode(hash);
@@ -984,13 +1029,35 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
     try {
       final deviceId = await DeviceIdGenerator.getOrGenerate();
-      final result = await AuthApi.register(
+      var result = await AuthApi.register(
         deviceId: deviceId,
         email: _emailCtrl.text.trim(),
         otp: _otpCtrl.text.trim(),
         force: _forceRegister,
         backupShardHash: _backupShardHash,
       );
+
+      // 428 on a force re-register means the server has no backup_shard_hash on
+      // record for this account (e.g. registered before the hash mechanism, or
+      // the hash was never uploaded). We already proved possession of the backup
+      // shard by loading it in _verifyBackupShardForReRegister, so back-fill the
+      // hash and retry once.
+      if (!result.isSuccess &&
+          result.errorCode == 428 &&
+          _forceRegister &&
+          _backupShardHash != null) {
+        final backfill =
+            await ShardsApi.storeBackupHash(backupShardHashHex: _backupShardHash!);
+        if (backfill.isSuccess) {
+          result = await AuthApi.register(
+            deviceId: deviceId,
+            email: _emailCtrl.text.trim(),
+            otp: _otpCtrl.text.trim(),
+            force: _forceRegister,
+            backupShardHash: _backupShardHash,
+          );
+        }
+      }
       if (!mounted) return;
 
       if (result.isSuccess) {
