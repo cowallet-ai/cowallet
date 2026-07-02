@@ -157,25 +157,36 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
     keyStore.load(null)
 
     if (!keyStore.containsAlias(KEY_ALIAS)) {
-      val keyGenSpec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-          .setKeySize(256)
-          .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-          .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-          .setIsStrongBoxBacked(true)
-          .build()
-      } else {
-        KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-          .setKeySize(256)
-          .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-          .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-          .build()
+      // Try StrongBox first, then fall back to a regular TEE-backed key. Devices
+      // without a dedicated StrongBox chip throw StrongBoxUnavailableException on
+      // setIsStrongBoxBacked(true), so we retry without it rather than failing.
+      val strongBoxSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+      try {
+        generateMasterKey(useStrongBox = strongBoxSupported)
+      } catch (e: android.security.keystore.StrongBoxUnavailableException) {
+        if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
+        generateMasterKey(useStrongBox = false)
       }
-
-      val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
-      keyGenerator.init(keyGenSpec)
-      keyGenerator.generateKey()
     }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun generateMasterKey(useStrongBox: Boolean) {
+    val builder = KeyGenParameterSpec.Builder(
+      KEY_ALIAS,
+      KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+    )
+      .setKeySize(256)
+      .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+      .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+
+    if (useStrongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      builder.setIsStrongBoxBacked(true)
+    }
+
+    val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
+    keyGenerator.init(builder.build())
+    keyGenerator.generateKey()
   }
 
   @RequiresApi(Build.VERSION_CODES.M)

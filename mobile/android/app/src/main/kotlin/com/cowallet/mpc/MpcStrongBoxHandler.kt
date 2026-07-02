@@ -87,26 +87,19 @@ class MpcStrongBoxHandler(private val context: Context) : MethodChannel.MethodCa
         keyStore.deleteEntry(alias)
       }
 
-      val keyGenSpec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
-          .setKeySize(KEY_SIZE)
-          .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-          .setDigests(KeyProperties.DIGEST_SHA256)
-          .setIsStrongBoxBacked(true)
-          .setUserAuthenticationRequired(true)
-          .setUserAuthenticationValidityDurationSeconds(300)
-          .build()
-      } else {
-        KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
-          .setKeySize(KEY_SIZE)
-          .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-          .setDigests(KeyProperties.DIGEST_SHA256)
-          .build()
+      // Try StrongBox first, then fall back to a regular TEE-backed key. Many
+      // devices report BIOMETRIC_STRONG as available yet have no dedicated
+      // StrongBox security chip; requesting setIsStrongBoxBacked(true) on those
+      // throws StrongBoxUnavailableException. We retry without StrongBox so key
+      // generation succeeds on TEE-only hardware.
+      val strongBoxSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+      val keyPair = try {
+        generateKeyPair(alias, useStrongBox = strongBoxSupported)
+      } catch (e: android.security.keystore.StrongBoxUnavailableException) {
+        // Clean up any partial entry before retrying without StrongBox.
+        if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
+        generateKeyPair(alias, useStrongBox = false)
       }
-
-      val keyPairGenerator = KeyPairGenerator.getInstance(KEYSTORE_ALGORITHM, KEYSTORE_PROVIDER)
-      keyPairGenerator.initialize(keyGenSpec)
-      val keyPair = keyPairGenerator.generateKeyPair()
 
       val publicKeyBase64 = Base64.getEncoder().encodeToString(keyPair.public.encoded)
 
@@ -119,6 +112,32 @@ class MpcStrongBoxHandler(private val context: Context) : MethodChannel.MethodCa
     } catch (e: Exception) {
       result.error("GENERATION_FAILED", e.message, null)
     }
+  }
+
+  /// Build the KeyGenParameterSpec and generate the RSA keypair. When
+  /// [useStrongBox] is true (and API >= P), the key is bound to the StrongBox
+  /// security chip; otherwise it uses the regular AndroidKeyStore (TEE).
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun generateKeyPair(alias: String, useStrongBox: Boolean): java.security.KeyPair {
+    val builder = KeyGenParameterSpec.Builder(
+      alias,
+      KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
+    )
+      .setKeySize(KEY_SIZE)
+      .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+      .setDigests(KeyProperties.DIGEST_SHA256)
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      builder.setUserAuthenticationRequired(true)
+        .setUserAuthenticationValidityDurationSeconds(300)
+      if (useStrongBox) {
+        builder.setIsStrongBoxBacked(true)
+      }
+    }
+
+    val keyPairGenerator = KeyPairGenerator.getInstance(KEYSTORE_ALGORITHM, KEYSTORE_PROVIDER)
+    keyPairGenerator.initialize(builder.build())
+    return keyPairGenerator.generateKeyPair()
   }
 
   @RequiresApi(Build.VERSION_CODES.M)

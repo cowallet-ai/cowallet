@@ -198,7 +198,10 @@ async fn register(
     .bind(otp_hash.as_slice())
     .fetch_optional(db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|e| {
+        tracing::error!("register: OTP verification query failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // If no matching OTP, check if there's a pending one that's been brute-forced
     if verification.is_none() {
@@ -341,17 +344,21 @@ async fn register(
                 }
             }
 
-            // Archive shards instead of deleting
+            // Archive shards instead of deleting. Note: shard_metadata has no
+            // public_key column (only wallets does), so archive it as NULL.
             sqlx::query(
                 "INSERT INTO shard_metadata_archive
                     (original_id, user_id, location, party_index, encrypted_shard, nonce, public_key, archive_reason, created_at)
-                 SELECT id, user_id, location, party_index, encrypted_shard, nonce, public_key, 'force_reregister', created_at
+                 SELECT id, user_id, location, party_index, encrypted_shard, nonce, NULL, 'force_reregister', created_at
                  FROM shard_metadata WHERE user_id = $1"
             )
             .bind(existing_id)
             .execute(db)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|e| {
+                tracing::error!("register: archive shards failed: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
             // Archive old wallets
             sqlx::query(
