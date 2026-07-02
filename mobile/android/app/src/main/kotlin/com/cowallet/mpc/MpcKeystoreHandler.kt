@@ -33,6 +33,9 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
     private const val IV_LENGTH_BYTES = 12
     private const val SHARD_PREFS_NAME = "cowallet_shard_storage"
     private const val SHARD_PREF_KEY = "device-shard-encrypted"
+    // Validity window (seconds) for the shard key after a successful auth.
+    // Time-bound (not per-use/CryptoObject) to avoid the ColorOS -26 bug.
+    private const val SHARD_AUTH_VALIDITY_SECONDS = 15
 
     fun setup(flutterEngine: FlutterEngine, context: Context) {
       val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -240,19 +243,19 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
       // Ensure hardware-backed, auth-bound encryption key exists
       ensureShardEncryptionKeyExists()
 
-      val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-      cipher.init(Cipher.ENCRYPT_MODE, getShardKey())
-
-      // The key requires user authentication for every use; authorize the
-      // cipher via BiometricPrompt before performing the encryption.
-      authenticateCipher(
-        cipher,
+      // Authenticate the user (plain BiometricPrompt, NO CryptoObject). The key
+      // is time-bound: within SHARD_AUTH_VALIDITY_SECONDS of this auth the
+      // Cipher can be initialized and used. This avoids the CryptoObject-bound
+      // per-use path that fails with -26 on some ROMs (ColorOS/StrongBox).
+      authenticateUser(
         title = "Protect wallet backup",
         subtitle = "Authenticate to encrypt your device shard",
-        onSuccess = { authedCipher ->
+        onSuccess = {
           try {
-            val iv = authedCipher.iv
-            val ciphertext = authedCipher.doFinal(shardData)
+            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, getShardKey())
+            val iv = cipher.iv
+            val ciphertext = cipher.doFinal(shardData)
             val combined = ByteArray(iv.size + ciphertext.size)
             System.arraycopy(iv, 0, combined, 0, iv.size)
             System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
@@ -260,17 +263,21 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
 
             shardPrefs().edit().putString(SHARD_PREF_KEY, encoded).apply()
             result.success(null)
+          } catch (e: KeyPermanentlyInvalidatedException) {
+            android.util.Log.e("BioNative", "storeEncryptedShard: key invalidated", e)
+            result.error("KEY_INVALIDATED", e.message, null)
           } catch (e: Exception) {
+            android.util.Log.e("BioNative", "storeEncryptedShard: encrypt failed", e)
             result.error("ENCRYPTION_FAILED", e.message, null)
           }
         },
-        onError = { code, msg -> result.error(code, msg, null) },
+        onError = { code, msg ->
+          android.util.Log.e("BioNative", "storeEncryptedShard: auth error $code $msg")
+          result.error(code, msg, null)
+        },
       )
-    } catch (e: KeyPermanentlyInvalidatedException) {
-      // Biometric enrollment changed: the old key is unusable. Surface a
-      // distinct error so the caller can re-provision the shard.
-      result.error("KEY_INVALIDATED", e.message, null)
     } catch (e: Exception) {
+      android.util.Log.e("BioNative", "storeEncryptedShard: failed", e)
       result.error("ENCRYPTION_FAILED", e.message, null)
     }
   }
@@ -290,26 +297,25 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
       System.arraycopy(combined, 0, iv, 0, IV_LENGTH_BYTES)
       System.arraycopy(combined, IV_LENGTH_BYTES, ciphertext, 0, ciphertext.size)
 
-      val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-      cipher.init(Cipher.DECRYPT_MODE, getShardKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-
-      // Decryption requires a fresh user authentication for every use.
-      authenticateCipher(
-        cipher,
+      // Authenticate first (no CryptoObject), then decrypt within the key's
+      // validity window. See storeEncryptedShard for why we avoid CryptoObject.
+      authenticateUser(
         title = "Unlock wallet backup",
         subtitle = "Authenticate to decrypt your device shard",
-        onSuccess = { authedCipher ->
+        onSuccess = {
           try {
-            val decrypted = authedCipher.doFinal(ciphertext)
+            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, getShardKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+            val decrypted = cipher.doFinal(ciphertext)
             result.success(decrypted)
+          } catch (e: KeyPermanentlyInvalidatedException) {
+            result.error("KEY_INVALIDATED", e.message, null)
           } catch (e: Exception) {
             result.error("DECRYPTION_FAILED", e.message, null)
           }
         },
         onError = { code, msg -> result.error(code, msg, null) },
       )
-    } catch (e: KeyPermanentlyInvalidatedException) {
-      result.error("KEY_INVALIDATED", e.message, null)
     } catch (e: Exception) {
       result.error("DECRYPTION_FAILED", e.message, null)
     }
@@ -329,15 +335,15 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
   /// specific authentication. Requires the host to be a FragmentActivity
   /// (MainActivity extends FlutterFragmentActivity), so no Dart-side change is
   /// needed — the native prompt is shown automatically on store/load.
-  private fun authenticateCipher(
-    cipher: Cipher,
+  private fun authenticateUser(
     title: String,
     subtitle: String,
-    onSuccess: (Cipher) -> Unit,
+    onSuccess: () -> Unit,
     onError: (String, String) -> Unit,
   ) {
     val activity = context as? FragmentActivity
     if (activity == null) {
+      android.util.Log.e("BioNative", "authenticateUser: context is not a FragmentActivity")
       onError("NO_ACTIVITY", "Biometric prompt requires a FragmentActivity host")
       return
     }
@@ -349,20 +355,22 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
         executor,
         object : BiometricPrompt.AuthenticationCallback() {
           override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
-            val authedCipher = authResult.cryptoObject?.cipher
-            if (authedCipher == null) {
-              onError("AUTH_FAILED", "No authenticated cipher returned")
-            } else {
-              onSuccess(authedCipher)
-            }
+            // No CryptoObject: the time-bound key is now usable for the next
+            // SHARD_AUTH_VALIDITY_SECONDS. Caller inits & runs the cipher.
+            onSuccess()
           }
 
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            android.util.Log.e("BioNative", "authenticateUser: onAuthenticationError $errorCode $errString")
             onError("AUTH_FAILED", errString.toString())
           }
         },
       )
 
+      // No CryptoObject here — this is a plain user-presence check that opens
+      // the key's time-bound validity window. Both biometric and device
+      // credential are accepted; when DEVICE_CREDENTIAL is allowed, no negative
+      // button may be set.
       val promptInfo = BiometricPrompt.PromptInfo.Builder()
         .setTitle(title)
         .setSubtitle(subtitle)
@@ -373,7 +381,7 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
         .build()
 
       try {
-        prompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+        prompt.authenticate(promptInfo)
       } catch (e: Exception) {
         onError("AUTH_FAILED", e.message ?: "Biometric authentication failed")
       }
@@ -385,11 +393,30 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
     val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
     keyStore.load(null)
 
+    // Self-heal: a shard key left over from an earlier run may have been created
+    // with incompatible auth parameters (e.g. an older build that allowed
+    // DEVICE_CREDENTIAL, which cannot authorize a CryptoObject and yields
+    // KEY_USER_NOT_AUTHENTICATED). If no shard has actually been stored yet, it
+    // is safe to drop such a key and regenerate it with the current parameters.
+    if (keyStore.containsAlias(SHARD_KEY_ALIAS)) {
+      val hasStoredShard = shardPrefs().getString(SHARD_PREF_KEY, null) != null
+      if (!hasStoredShard) {
+        android.util.Log.i("BioNative", "recreating stale shard key with current auth params")
+        keyStore.deleteEntry(SHARD_KEY_ALIAS)
+      }
+    }
+
     if (!keyStore.containsAlias(SHARD_KEY_ALIAS)) {
-      // The shard key is bound to user authentication: every cryptographic
-      // use must be authorized by a BiometricPrompt CryptoObject. This means
-      // the ciphertext cannot be decrypted by anyone without a live biometric
-      // / device-credential challenge, even with full filesystem access.
+      // The shard key is bound to user authentication with a short validity
+      // window (see below). The ciphertext cannot be decrypted without a recent
+      // live authentication, even with full filesystem access.
+      //
+      // NOTE: We deliberately do NOT use a per-use (timeout=0) CryptoObject-bound
+      // key. On some ROMs (e.g. ColorOS) the Keystore2 implementation rejects the
+      // crypto op with KEY_USER_NOT_AUTHENTICATED (-26) even after a successful
+      // BiometricPrompt, because the device-credential auth token isn't bound to
+      // the specific operation. A time-bound key authorized by a plain
+      // BiometricPrompt (no CryptoObject) works across all ROMs.
       val builder = KeyGenParameterSpec.Builder(
         SHARD_KEY_ALIAS,
         KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
@@ -405,27 +432,30 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
       }
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        // 0 = authentication required for every single use (no validity window).
+        // 15s validity window after any strong auth (biometric OR device
+        // credential). No CryptoObject needed — avoids the ColorOS -26 bug.
         builder.setUserAuthenticationParameters(
-          0,
+          SHARD_AUTH_VALIDITY_SECONDS,
           KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
         )
       } else {
-        // Pre-R fallback: 0s validity also means auth-required-every-use.
         @Suppress("DEPRECATION")
-        builder.setUserAuthenticationValidityDurationSeconds(-1)
+        builder.setUserAuthenticationValidityDurationSeconds(SHARD_AUTH_VALIDITY_SECONDS)
       }
 
       val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
       try {
         keyGenerator.init(builder.build())
         keyGenerator.generateKey()
+        android.util.Log.i("BioNative", "shard key generated (StrongBox path)")
       } catch (e: Exception) {
         // StrongBox may be unavailable on this device; retry without it.
+        android.util.Log.w("BioNative", "StrongBox key gen failed, retrying without: ${e.message}")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
           builder.setIsStrongBoxBacked(false)
           keyGenerator.init(builder.build())
           keyGenerator.generateKey()
+          android.util.Log.i("BioNative", "shard key generated (TEE fallback path)")
         } else {
           throw e
         }
