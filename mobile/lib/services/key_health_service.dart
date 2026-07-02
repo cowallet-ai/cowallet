@@ -178,11 +178,20 @@ class KeyHealthService {
       );
     }
 
-    final deviceShard = await SecureHardware.loadDeviceShard();
-    if (deviceShard != null && deviceShard.length == 32) {
+    List<int>? deviceShard;
+    try {
+      deviceShard = (await SecureHardware.loadDeviceShard())?.toList();
+    } catch (_) {
+      deviceShard = null;
+    }
+    // exportDeviceShard() returns `secret_share(32) || paillier_keypair`, so the
+    // stored blob is >32 bytes. verifyBackupShard needs only the 32-byte secret
+    // share (Party 0 scalar); take the first 32 bytes.
+    if (deviceShard != null && deviceShard.length >= 32) {
+      final secretShare = deviceShard.sublist(0, 32);
       return await MpcBridge.verifyBackupShard(
         backupBytes: backupBytes,
-        deviceShardBytes: deviceShard.toList(),
+        deviceShardBytes: secretShare,
         expectedPublicKey: publicKey,
       );
     }

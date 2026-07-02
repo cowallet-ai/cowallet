@@ -309,8 +309,10 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
             val decrypted = cipher.doFinal(ciphertext)
             result.success(decrypted)
           } catch (e: KeyPermanentlyInvalidatedException) {
+            android.util.Log.e("BioNative", "loadEncryptedShard: key invalidated", e)
             result.error("KEY_INVALIDATED", e.message, null)
           } catch (e: Exception) {
+            android.util.Log.e("BioNative", "loadEncryptedShard: decrypt failed", e)
             result.error("DECRYPTION_FAILED", e.message, null)
           }
         },
