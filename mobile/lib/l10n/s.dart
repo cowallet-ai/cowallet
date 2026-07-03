@@ -567,6 +567,9 @@ class S {
   static String get rotating => _p('轮转中...', 'Rotating...');
   static String get rotationSuccess => _p('三份钥匙已刷新', 'All three keys refreshed');
   static String get rotationFailed => _p('钥匙轮转失败', 'Key rotation failed');
+  static String get rotateConfirmBody => _p(
+      '将刷新全部三份密钥分片，钱包地址与资产不受影响。请保持网络畅通，过程约需几秒。',
+      'This refreshes all three key shares. Your wallet address and assets are unaffected. Keep your connection stable; it takes a few seconds.');
   static String get scanTitle => _p('扫一扫', 'Scan QR');
   static String get scanPermissionDenied => _p('需要相机权限才能扫码', 'Camera permission is required to scan');
   static String get scanOpenSettings => _p('去设置', 'Open Settings');

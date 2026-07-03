@@ -297,17 +297,33 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
       System.arraycopy(combined, 0, iv, 0, IV_LENGTH_BYTES)
       System.arraycopy(combined, IV_LENGTH_BYTES, ciphertext, 0, ciphertext.size)
 
-      // Authenticate first (no CryptoObject), then decrypt within the key's
-      // validity window. See storeEncryptedShard for why we avoid CryptoObject.
+      // Fast path: the shard key is time-bound (SHARD_AUTH_VALIDITY_SECONDS after
+      // any strong auth). The app already performs a biometric/PIN check right
+      // before signing, which opens that window — so try to decrypt WITHOUT
+      // showing a second prompt. This avoids the double biometric prompt on the
+      // send flow. If the window isn't open (no recent auth, or it expired),
+      // Keystore throws UserNotAuthenticatedException and we fall back to an
+      // explicit prompt below.
+      try {
+        result.success(decryptShard(iv, ciphertext))
+        return
+      } catch (e: android.security.keystore.UserNotAuthenticatedException) {
+        android.util.Log.i("BioNative", "loadEncryptedShard: auth window closed, prompting")
+        // fall through to prompt
+      } catch (e: KeyPermanentlyInvalidatedException) {
+        android.util.Log.e("BioNative", "loadEncryptedShard: key invalidated", e)
+        result.error("KEY_INVALIDATED", e.message, null)
+        return
+      }
+
+      // Slow path: no valid auth window — authenticate, then decrypt within the
+      // freshly opened window. See storeEncryptedShard for why we avoid CryptoObject.
       authenticateUser(
         title = "Unlock wallet backup",
         subtitle = "Authenticate to decrypt your device shard",
         onSuccess = {
           try {
-            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, getShardKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-            val decrypted = cipher.doFinal(ciphertext)
-            result.success(decrypted)
+            result.success(decryptShard(iv, ciphertext))
           } catch (e: KeyPermanentlyInvalidatedException) {
             android.util.Log.e("BioNative", "loadEncryptedShard: key invalidated", e)
             result.error("KEY_INVALIDATED", e.message, null)
@@ -321,6 +337,16 @@ class MpcKeystoreHandler(private val context: Context) : MethodChannel.MethodCal
     } catch (e: Exception) {
       result.error("DECRYPTION_FAILED", e.message, null)
     }
+  }
+
+  /// Decrypt the shard ciphertext with the time-bound shard key. Throws
+  /// UserNotAuthenticatedException if no strong auth has opened the key's
+  /// validity window (caller decides whether to prompt).
+  @RequiresApi(Build.VERSION_CODES.M)
+  private fun decryptShard(iv: ByteArray, ciphertext: ByteArray): ByteArray {
+    val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+    cipher.init(Cipher.DECRYPT_MODE, getShardKey(), GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+    return cipher.doFinal(ciphertext)
   }
 
   @RequiresApi(Build.VERSION_CODES.M)

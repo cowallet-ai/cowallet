@@ -822,12 +822,26 @@ class MpcWalletService implements WalletService {
     final subscription = ws.messages.listen((msg) {
       if (msg.fromParty == _serverParty &&
           (expectedRound == null || msg.round == expectedRound)) {
+        // Delivered live — drop the buffered copy so it isn't double-counted.
+        ws.dropBuffered(msg);
         messages.add(msg);
         if (messages.length >= expectedCount && !completer.isCompleted) {
           completer.complete(messages);
         }
       }
     });
+
+    // Drain messages that arrived before this listener was attached. The server
+    // pushes its reply over the socket within ~1ms of our HTTP send, usually
+    // before `.listen()` above runs; the broadcast stream drops those, so we
+    // recover them from the socket's buffer here. Without this the wait always
+    // times out (45s) and limps along on the HTTP poll fallback.
+    for (final buffered in ws.takeBuffered(fromParty: _serverParty, round: expectedRound)) {
+      messages.add(buffered);
+    }
+    if (messages.length >= expectedCount && !completer.isCompleted) {
+      completer.complete(messages);
+    }
 
     // Fallback timeout with HTTP polling
     final timer = Timer(_wsTimeout, () {

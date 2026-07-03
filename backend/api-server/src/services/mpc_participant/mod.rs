@@ -134,7 +134,7 @@ impl MpcParticipant {
                 self.init_sign_session(session_id, user_id, config, wallet_id).await
             }
             MpcSessionType::Reshare => {
-                self.init_reshare_session(session_id, user_id, config).await
+                self.init_reshare_session(session_id, user_id, config, wallet_id).await
             }
         }
     }
@@ -621,10 +621,16 @@ impl MpcParticipant {
         session_id: Uuid,
         user_id: Uuid,
         config: SessionConfig,
+        wallet_id: Option<Uuid>,
     ) -> Result<(), String> {
-        // Load existing server key share — resharing requires the old share
-        let key_share = self.shard_store.load_key_share(user_id).await?
-            .ok_or_else(|| format!("no server shard for user {}, cannot reshare without existing share", user_id))?;
+        // Load existing server key share — resharing requires the old share.
+        // Prefer the wallet-scoped shard (AAD-bound to user+wallet); fall back to
+        // the legacy user-scoped shard for wallets created before per-wallet storage.
+        let key_share = match wallet_id {
+            Some(wid) => self.shard_store.load_key_share_for_wallet(user_id, wid).await?,
+            None => self.shard_store.load_key_share(user_id).await?,
+        }
+        .ok_or_else(|| format!("no server shard for user {} (wallet {:?}), cannot reshare without existing share", user_id, wallet_id))?;
 
         // Determine participants from the config. If total_parties < 3, this is a
         // recovery reshare with a subset of old-share holders (e.g. [1, 2]).
@@ -708,7 +714,7 @@ impl MpcParticipant {
             phase: SessionPhase::ReshareAwaitingRound1,
             config,
             created_at: Instant::now(),
-            wallet_id: None,
+            wallet_id,
         });
 
         tracing::info!("Server Reshare session {} initialized, Round 1 sent", session_id);
@@ -750,9 +756,15 @@ impl MpcParticipant {
                 let new_key_share = reshare.finalize()
                     .map_err(|e| format!("reshare finalize failed: {}", e))?;
 
-                // Store the new key share (upsert replaces the old one)
+                // Store the new key share (upsert replaces the old one).
+                // Store under the same scope the shard was loaded from, so the
+                // AAD binding matches on subsequent loads (wallet-scoped vs legacy).
                 drop(reshare);
-                self.shard_store.store_key_share(user_id, &new_key_share).await?;
+                let wallet_id = self.session_meta.get(&session_id).and_then(|m| m.wallet_id);
+                match wallet_id {
+                    Some(wid) => self.shard_store.store_key_share_for_wallet(user_id, wid, &new_key_share).await?,
+                    None => self.shard_store.store_key_share(user_id, &new_key_share).await?,
+                }
 
                 if let Some(mut meta) = self.session_meta.get_mut(&session_id) {
                     meta.phase = SessionPhase::ReshareComplete;

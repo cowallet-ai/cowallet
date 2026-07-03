@@ -375,6 +375,49 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
+  Future<void> _handleRotateKeyShares() async {
+    // Confirm before running — reshare touches all three shards.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.rotateKeyShares),
+        content: Text(S.rotateConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(S.confirm),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    // Require auth — resharing rewrites the device shard.
+    final authed = await Services.authenticate(reason: S.biometricAuthReason);
+    if (!authed) return;
+
+    if (!mounted) return;
+    LoadingOverlay.show(context);
+    try {
+      final address = await SecureStorage.get('mpc_address');
+      await Services.mpcWallet.runReshare(walletId: address);
+      LoadingOverlay.dismiss();
+      await _loadKeySecuritySettings();
+      if (mounted) {
+        showTopToast(context, S.rotationSuccess, backgroundColor: CwColors.success);
+      }
+    } catch (e) {
+      LoadingOverlay.dismiss();
+      if (mounted) {
+        showTopToast(context, S.rotationFailed, backgroundColor: CwColors.danger);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -781,11 +824,7 @@ class _SettingsViewState extends State<SettingsView> {
           title: S.rotateKeyShares,
           subtitle: '${S.lastRotation}: ${_formatLastRotation()}',
           trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
-          onTap: () => showTopToast(
-            context,
-            S.comingSoon,
-            backgroundColor: CwColors.ink3,
-          ),
+          onTap: _handleRotateKeyShares,
         ),
         const Divider(indent: 52, height: 1),
         _settingRow(
