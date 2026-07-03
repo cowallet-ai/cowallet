@@ -120,6 +120,45 @@ async fn handle_ws_connection(
     // Channel for pushing messages to the WS client
     let (tx, mut rx) = mpsc::channel::<WsMessage>(64);
 
+    // Establish the NATS subscription BEFORE the DB catch-up.
+    //
+    // Ordering matters: the client sends its protocol messages over HTTP
+    // (POST /msg), and the server publishes each response to NATS. If we did
+    // catch-up first and subscribed second (the previous order), a response
+    // published in that gap had no subscriber and was silently dropped by NATS
+    // (it is not persistent), while the WS path never re-reads the DB when NATS
+    // is up. The client then waited out the full 45s WS timeout every round and
+    // only recovered via its slow HTTP poll fallback — ~100s per signature.
+    //
+    // Subscribing first closes the race: async-nats buffers messages that
+    // arrive after `subscribe()` returns, so any response published once the
+    // client starts sending is captured live. The catch-up that runs afterward
+    // sweeps up anything already persisted before the subscription. A message
+    // that lands in both just yields a harmless duplicate — the client keys on
+    // round and completes once it has the expected count.
+    let mut subscriber = match &state.nats {
+        Some(nats) => {
+            let nats_subject = format!("cowallet.mpc.{}.{}", session_id, party_index);
+            match nats.subscribe(nats_subject.clone()).await {
+                Ok(sub) => {
+                    tracing::debug!(
+                        "WS party {} subscribed to NATS subject: {}",
+                        party_index, nats_subject
+                    );
+                    Some(sub)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "NATS subscribe failed for {}: {} — falling back to DB polling",
+                        nats_subject, e
+                    );
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
     // Send any messages that arrived before this WS connection (catch-up from DB)
     if let Some(db) = &state.db {
         let catchup_messages: Result<Vec<(i64, i16, i16, i16, Vec<u8>)>, _> = sqlx::query_as(
@@ -163,35 +202,17 @@ async fn handle_ws_connection(
         }
     });
 
-    // Spawn task: subscribe to NATS or poll DB for new messages destined to this party
+    // Spawn task: drain the pre-established NATS subscription, or poll DB when
+    // NATS is unavailable / the subscription could not be created.
     let tx_clone = tx.clone();
     let state_clone = state.clone();
     let inbound_task = tokio::spawn(async move {
-        let nats_subject = format!("cowallet.mpc.{}.{}", session_id, party_index);
-
-        if let Some(nats) = &state_clone.nats {
-            // NATS-based real-time subscription
-            match nats.subscribe(nats_subject.clone()).await {
-                Ok(mut subscriber) => {
-                    tracing::debug!(
-                        "WS party {} subscribed to NATS subject: {}",
-                        party_index, nats_subject
-                    );
-                    while let Some(nats_msg) = subscriber.next().await {
-                        if let Ok(ws_msg) = serde_json::from_slice::<WsMessage>(&nats_msg.payload) {
-                            if tx_clone.send(ws_msg).await.is_err() {
-                                break; // Channel closed, WS disconnected
-                            }
-                        }
+        if let Some(subscriber) = subscriber.as_mut() {
+            while let Some(nats_msg) = subscriber.next().await {
+                if let Ok(ws_msg) = serde_json::from_slice::<WsMessage>(&nats_msg.payload) {
+                    if tx_clone.send(ws_msg).await.is_err() {
+                        break; // Channel closed, WS disconnected
                     }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "NATS subscribe failed for {}: {} — falling back to DB polling",
-                        nats_subject, e
-                    );
-                    // Fall through to DB polling
-                    db_poll_loop(&state_clone, session_id, party_index, &tx_clone).await;
                 }
             }
         } else {

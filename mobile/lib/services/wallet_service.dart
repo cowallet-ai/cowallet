@@ -60,9 +60,14 @@ abstract class WalletService {
   /// signing hash from. It is required for real transaction signing; callers
   /// that sign a bare hash (legacy/testing) may omit it, but the server will
   /// reject such requests on the protected signing path.
-  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields});
+  ///
+  /// [walletId] identifies which wallet's key share to sign with. It MUST be
+  /// passed for multi-wallet signing: the server binds each stored shard to
+  /// its owning user+wallet (AAD), so omitting it makes the server decrypt
+  /// with the wrong AAD and fail with an aead error.
+  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields, String? walletId});
 
   /// MPC distributed signature with session tracking.
-  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields});
+  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields, String? walletId});
 }
 

@@ -180,20 +180,26 @@
     },
     {
       "path": "mobile/lib/services/mpc_wallet_service.dart",
-      "accessCount": 38,
-      "lastAccessed": 1782953291442,
+      "accessCount": 46,
+      "lastAccessed": 1783040760886,
       "type": "file"
     },
     {
       "path": "crates/ffi-mobile/src/api.rs",
-      "accessCount": 31,
-      "lastAccessed": 1782959644173,
+      "accessCount": 32,
+      "lastAccessed": 1782982179097,
       "type": "file"
     },
     {
       "path": "backend/api-server/src/routes/mpc.rs",
-      "accessCount": 16,
-      "lastAccessed": 1782881053668,
+      "accessCount": 19,
+      "lastAccessed": 1783040780013,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/mpc_participant/mod.rs",
+      "accessCount": 14,
+      "lastAccessed": 1783038666687,
       "type": "file"
     },
     {
@@ -209,9 +215,9 @@
       "type": "file"
     },
     {
-      "path": "backend/api-server/src/services/mpc_participant/mod.rs",
-      "accessCount": 12,
-      "lastAccessed": 1782899100773,
+      "path": "backend/api-server/src/state.rs",
+      "accessCount": 13,
+      "lastAccessed": 1783040707112,
       "type": "file"
     },
     {
@@ -221,9 +227,9 @@
       "type": "file"
     },
     {
-      "path": "backend/api-server/src/state.rs",
-      "accessCount": 11,
-      "lastAccessed": 1782871114044,
+      "path": "mobile/lib/services/tx_service.dart",
+      "accessCount": 10,
+      "lastAccessed": 1783040173674,
       "type": "file"
     },
     {
@@ -257,6 +263,12 @@
       "type": "file"
     },
     {
+      "path": "backend/api-server/src/routes/mpc_ws.rs",
+      "accessCount": 8,
+      "lastAccessed": 1783041618578,
+      "type": "file"
+    },
+    {
       "path": "backend/api-server/src/services/ai_executor/mod.rs",
       "accessCount": 7,
       "lastAccessed": 1782868059921,
@@ -278,12 +290,6 @@
       "path": "backend/api-server/src/routes/ai/intent.rs",
       "accessCount": 6,
       "lastAccessed": 1782865727868,
-      "type": "file"
-    },
-    {
-      "path": "backend/api-server/src/routes/mpc_ws.rs",
-      "accessCount": 5,
-      "lastAccessed": 1782883785313,
       "type": "file"
     },
     {
@@ -374,12 +380,6 @@
       "path": "mobile/lib/l10n/app_localizations.dart",
       "accessCount": 2,
       "lastAccessed": 1782798068884,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/services/tx_service.dart",
-      "accessCount": 2,
-      "lastAccessed": 1782800854775,
       "type": "file"
     },
     {

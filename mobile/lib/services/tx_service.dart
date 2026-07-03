@@ -8,6 +8,7 @@ import '../l10n/strings.dart';
 import 'chain_service.dart';
 import 'locator.dart';
 import 'policy_service.dart';
+import 'step_timer.dart';
 import 'wallet_service.dart';
 
 abstract class TxService {
@@ -75,6 +76,7 @@ class MpcTxService implements TxService {
     bool skipPolicy = false,
   }) async {
     final effectiveChainId = chainId ?? this.chainId;
+    final timer = StepTimer('TxSend');
 
     // Emergency freeze check — block all transactions when active
     if (Services.settings.emergencyFreezeActive) {
@@ -87,6 +89,7 @@ class MpcTxService implements TxService {
     }
 
     final address = await _wallet.getAddress();
+    timer.mark('getAddress');
 
     // Policy engine check — evaluate against user-configured rules
     if (!skipPolicy) {
@@ -106,8 +109,10 @@ class MpcTxService implements TxService {
         );
       }
     }
+    timer.mark('policy');
 
     final nonce = await _chain.getTransactionCount(address);
+    timer.mark('nonce');
 
     final gas = gasLimit ??
         await _chain.estimateGas({
@@ -116,10 +121,12 @@ class MpcTxService implements TxService {
           'value': '0x${value.toRadixString(16)}',
           if (data != null && data.isNotEmpty) 'data': data,
         });
+    timer.mark('estimateGas');
 
     final baseFee = await _chain.getBaseFee() ?? await _chain.getGasPrice();
     final maxPriority = maxPriorityFeePerGas ?? await _chain.getMaxPriorityFeePerGas();
     final maxFee = maxFeePerGas ?? baseFee + (baseFee ~/ BigInt.from(5)) + maxPriority;
+    timer.mark('gasPrice');
 
     final dataBytes = (data != null && data.isNotEmpty)
         ? Uint8List.fromList(hex.decode(data.replaceFirst('0x', '')))
@@ -130,6 +137,7 @@ class MpcTxService implements TxService {
     if (!authed) {
       throw TxSigningException('User authentication required to sign transaction');
     }
+    timer.mark('biometric');
 
     // Build EIP-1559 unsigned transaction for signing hash
     final toBytes = Uint8List.fromList(
@@ -153,6 +161,7 @@ class MpcTxService implements TxService {
     payload.setRange(1, payload.length, unsignedRlp);
 
     final msgHash = Digest('Keccak/256').process(payload);
+    timer.mark('buildTx+msgHash');
     print('[TxService] msgHash computed, starting MPC sign...');
 
     // Structured tx fields the server independently re-hashes + policy-checks.
@@ -172,7 +181,8 @@ class MpcTxService implements TxService {
 
     // MPC distributed signature (device + server cooperate, no full key ever exists)
     try {
-      final signResult = await _wallet.signWithSession(msgHash.toList(), txFields: signTxFields);
+      final signResult = await _wallet.signWithSession(msgHash.toList(), txFields: signTxFields, walletId: address);
+      timer.mark('mpcSign');
       print('[TxService] MPC sign complete, sig length=${signResult.signature.length}');
 
       if (signResult.signature.length != 65) {
@@ -219,6 +229,7 @@ class MpcTxService implements TxService {
       mpcSessionId: signResult.sessionId,
     );
 
+    timer.mark('submit');
     print('[TxService] submit result: success=${submitResult.isSuccess}, error=${submitResult.errorMessage}');
 
     if (!submitResult.isSuccess || submitResult.data == null) {
@@ -239,6 +250,8 @@ class MpcTxService implements TxService {
     } catch (e) {
       print('[TxService] ERROR during sign/submit: $e');
       rethrow;
+    } finally {
+      timer.done();
     }
   }
 

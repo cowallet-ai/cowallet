@@ -11,6 +11,7 @@ import '../utils/secure_storage.dart';
 import '../utils/mpc_hmac.dart';
 import 'backup_shard_service.dart';
 import 'key_health_service.dart';
+import 'step_timer.dart';
 import 'wallet_service.dart';
 import 'mpc_session_store.dart';
 
@@ -325,7 +326,9 @@ class MpcWalletService implements WalletService {
   }
 
   Future<List<int>> _runSignInternal(List<int> msgHash, {String? walletId, SignTxFields? txFields}) async {
+    final timer = StepTimer('MpcSign');
     await ensureShardLoaded();
+    timer.mark('ensureShardLoaded');
 
     final sessionResult = await MpcApi.createSession(
       sessionType: 'sign',
@@ -333,6 +336,7 @@ class MpcWalletService implements WalletService {
       threshold: 2,
       walletId: walletId,
     );
+    timer.mark('createSession');
 
     if (!sessionResult.isSuccess || sessionResult.data == null) {
       throw MpcException('Failed to create sign session: ${sessionResult.errorMessage}');
@@ -346,9 +350,11 @@ class MpcWalletService implements WalletService {
     final ws = MpcWebSocket(sessionId: remoteSessionId, partyIndex: _deviceParty);
     try {
       await ws.connect();
+      timer.mark('wsConnect');
 
       final round1 = await MpcBridge.signGenerateRound1(msgHash);
       final localSessionId = round1.sessionId;
+      timer.mark('localRound1Gen');
 
       // Save initial session state for recovery
       await MpcSessionStore.saveSession(MpcSessionState(
@@ -368,12 +374,14 @@ class MpcWalletService implements WalletService {
         round: 1,
         payload: round1Json,
       );
+      timer.mark('sendRound1');
 
       await MpcSessionStore.updateCurrentRound(1);
 
       // Wait for server's Round 1 (R_1) — server tags its R1 reply round=1
       final serverR1 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 1);
       final serverR1Payload = serverR1.first.payload;
+      timer.mark('waitServerR1');
 
       // Sync _lastMessageId so Round 2 fallback skips Round 1 messages
       await _syncLastMessageId(remoteSessionId);
@@ -383,6 +391,7 @@ class MpcWalletService implements WalletService {
         localSessionId,
         serverR1Payload,
       );
+      timer.mark('processR1+genR2');
 
       // Send DeviceContribution via HTTP (reliable delivery)
       await _sendToServer(
@@ -390,17 +399,20 @@ class MpcWalletService implements WalletService {
         round: 2,
         payload: round2Payload,
       );
+      timer.mark('sendRound2');
 
       await MpcSessionStore.updateCurrentRound(2);
 
       // Wait for server's signature — server tags ServerSignature round=3 (round+1)
       final serverR2 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 3);
       final serverR2Payload = serverR2.first.payload;
+      timer.mark('waitServerSig');
 
       final signature = await MpcBridge.signProcessRound2(
         localSessionId,
         serverR2Payload,
       );
+      timer.mark('processR2+finalize');
 
       if (signature.length != 65) {
         throw MpcException('Invalid signature length: ${signature.length}');
@@ -423,6 +435,7 @@ class MpcWalletService implements WalletService {
       );
     } finally {
       await ws.disconnect();
+      timer.done();
     }
   }
 
@@ -758,13 +771,13 @@ class MpcWalletService implements WalletService {
   BackupResult? get lastBackupResult => _lastBackupResult;
 
   @override
-  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields}) async {
-    return await runSign(msgHash, txFields: txFields);
+  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields, String? walletId}) async {
+    return await runSign(msgHash, txFields: txFields, walletId: walletId);
   }
 
   @override
-  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields}) async {
-    final signature = await runSign(msgHash, txFields: txFields);
+  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields, String? walletId}) async {
+    final signature = await runSign(msgHash, txFields: txFields, walletId: walletId);
     return SignResult(signature: signature, sessionId: _currentSessionId);
   }
 
