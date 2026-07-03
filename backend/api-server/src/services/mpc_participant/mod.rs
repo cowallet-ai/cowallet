@@ -673,6 +673,11 @@ impl MpcParticipant {
             SERVER_PARTY_INDEX
         };
 
+        tracing::info!(
+            "RESHARE-DIAG init session={} shard.total_parties={} shard.party={} shard.threshold={} participants={:?} is_recovery={} target_party={}",
+            session_id, total, key_share.party, key_share.threshold, participant_indices, is_recovery, target_party
+        );
+
         // Always evaluate over the full party set (total_parties, e.g. 3) so the
         // backup(2) evaluation is produced for the offline backup shard.
         let full_config = SessionConfig {
@@ -690,10 +695,27 @@ impl MpcParticipant {
             .map_err(|e| format!("Reshare round 1 generation failed: {}", e))?;
 
         // Store server's backup contribution for the new backup shard (g_server(3))
-        if let Ok(backup_contrib) = reshare.derive_backup_share() {
-            if backup_contrib.len() == 32 {
-                self.backup_contributions.insert(session_id, backup_contrib);
-                tracing::debug!("Stored reshare backup contribution for session {}", session_id);
+        match reshare.derive_backup_share() {
+            Ok(backup_contrib) => {
+                tracing::info!(
+                    "RESHARE-DIAG derive_backup_share OK session={} len={}",
+                    session_id, backup_contrib.len()
+                );
+                if backup_contrib.len() == 32 {
+                    self.backup_contributions.insert(session_id, backup_contrib);
+                    tracing::info!("RESHARE-DIAG stored backup contribution session={}", session_id);
+                } else {
+                    tracing::warn!(
+                        "RESHARE-DIAG backup contribution wrong length {} session={}, NOT stored",
+                        backup_contrib.len(), session_id
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "RESHARE-DIAG derive_backup_share FAILED session={}: {}",
+                    session_id, e
+                );
             }
         }
 
@@ -1174,6 +1196,12 @@ impl MpcParticipant {
         }
 
         // Remove and return the contribution (single-use fetch)
+        let present = self.backup_contributions.contains_key(&session_id);
+        let all_keys: Vec<String> = self.backup_contributions.iter().map(|e| e.key().to_string()).collect();
+        tracing::info!(
+            "RESHARE-DIAG fetch session={} present_in_map={} map_keys={:?}",
+            session_id, present, all_keys
+        );
         self.backup_contributions.remove(&session_id).map(|(_, v)| v)
     }
 
