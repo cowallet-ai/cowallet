@@ -632,54 +632,58 @@ impl MpcParticipant {
         }
         .ok_or_else(|| format!("no server shard for user {} (wallet {:?}), cannot reshare without existing share", user_id, wallet_id))?;
 
-        // Determine participants from the config. If total_parties < 3, this is a
-        // recovery reshare with a subset of old-share holders (e.g. [1, 2]).
-        // In that case, identify which parties are participating and what the target is.
+        // Distinguish the two reshare scenarios by the participant set, NOT by
+        // participant count — both are 2-of-3, so counting can't tell them apart:
+        //
+        //   Proactive rotation (/api/v1/mpc/session): parties = [0, 1]
+        //       device(0) + server(1) both online, each refreshes its OWN share
+        //       in place; backup(2) is offline and its new share is derived from
+        //       both parties' contributions. Server target = SERVER_PARTY_INDEX (1).
+        //
+        //   Device recovery (/auth/recovery/verify): parties = [1, 2]
+        //       server(1) + backup(2) reconstruct the LOST device shard.
+        //       Server target = device (0), the party NOT in the participant list.
+        //
+        // The discriminator is whether device(0) participates: if it does, the
+        // device is present to refresh itself → proactive; otherwise it is the
+        // party being reconstructed → recovery.
         let total = key_share.total_parties;
-        let participants_count = config.total_parties as u16;
 
-        let mut reshare = if participants_count < total {
-            // Recovery mode: fewer than all parties are participating.
-            // The parties field from the DB tells us which old-share holders are active.
-            // We look up the session to find the actual party indices.
-            let row: Option<(Vec<i16>,)> = sqlx::query_as(
-                "SELECT parties FROM mpc_sessions WHERE id = $1"
-            )
-            .bind(session_id)
-            .fetch_optional(&self.db)
-            .await
-            .map_err(|e| format!("failed to fetch session parties: {}", e))?;
+        let row: Option<(Vec<i16>,)> = sqlx::query_as(
+            "SELECT parties FROM mpc_sessions WHERE id = $1"
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| format!("failed to fetch session parties: {}", e))?;
 
-            let participant_indices: Vec<u16> = row
-                .map(|(p,)| p.into_iter().map(|x| x as u16).collect())
-                .unwrap_or_else(|| (0..total).collect());
+        let participant_indices: Vec<u16> = row
+            .map(|(p,)| p.into_iter().map(|x| x as u16).collect())
+            .unwrap_or_else(|| (0..total).collect());
 
-            // Target party is the one NOT in the participant list (the one being recovered)
-            let target_party = (0..total)
+        let is_recovery = !participant_indices.contains(&0);
+
+        // Target party: the party being reconstructed in recovery (the one absent
+        // from the participant set), or the server itself in a proactive refresh.
+        let target_party = if is_recovery {
+            (0..total)
                 .find(|p| !participant_indices.contains(p))
-                .unwrap_or(0);
-
-            // Adjust config to use the full total_parties (3) for polynomial evaluation
-            let full_config = SessionConfig {
-                session_id: config.session_id.clone(),
-                threshold: config.threshold,
-                total_parties: total,
-                party_index: SERVER_PARTY_INDEX,
-            };
-
-            ReshareSession::new_for_recovery(full_config, key_share, participant_indices, target_party)
+                .unwrap_or(0)
         } else {
-            // Proactive reshare: only device (0) + server (1) participate;
-            // backup (2) is offline, its new share is derived separately.
-            let participants = vec![0u16, 1u16];
-            let server_config = SessionConfig {
-                session_id: config.session_id.clone(),
-                threshold: config.threshold,
-                total_parties: key_share.total_parties,
-                party_index: SERVER_PARTY_INDEX,
-            };
-            ReshareSession::new_for_recovery(server_config, key_share, participants, SERVER_PARTY_INDEX)
+            SERVER_PARTY_INDEX
         };
+
+        // Always evaluate over the full party set (total_parties, e.g. 3) so the
+        // backup(2) evaluation is produced for the offline backup shard.
+        let full_config = SessionConfig {
+            session_id: config.session_id.clone(),
+            threshold: config.threshold,
+            total_parties: total,
+            party_index: SERVER_PARTY_INDEX,
+        };
+
+        let mut reshare =
+            ReshareSession::new_for_recovery(full_config, key_share, participant_indices, target_party);
 
         // Generate server's Round 1 messages (polynomial evaluations for each party)
         let round1_msgs = reshare.generate_round1()
