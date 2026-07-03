@@ -141,9 +141,9 @@ async fn handle_ws_connection(
             let nats_subject = format!("cowallet.mpc.{}.{}", session_id, party_index);
             match nats.subscribe(nats_subject.clone()).await {
                 Ok(sub) => {
-                    tracing::debug!(
-                        "WS party {} subscribed to NATS subject: {}",
-                        party_index, nats_subject
+                    tracing::info!(
+                        "WS party {} subscribed to NATS subject: {} (session {})",
+                        party_index, nats_subject, session_id
                     );
                     Some(sub)
                 }
@@ -208,13 +208,27 @@ async fn handle_ws_connection(
     let state_clone = state.clone();
     let inbound_task = tokio::spawn(async move {
         if let Some(subscriber) = subscriber.as_mut() {
+            tracing::info!("WS inbound_task draining NATS for session {} party {}", session_id, party_index);
             while let Some(nats_msg) = subscriber.next().await {
-                if let Ok(ws_msg) = serde_json::from_slice::<WsMessage>(&nats_msg.payload) {
-                    if tx_clone.send(ws_msg).await.is_err() {
-                        break; // Channel closed, WS disconnected
+                match serde_json::from_slice::<WsMessage>(&nats_msg.payload) {
+                    Ok(ws_msg) => {
+                        tracing::info!(
+                            "WS inbound: NATS→client session {} round={} to_party={} len={}",
+                            session_id, ws_msg.round, ws_msg.to_party, ws_msg.payload.len()
+                        );
+                        if tx_clone.send(ws_msg).await.is_err() {
+                            break; // Channel closed, WS disconnected
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "WS inbound: failed to deserialize NATS payload ({} bytes) for session {}: {}",
+                            nats_msg.payload.len(), session_id, e
+                        );
                     }
                 }
             }
+            tracing::info!("WS inbound_task NATS stream ended for session {} party {}", session_id, party_index);
         } else {
             // No NATS available: fall back to DB polling
             db_poll_loop(&state_clone, session_id, party_index, &tx_clone).await;

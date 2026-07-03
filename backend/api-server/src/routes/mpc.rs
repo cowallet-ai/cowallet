@@ -426,8 +426,12 @@ pub async fn send_message(
                             });
                             let subject = format!("cowallet.mpc.{}.{}", session_id, target_party);
                             if let Ok(data) = serde_json::to_vec(&response_msg) {
-                                if let Err(e) = nats.publish(subject.clone(), data.into()).await {
-                                    tracing::warn!("NATS publish to {} failed: {}", subject, e);
+                                match nats.publish(subject.clone(), data.into()).await {
+                                    Ok(()) => tracing::info!(
+                                        "NATS publish OK subject={} round={} len={}",
+                                        subject, msg_round, payload.len()
+                                    ),
+                                    Err(e) => tracing::warn!("NATS publish to {} failed: {}", subject, e),
                                 }
                             }
                         }
