@@ -576,6 +576,13 @@ class S {
   static String get rotationSuccessCloudBackup => _p(
       '三份钥匙已刷新，云端备份已同步更新',
       'All three keys refreshed and cloud backup updated');
+  static String get mandatoryBackupTitle => _p('必须重新备份', 'Backup Required');
+  static String get mandatoryBackupBody => _p(
+      '钥匙已轮换成功。你的旧备份文件已失效——若不重新导出，一旦丢失手机将无法恢复钱包。请立即导出新备份。',
+      'Your keys were rotated. Your old backup file is now invalid — without re-exporting, you will not be able to recover your wallet if you lose this phone. Export a new backup now.');
+  static String get mandatoryBackupExitBlocked => _p(
+      '请先完成备份导出，这一步无法跳过', 'Finish exporting your backup first — this step cannot be skipped');
+  static String get mandatoryBackupDone => _p('备份已完成', 'Backup complete');
   static String get scanTitle => _p('扫一扫', 'Scan QR');
   static String get scanPermissionDenied => _p('需要相机权限才能扫码', 'Camera permission is required to scan');
   static String get scanOpenSettings => _p('去设置', 'Open Settings');

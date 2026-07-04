@@ -768,6 +768,14 @@ class MpcWalletService implements WalletService {
   /// 轮换后备份分片需要重新导出（离线文件方式）
   bool get backupNeedsReExport => _backupNeedsReExport;
 
+  /// Mark the post-rotation backup re-export as satisfied. Called by the
+  /// mandatory export screen after the user has exported the refreshed shard
+  /// via a path that bypasses [storeBackupShard] (e.g. encrypted-file export).
+  void markBackupReExported() {
+    _lastBackupShard = null;
+    _backupNeedsReExport = false;
+  }
+
   /// 用户选择存储方式后调用此方法。
   Future<BackupResult> storeBackupShard(
     List<int> shardBytes, {

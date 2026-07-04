@@ -13,6 +13,7 @@ import '../../widgets/pin_verify_dialog.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 import '../../api/wallet_api.dart';
+import 'mandatory_backup_export_view.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -408,12 +409,20 @@ class _SettingsViewState extends State<SettingsView> {
       LoadingOverlay.dismiss();
       await _loadKeySecuritySettings();
       if (mounted) {
-        // If the backup shard could be refreshed automatically (cloud), say so;
-        // otherwise the user must re-export their offline backup — the old file
-        // no longer matches the rotated shards.
+        // If the backup shard was refreshed automatically (cloud), a toast is
+        // enough. Otherwise the offline backup file no longer matches the
+        // rotated shards and MUST be re-exported — force the user through a
+        // blocking backup screen that cannot be dismissed until done.
         if (Services.mpcWallet.backupNeedsReExport) {
-          showTopToast(context, S.rotationBackupReExportNeeded,
-              backgroundColor: CwColors.warn);
+          showTopToast(context, S.rotationSuccess,
+              backgroundColor: CwColors.success);
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (_) => const MandatoryBackupExportView(),
+            ),
+          );
+          if (mounted) await _loadKeySecuritySettings();
         } else {
           showTopToast(context, S.rotationSuccessCloudBackup,
               backgroundColor: CwColors.success);
