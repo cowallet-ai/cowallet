@@ -408,7 +408,16 @@ class _SettingsViewState extends State<SettingsView> {
       LoadingOverlay.dismiss();
       await _loadKeySecuritySettings();
       if (mounted) {
-        showTopToast(context, S.rotationSuccess, backgroundColor: CwColors.success);
+        // If the backup shard could be refreshed automatically (cloud), say so;
+        // otherwise the user must re-export their offline backup — the old file
+        // no longer matches the rotated shards.
+        if (Services.mpcWallet.backupNeedsReExport) {
+          showTopToast(context, S.rotationBackupReExportNeeded,
+              backgroundColor: CwColors.warn);
+        } else {
+          showTopToast(context, S.rotationSuccessCloudBackup,
+              backgroundColor: CwColors.success);
+        }
       }
     } catch (e) {
       LoadingOverlay.dismiss();

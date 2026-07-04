@@ -10,6 +10,7 @@ import '../platform/secure_hardware.dart';
 import '../utils/secure_storage.dart';
 import '../utils/mpc_hmac.dart';
 import 'backup_shard_service.dart';
+import 'locator.dart';
 import 'key_health_service.dart';
 import 'step_timer.dart';
 import 'wallet_service.dart';
@@ -684,8 +685,27 @@ class MpcWalletService implements WalletService {
       }
 
       _lastBackupShard = newBackupShard;
-      _backupNeedsReExport = true;
-      print('[MpcWalletService] New backup shard ready, awaiting user choice');
+
+      // Persist the refreshed backup shard according to the method the user
+      // already chose. Cloud backups can be overwritten automatically; file /
+      // encrypted-file backups require the user to re-export (password + save
+      // location), so we only flag that and let the UI prompt.
+      final method = await Services.backup.getBackupMethod();
+      if (method == BackupMethod.cloud) {
+        try {
+          await Services.backup.storeBackupShard(newBackupShard, useCloud: true);
+          _backupNeedsReExport = false;
+          print('[MpcWalletService] Cloud backup updated with refreshed shard');
+        } catch (e) {
+          // Cloud overwrite failed — fall back to prompting a manual re-export.
+          _backupNeedsReExport = true;
+          print('[MpcWalletService] Cloud backup update failed, needs manual re-export: $e');
+        }
+      } else {
+        // file / encrypted_file / never-backed-up: user must re-export manually.
+        _backupNeedsReExport = true;
+        print('[MpcWalletService] New backup shard ready, awaiting user re-export');
+      }
     } catch (e) {
       print('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
     }
