@@ -5,6 +5,17 @@ use uuid::Uuid;
 /// The server is always Party 1 in the 2-of-3 scheme.
 pub const SERVER_PARTY_INDEX: u16 = 1;
 
+/// Total parties in the wallet's Shamir scheme: device(0) + server(1) + backup(2).
+///
+/// This is a fixed architectural constant, NOT the count of parties online for a
+/// given session. Only device(0) and server(1) contribute polynomials during DKG,
+/// but the shared secret is a 2-of-3 sharing whose backup(2) share is the derived
+/// evaluation F(3). The KeyShare's `total_parties` must be 3 so that reshare's
+/// `generate_round1` evaluates the polynomial at the backup point; deriving it from
+/// the online participant count (2) drops the backup evaluation and breaks backup
+/// shard refresh.
+pub const TOTAL_PARTIES: u16 = 3;
+
 /// Broadcast address used in mpc-core ProtocolMessage.
 pub const BROADCAST_PARTY: u16 = 0xFFFF;
 

@@ -119,10 +119,14 @@ impl MpcParticipant {
             return Ok(());
         }
 
+        // total_parties is the fixed 2-of-3 scheme size (3), NOT the count of
+        // parties online for this session. See TOTAL_PARTIES. Using parties.len()
+        // stored total_parties=2 on the server shard, which dropped the backup
+        // evaluation F(3) during reshare (backup-contribution 404).
         let config = SessionConfig {
             session_id: session_id.to_string(),
             threshold: threshold as u16,
-            total_parties: parties.len() as u16,
+            total_parties: TOTAL_PARTIES,
             party_index: SERVER_PARTY_INDEX,
         };
 
@@ -208,7 +212,7 @@ impl MpcParticipant {
         let config = SessionConfig {
             session_id: session_id.to_string(),
             threshold: threshold as u16,
-            total_parties: parties.len() as u16,
+            total_parties: TOTAL_PARTIES,
             party_index: SERVER_PARTY_INDEX,
         };
 
