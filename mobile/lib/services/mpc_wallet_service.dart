@@ -709,8 +709,8 @@ class MpcWalletService implements WalletService {
         // to the mandatory backup screen while the flag is set.
         _backupNeedsReExport = true;
         await SecureStorage.save(
-            SecureStorage.keyPendingBackupShard, base64Encode(newBackupShard));
-        await SecureStorage.save(SecureStorage.keyPendingBackupCreatedAt,
+            SecureStorage.keyRotationPendingShard, base64Encode(newBackupShard));
+        await SecureStorage.save(SecureStorage.keyRotationPendingCreatedAt,
             DateTime.now().toIso8601String());
         await SecureStorage.save(SecureStorage.keyBackupReExportPending, '1');
         print('[MpcWalletService] New backup shard staged, awaiting user re-export');
@@ -793,7 +793,7 @@ class MpcWalletService implements WalletService {
     if (_lastBackupShard != null && _lastBackupShard!.length == 32) {
       return _lastBackupShard;
     }
-    final staged = await SecureStorage.get(SecureStorage.keyPendingBackupShard);
+    final staged = await SecureStorage.get(SecureStorage.keyRotationPendingShard);
     if (staged == null || staged.isEmpty) return null;
     final bytes = base64Decode(staged);
     return bytes.length == 32 ? bytes : null;
@@ -807,8 +807,8 @@ class MpcWalletService implements WalletService {
     _lastBackupShard = null;
     _backupNeedsReExport = false;
     await SecureStorage.delete(SecureStorage.keyBackupReExportPending);
-    await SecureStorage.delete(SecureStorage.keyPendingBackupShard);
-    await SecureStorage.delete(SecureStorage.keyPendingBackupCreatedAt);
+    await SecureStorage.delete(SecureStorage.keyRotationPendingShard);
+    await SecureStorage.delete(SecureStorage.keyRotationPendingCreatedAt);
   }
 
   /// 用户选择存储方式后调用此方法。

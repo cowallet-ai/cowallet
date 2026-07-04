@@ -19,8 +19,14 @@ class SecureStorage {
   /// be re-exported by the user (offline-file backups). Durable so that killing
   /// or backgrounding the app during the mandatory re-export does not lose the
   /// requirement — startup re-routes to the mandatory backup screen while set.
-  /// The refreshed shard itself is staged in [keyPendingBackupShard].
   static const String keyBackupReExportPending = "backup_reexport_pending";
+
+  /// The refreshed backup shard (base64) staged during a key rotation, awaiting
+  /// mandatory re-export. Kept SEPARATE from [keyPendingBackupShard] (which the
+  /// DKG/onboarding flow uses) so the two flows never overwrite each other's
+  /// staged shard. Deleted once the rotation re-export completes.
+  static const String keyRotationPendingShard = "rotation_pending_shard";
+  static const String keyRotationPendingCreatedAt = "rotation_pending_created_at";
   static const String keyOnboardingStep = "onboarding_step";
   /// PIN-encrypted device shard blob (base64). Present only when the user chose
   /// PIN protection instead of biometric/hardware for the device shard (F-002-ish).
