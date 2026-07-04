@@ -1114,6 +1114,44 @@ const BACKUP_SALT_LEN: usize = 16;
 /// AES-GCM nonce length.
 const BACKUP_NONCE_LEN: usize = 12;
 
+/// Load a raw 32-byte backup shard into the Party 2 slot so it can be exported.
+///
+/// Used by the mandatory post-rotation backup screen after an app relaunch:
+/// the refreshed backup shard was staged to durable storage on the Dart side,
+/// but the Rust in-memory Party 2 slot is empty on a cold start, so
+/// `export_backup_shard` (which reads `get_share(2)`) would otherwise fail.
+/// This upserts the staged bytes back into Party 2 without touching the device
+/// (0) or server (1) shards.
+pub fn load_backup_shard_for_export(backup_bytes: Vec<u8>) -> Result<(), String> {
+    if backup_bytes.len() != 32 {
+        return Err(format!(
+            "invalid backup shard length: expected 32 bytes, got {}",
+            backup_bytes.len()
+        ));
+    }
+
+    use k256::elliptic_curve::PrimeField;
+    use k256::Scalar;
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&backup_bytes);
+    let _valid = Option::<Scalar>::from(Scalar::from_repr(bytes.into()))
+        .ok_or_else(|| "invalid backup shard: not a valid scalar".to_string())?;
+
+    // public_key is not needed by export_backup_shard (it only reads
+    // secret_share); leave it empty. total_parties=3 keeps the 2-of-3 shape.
+    let backup_share = mpc_core::dkls23::KeyShare {
+        party: 2,
+        threshold: 2,
+        total_parties: 3,
+        secret_share: backup_bytes.into(),
+        public_key: Vec::new(),
+        paillier_pk: None,
+        paillier_keypair: None,
+    };
+    state::store_single_share(backup_share);
+    Ok(())
+}
+
 /// Export the backup shard (Party 2) as a password-encrypted, base64-encoded string.
 ///
 /// Output format: version(1) || salt(16) || nonce(12) || ciphertext(32+16 tag)

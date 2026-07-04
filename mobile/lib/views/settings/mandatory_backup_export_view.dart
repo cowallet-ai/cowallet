@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../bridge/mpc_bridge.dart';
 import '../../l10n/s.dart';
 import '../../services/locator.dart';
 import '../../theme/colors.dart';
@@ -63,13 +64,22 @@ class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
     });
 
     try {
+      // Ensure the refreshed shard is in Rust memory (Party 2). On a cold start
+      // after app-kill the in-memory slot is empty, so load the staged shard
+      // that reshare persisted to SecureStorage before exporting.
+      final staged = await Services.mpcWallet.loadStagedBackupShard();
+      if (staged == null) {
+        throw Exception(S.backupExportFailed);
+      }
+      await MpcBridge.loadBackupShardForExport(staged);
+
       // Persist the refreshed shard as a password-encrypted file. This records
       // the backup method and writes the file to disk.
       final filePath = await Services.backup.exportEncryptedToFile(password);
 
       // Clear the post-rotation re-export requirement now that the refreshed
       // shard is safely persisted (this path bypasses storeBackupShard).
-      Services.mpcWallet.markBackupReExported();
+      await Services.mpcWallet.markBackupReExported();
 
       if (!mounted) return;
       setState(() {

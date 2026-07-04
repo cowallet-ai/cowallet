@@ -13,6 +13,7 @@ import 'package:cowallet/api/auth_api.dart';
 import 'package:cowallet/utils/secure_storage.dart';
 import 'package:cowallet/l10n/app_localizations.dart';
 import 'package:cowallet/l10n/s.dart';
+import 'package:cowallet/views/settings/mandatory_backup_export_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -126,12 +127,37 @@ class _CowalletAppState extends State<CowalletApp> {
       appState.setWalletAddress(addr);
       appState.completeOnboarding();
 
+      // If a key rotation left an un-exported backup (offline-file users), the
+      // refreshed shard was staged durably. Force the user back to the blocking
+      // backup screen — skipping it means backup+server recovery would fail.
+      await _enforcePendingBackupReExport();
+
       // Background tasks
       _refreshSessionInBackground();
       Services.push.reregisterToken();
       _refreshBalanceInBackground(addr);
     }
     // If no wallet, we stay on onboarding (initialRoute)
+  }
+
+  /// Force the mandatory backup re-export screen if a prior key rotation left
+  /// the refreshed backup shard un-exported (durably flagged). Blocks until the
+  /// user completes the export. Idempotent — safe to call on every launch.
+  Future<void> _enforcePendingBackupReExport() async {
+    try {
+      final pending = await Services.mpcWallet.isBackupReExportPending();
+      if (!pending) return;
+      final ctx = _navigatorKey.currentContext;
+      if (ctx == null || !mounted) return;
+      await Navigator.of(ctx).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const MandatoryBackupExportView(),
+        ),
+      );
+    } catch (_) {
+      // Never let this block app startup; the flag persists for the next launch.
+    }
   }
 
   Future<void> _refreshSessionInBackground() async {

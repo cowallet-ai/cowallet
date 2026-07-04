@@ -15,6 +15,12 @@ class SecureStorage {
   static const String keyDeviceId = "device_id";
   static const String keyPendingBackupShard = "pending_backup_shard";
   static const String keyPendingBackupCreatedAt = "pending_backup_created_at";
+  /// Set to "1" after a key rotation whose refreshed backup shard still needs to
+  /// be re-exported by the user (offline-file backups). Durable so that killing
+  /// or backgrounding the app during the mandatory re-export does not lose the
+  /// requirement — startup re-routes to the mandatory backup screen while set.
+  /// The refreshed shard itself is staged in [keyPendingBackupShard].
+  static const String keyBackupReExportPending = "backup_reexport_pending";
   static const String keyOnboardingStep = "onboarding_step";
   /// PIN-encrypted device shard blob (base64). Present only when the user chose
   /// PIN protection instead of biometric/hardware for the device shard (F-002-ish).

@@ -703,8 +703,17 @@ class MpcWalletService implements WalletService {
         }
       } else {
         // file / encrypted_file / never-backed-up: user must re-export manually.
+        // Stage the shard durably so that killing/backgrounding the app during
+        // the mandatory re-export does not lose it (in-memory _lastBackupShard
+        // would be gone on relaunch → unrecoverable backup). Startup re-routes
+        // to the mandatory backup screen while the flag is set.
         _backupNeedsReExport = true;
-        print('[MpcWalletService] New backup shard ready, awaiting user re-export');
+        await SecureStorage.save(
+            SecureStorage.keyPendingBackupShard, base64Encode(newBackupShard));
+        await SecureStorage.save(SecureStorage.keyPendingBackupCreatedAt,
+            DateTime.now().toIso8601String());
+        await SecureStorage.save(SecureStorage.keyBackupReExportPending, '1');
+        print('[MpcWalletService] New backup shard staged, awaiting user re-export');
       }
     } catch (e) {
       print('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
@@ -768,12 +777,38 @@ class MpcWalletService implements WalletService {
   /// 轮换后备份分片需要重新导出（离线文件方式）
   bool get backupNeedsReExport => _backupNeedsReExport;
 
+  /// Whether a post-rotation backup re-export is still pending, checked durably.
+  /// Survives app kill/relaunch (the in-memory flag is only a fast path). Used
+  /// by startup routing to force the user back to the mandatory backup screen.
+  Future<bool> isBackupReExportPending() async {
+    if (_backupNeedsReExport) return true;
+    final flag = await SecureStorage.get(SecureStorage.keyBackupReExportPending);
+    return flag == '1';
+  }
+
+  /// Load the staged (refreshed) backup shard persisted during reshare, so the
+  /// mandatory export screen can recover it after an app relaunch even though
+  /// [_lastBackupShard] was cleared. Returns null if none staged.
+  Future<List<int>?> loadStagedBackupShard() async {
+    if (_lastBackupShard != null && _lastBackupShard!.length == 32) {
+      return _lastBackupShard;
+    }
+    final staged = await SecureStorage.get(SecureStorage.keyPendingBackupShard);
+    if (staged == null || staged.isEmpty) return null;
+    final bytes = base64Decode(staged);
+    return bytes.length == 32 ? bytes : null;
+  }
+
   /// Mark the post-rotation backup re-export as satisfied. Called by the
   /// mandatory export screen after the user has exported the refreshed shard
   /// via a path that bypasses [storeBackupShard] (e.g. encrypted-file export).
-  void markBackupReExported() {
+  /// Clears both the in-memory state and the durable staging slot.
+  Future<void> markBackupReExported() async {
     _lastBackupShard = null;
     _backupNeedsReExport = false;
+    await SecureStorage.delete(SecureStorage.keyBackupReExportPending);
+    await SecureStorage.delete(SecureStorage.keyPendingBackupShard);
+    await SecureStorage.delete(SecureStorage.keyPendingBackupCreatedAt);
   }
 
   /// 用户选择存储方式后调用此方法。
