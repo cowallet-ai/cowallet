@@ -46,10 +46,12 @@ impl RateLimit {
         }
     }
 
-    /// Very strict limit for auth operations (login, register)
+    /// Very strict limit for auth operations (login, register, OTP send).
+    /// Restored toward the strict target (was temporarily 500) now that the
+    /// OTP endpoint additionally gates on Turnstile + per-email hourly caps.
     pub const fn auth() -> Self {
         Self {
-            max_requests: 500,
+            max_requests: 50,
             window_secs: 60,
         }
     }

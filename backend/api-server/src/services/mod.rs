@@ -11,4 +11,5 @@ pub mod email;
 pub mod mpc_participant;
 pub mod presign_manager;
 pub mod rpc_provider;
+pub mod turnstile;
 pub mod tx_tracker;

@@ -39,6 +39,10 @@ struct SendEmailOtpRequest {
     email: String,
     #[serde(default)]
     force: bool,
+    /// Cloudflare Turnstile token. Enforced only when TURNSTILE_SECRET_KEY is
+    /// configured on the server; otherwise ignored (compat mode).
+    #[serde(default)]
+    turnstile_token: String,
 }
 
 #[derive(Serialize)]
@@ -53,6 +57,15 @@ async fn send_email_otp(
     State(state): State<AppState>,
     Json(body): Json<SendEmailOtpRequest>,
 ) -> Result<Json<SendEmailOtpResponse>, StatusCode> {
+    // Human/bot check before doing any work. No-op unless TURNSTILE_SECRET_KEY
+    // is configured (compat mode for local/dev).
+    if let Err(e) =
+        crate::services::turnstile::verify(&state.http, &body.turnstile_token, None).await
+    {
+        tracing::warn!("Turnstile check failed for OTP send: {e}");
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     let db = state
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;

@@ -23,6 +23,12 @@ class ApiConfig {
 
   // 健康检查接口
   static const String healthCheck = "$baseUrl/health";
+
+  /// Cloudflare Turnstile site key (public). When empty, the client skips the
+  /// human-check step and the backend runs in compat mode (no enforcement).
+  /// Override at build time with --dart-define=TURNSTILE_SITE_KEY=...
+  static const String turnstileSiteKey =
+      String.fromEnvironment('TURNSTILE_SITE_KEY', defaultValue: '');
 }
 
 /// Supported blockchain networks configuration

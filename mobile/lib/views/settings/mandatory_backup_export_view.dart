@@ -1,10 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../bridge/mpc_bridge.dart';
 import '../../l10n/s.dart';
+import '../../services/backup_shard_service.dart';
 import '../../services/locator.dart';
 import '../../theme/colors.dart';
 import '../../theme/typography.dart';
@@ -17,10 +16,11 @@ import '../../widgets/top_toast.dart';
 /// lies on the new polynomial, so it can NO LONGER recover the wallet. If the
 /// user skipped re-exporting and later lost the device, funds would be
 /// unrecoverable. This screen blocks back-navigation until the user has
-/// exported (and thereby persisted) the refreshed backup.
+/// re-saved the refreshed backup.
 ///
-/// Only reached when [MpcWalletService.backupNeedsReExport] is true — i.e. the
-/// user's backup method is offline file, not auto-updated cloud.
+/// The storage options here are intentionally IDENTICAL to the onboarding
+/// backup step (cloud / local file, no password) so the two flows are aligned.
+/// Only reached when [MpcWalletService.backupNeedsReExport] is true.
 class MandatoryBackupExportView extends StatefulWidget {
   const MandatoryBackupExportView({super.key});
 
@@ -30,68 +30,46 @@ class MandatoryBackupExportView extends StatefulWidget {
 }
 
 class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
-  bool _isExporting = false;
+  bool _isSaving = false;
   bool _done = false;
   String? _error;
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
 
-  @override
-  void dispose() {
-    _passwordController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _doExportAndSave() async {
-    final password = _passwordController.text;
-    final confirm = _confirmController.text;
-
-    if (password.length < 8) {
-      setState(() => _error = S.backupPasswordTooShort);
-      return;
-    }
-    if (password != confirm) {
-      setState(() => _error = S.backupPasswordMismatch);
-      return;
-    }
-
+  Future<void> _saveBackup({required bool useCloud}) async {
     setState(() {
-      _isExporting = true;
+      _isSaving = true;
       _error = null;
     });
 
     try {
-      // Ensure the refreshed shard is in Rust memory (Party 2). On a cold start
-      // after app-kill the in-memory slot is empty, so load the staged shard
-      // that reshare persisted to SecureStorage before exporting.
+      // Load the refreshed shard that reshare staged to SecureStorage (survives
+      // app-kill). Same 32-byte device+server backup contribution the onboarding
+      // flow persists via storeBackupShard.
       final staged = await Services.mpcWallet.loadStagedBackupShard();
-      if (staged == null) {
+      if (staged == null || staged.length != 32) {
         throw Exception(S.backupExportFailed);
       }
-      await MpcBridge.loadBackupShardForExport(staged);
 
-      // Persist the refreshed shard as a password-encrypted file. This records
-      // the backup method and writes the file to disk.
-      final filePath = await Services.backup.exportEncryptedToFile(password);
+      // Store via the SAME path as onboarding — cloud or plain file, no
+      // password. storeBackupShard clears the in-memory backup state on success.
+      final result =
+          await Services.mpcWallet.storeBackupShard(staged, useCloud: useCloud);
 
-      // Clear the post-rotation re-export requirement now that the refreshed
-      // shard is safely persisted (this path bypasses storeBackupShard).
+      // Clear the post-rotation re-export requirement and staging slots.
       await Services.mpcWallet.markBackupReExported();
 
       if (!mounted) return;
       setState(() {
-        _isExporting = false;
+        _isSaving = false;
         _done = true;
       });
-      showTopToast(context, S.backupFileSaved(filePath),
-          backgroundColor: CwColors.success);
+      final msg = result.method == BackupMethod.cloud
+          ? S.backupSaved
+          : S.backupFileSaved(result.filePath ?? '');
+      showTopToast(context, msg, backgroundColor: CwColors.success);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isExporting = false;
+        _isSaving = false;
         _error = '${S.backupExportFailed}: $e';
       });
     }
@@ -100,7 +78,7 @@ class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Block back/gesture navigation until the backup is exported.
+      // Block back/gesture navigation until the backup is re-saved.
       canPop: _done,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !_done) {
@@ -185,84 +163,92 @@ class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
                     child: Text(S.confirm),
                   ),
                 ),
+              ] else if (_isSaving) ...[
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(S.backupSaving,
+                      style: TextStyle(color: CwColors.ink3)),
+                ),
               ] else ...[
-                // Password field
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: S.backupPasswordHint,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                          size: 20),
-                      onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword),
-                    ),
-                  ),
+                // Same two options as the onboarding backup step: cloud / file.
+                _backupOptionCard(
+                  icon: Icons.cloud_upload_outlined,
+                  title: S.backupCloudTitle,
+                  desc: S.backupCloudDesc,
+                  onTap: () => _saveBackup(useCloud: true),
                 ),
                 const SizedBox(height: 12),
-
-                // Confirm password field
-                TextField(
-                  controller: _confirmController,
-                  obscureText: _obscureConfirm,
-                  decoration: InputDecoration(
-                    labelText: S.backupPasswordConfirmHint,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                          _obscureConfirm
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                          size: 20),
-                      onPressed: () =>
-                          setState(() => _obscureConfirm = !_obscureConfirm),
-                    ),
-                  ),
+                _backupOptionCard(
+                  icon: Icons.save_alt_outlined,
+                  title: S.backupFileTitle,
+                  desc: S.backupFileDesc,
+                  onTap: () => _saveBackup(useCloud: false),
                 ),
-                const SizedBox(height: 8),
-
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(_error!,
-                        style: TextStyle(
-                            fontFamily: CwTypography.serifFamily,
-                            fontSize: 12,
-                            color: CwColors.danger)),
-                  ),
-
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _isExporting ? null : _doExportAndSave,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: CwColors.accent,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _isExporting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : Text(S.backupSaveToFile),
-                  ),
-                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_error!,
+                      style: TextStyle(
+                          fontFamily: CwTypography.serifFamily,
+                          fontSize: 12,
+                          color: CwColors.danger)),
+                ],
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _backupOptionCard({
+    required IconData icon,
+    required String title,
+    required String desc,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: CwColors.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: CwColors.line),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: CwColors.accentSoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 22, color: CwColors.accent),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: CwColors.ink1)),
+                  const SizedBox(height: 2),
+                  Text(desc,
+                      style: TextStyle(
+                          fontFamily: CwTypography.serifFamily,
+                          fontSize: 13,
+                          color: CwColors.ink3)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 20, color: CwColors.ink4),
+          ],
         ),
       ),
     );

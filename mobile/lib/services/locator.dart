@@ -180,4 +180,32 @@ class Services {
     print('[Auth] PIN verify result=$pinResult');
     return pinResult;
   }
+
+  /// Authentication for operations that immediately load the device shard
+  /// (sign, reshare). Avoids the double prompt biometric users otherwise hit:
+  ///
+  ///  - PIN-only shard (app-layer encrypted blob): the shard load does NOT
+  ///    trigger any native prompt, so we authenticate here via PinVerifyDialog.
+  ///  - Hardware shard (biometric / device-credential): the subsequent
+  ///    keystore decryption fires its OWN native BiometricPrompt to authorize
+  ///    the auth-bound key, which IS the authentication. Prompting here too
+  ///    would ask the user twice. So we skip the manual prompt and let the
+  ///    keystore be the single gate.
+  ///
+  /// Use this ONLY for shard-loading operations. Operations that do not load
+  /// the shard (freeze, view keys) must keep calling [authenticate].
+  static Future<bool> authenticateForShardOp({required String reason}) async {
+    final pinOnly = await mpcWallet.hasPinEncryptedShard();
+    if (pinOnly) {
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null) return false;
+      final pinResult = await PinVerifyDialog.show(ctx, reason: reason);
+      print('[Auth] shard-op PIN verify result=$pinResult');
+      return pinResult;
+    }
+    // Hardware path: the keystore's native prompt during shard decryption is
+    // the single authentication gate.
+    print('[Auth] shard-op: deferring to native keystore prompt');
+    return true;
+  }
 }

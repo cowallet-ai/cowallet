@@ -10,6 +10,7 @@ import 'package:convert/convert.dart' as convert;
 import '../theme/colors.dart';
 import '../widgets/cw_orb.dart';
 import '../widgets/top_toast.dart';
+import '../widgets/turnstile_gate.dart';
 import '../l10n/strings.dart';
 import '../main.dart';
 import '../services/locator.dart';
@@ -796,13 +797,23 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       setState(() => _emailError = S.invalidEmail);
       return;
     }
+    // Human check before sending. Returns '' in compat mode (not configured),
+    // a token on success, or null if the user dismissed / it errored.
+    final turnstileToken = await TurnstileGate.getToken(context);
+    if (turnstileToken == null) {
+      if (!mounted) return;
+      setState(() => _emailError = S.emailSendFailed);
+      return;
+    }
+
     setState(() {
       _emailError = null;
       _emailSending = true;
     });
 
     try {
-      final result = await AuthApi.sendEmailOtp(email: email);
+      final result =
+          await AuthApi.sendEmailOtp(email: email, turnstileToken: turnstileToken);
       if (!mounted) return;
       if (result.isSuccess) {
         final isRegistered = result.data?["is_registered"] == true;
@@ -998,10 +1009,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final hash = digest.process(Uint8List.fromList(shardBytes));
     _backupShardHash = convert.hex.encode(hash);
 
+    // Human check before the forced re-send.
+    final turnstileToken = await TurnstileGate.getToken(context);
+    if (turnstileToken == null) {
+      if (!mounted) return;
+      showTopToast(context, S.emailSendFailed, backgroundColor: CwColors.danger);
+      return;
+    }
+
     // Re-send OTP with force flag since the initial send was blocked
     final result = await AuthApi.sendEmailOtp(
       email: _emailCtrl.text.trim(),
       force: true,
+      turnstileToken: turnstileToken,
     );
     if (!mounted) return;
 
@@ -1082,7 +1102,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _resendOtp() async {
     _otpCtrl.clear();
-    final result = await AuthApi.sendEmailOtp(email: _emailCtrl.text.trim());
+    final turnstileToken = await TurnstileGate.getToken(context);
+    if (turnstileToken == null) {
+      if (!mounted) return;
+      setState(() => _otpError = S.emailSendFailed);
+      return;
+    }
+    final result = await AuthApi.sendEmailOtp(
+        email: _emailCtrl.text.trim(), turnstileToken: turnstileToken);
     if (!mounted) return;
     if (!result.isSuccess) {
       setState(() => _otpError = S.emailSendFailed);

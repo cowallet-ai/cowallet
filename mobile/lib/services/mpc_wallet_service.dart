@@ -451,20 +451,13 @@ class MpcWalletService implements WalletService {
   ///   on restart → use backup shard recovery.
   /// - After hardware persist: device done; backup refresh is best-effort
   Future<WalletInfo> runReshare({String? walletId}) async {
-    // Ensure device shard is loaded into Rust memory
-    final shardBytes = await SecureHardware.loadDeviceShard();
-    if (shardBytes == null || shardBytes.isEmpty) {
-      throw MpcException('Device shard not found in secure storage');
-    }
-    final pubKeyHex = await SecureStorage.get('mpc_public_key');
-    final pubKey = pubKeyHex != null && pubKeyHex.isNotEmpty
-        ? List<int>.generate(pubKeyHex.length ~/ 2,
-            (i) => int.parse(pubKeyHex.substring(i * 2, i * 2 + 2), radix: 16))
-        : <int>[];
-    await MpcBridge.importDeviceShard(
-      shardBytes: shardBytes.toList(),
-      publicKey: pubKey,
-    );
+    // Ensure device shard is loaded into Rust memory. Uses the same loader as
+    // signing so BOTH auth paths work: the hardware/biometric path AND the
+    // PIN-only path (where the shard lives as an app-layer encrypted blob under
+    // keyPinEncryptedShard, not in SecureHardware). Reading only the hardware
+    // path here previously made reshare fail for PIN users with
+    // "Device shard not found".
+    await ensureShardLoaded();
 
     final sessionResult = await MpcApi.createSession(
       sessionType: 'reshare',

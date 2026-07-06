@@ -9,7 +9,6 @@ import '../../widgets/loading_overlay.dart';
 import '../../main.dart';
 import '../../services/locator.dart';
 import '../../services/settings_service.dart';
-import '../../widgets/pin_verify_dialog.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 import '../../api/wallet_api.dart';
@@ -23,10 +22,6 @@ class SettingsView extends StatefulWidget {
 }
 
 class _SettingsViewState extends State<SettingsView> {
-  bool _biometricEnabled = false;
-  bool _biometricAvailable = false;
-  bool _hasEnrolledBiometrics = false;
-  String _biometricType = 'Biometric';
   String? _lastRotationDate;
 
   KeyStatus _phoneStatus = KeyStatus.unknown;
@@ -38,7 +33,6 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   void initState() {
     super.initState();
-    _loadBiometricStatus();
     _loadKeySecuritySettings();
     _loadKeyHealth();
     _settings.addListener(_onSettingsChanged);
@@ -84,60 +78,6 @@ class _SettingsViewState extends State<SettingsView> {
   KeyStatus _parseStatus(String? value) {
     if (value == null) return KeyStatus.unknown;
     return KeyStatus.values.where((e) => e.name == value).firstOrNull ?? KeyStatus.unknown;
-  }
-
-  Future<void> _loadBiometricStatus() async {
-    final available = await Services.biometrics.isAvailable();
-    final enabled = await Services.biometrics.isEnabled();
-    final hasEnrolled = await Services.biometrics.hasEnrolledBiometrics();
-    final bioType = await Services.biometrics.getPrimaryBiometricType();
-    print('[Settings] biometric available=$available, enabled=$enabled, hasEnrolled=$hasEnrolled, type=$bioType');
-
-    if (mounted) {
-      setState(() {
-        _biometricAvailable = available;
-        _biometricEnabled = enabled;
-        _hasEnrolledBiometrics = hasEnrolled;
-        _biometricType = bioType;
-      });
-    }
-  }
-
-  String _getBiometricSubtitle() {
-    if (!_biometricAvailable) {
-      return S.biometricNotAvailable;
-    }
-    if (!_hasEnrolledBiometrics) {
-      return 'Please set up $_biometricType in your device settings first';
-    }
-    return 'Use $_biometricType to verify sensitive operations';
-  }
-
-  Future<void> _toggleBiometric(bool value) async {
-    if (!_biometricAvailable) return;
-
-    if (value) {
-      final ctx = Services.navigatorKey.currentContext;
-      if (ctx == null) return;
-      final pinOk = await PinVerifyDialog.show(ctx, reason: S.biometricAuthReason);
-      if (!pinOk) return;
-
-      final bioOk = await Services.biometrics.authenticate(
-        reason: S.biometricAuthReason,
-      );
-      if (!bioOk) return;
-    } else {
-      final authenticated = await Services.authenticate(reason: S.biometricAuthReason);
-      if (!authenticated) return;
-    }
-
-    if (!mounted) return;
-    LoadingOverlay.show(context);
-    await Services.biometrics.setEnabled(value);
-    LoadingOverlay.dismiss();
-    if (mounted) {
-      setState(() => _biometricEnabled = value);
-    }
   }
 
   Future<void> _toggleEmergencyFreeze() async {
@@ -397,8 +337,10 @@ class _SettingsViewState extends State<SettingsView> {
     );
     if (confirmed != true) return;
 
-    // Require auth — resharing rewrites the device shard.
-    final authed = await Services.authenticate(reason: S.biometricAuthReason);
+    // Require auth — resharing rewrites the device shard. Shard-op variant:
+    // biometric users authenticate once via the native keystore prompt during
+    // shard decryption (no double prompt); PIN users authenticate here.
+    final authed = await Services.authenticateForShardOp(reason: S.biometricAuthReason);
     if (!authed) return;
 
     if (!mounted) return;
@@ -428,7 +370,8 @@ class _SettingsViewState extends State<SettingsView> {
               backgroundColor: CwColors.success);
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[Rotate] runReshare failed: $e\n$st');
       LoadingOverlay.dismiss();
       if (mounted) {
         showTopToast(context, S.rotationFailed, backgroundColor: CwColors.danger);
@@ -673,20 +616,6 @@ class _SettingsViewState extends State<SettingsView> {
   Widget _securityList(BuildContext context) {
     return _settingsContainer(
       children: [
-        _settingRow(
-          context,
-          icon: Icons.fingerprint,
-          iconColor: CwColors.accent,
-          iconBg: CwColors.accentSoft,
-          title: S.biometricAuth,
-          subtitle: _getBiometricSubtitle(),
-          trailing: Switch(
-            value: _biometricEnabled,
-            onChanged: _biometricAvailable ? _toggleBiometric : null,
-            activeThumbColor: CwColors.accent,
-          ),
-        ),
-        const Divider(indent: 52, height: 1),
         _settingRow(
           context,
           icon: Icons.error_outline,

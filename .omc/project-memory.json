@@ -179,21 +179,27 @@
       "type": "file"
     },
     {
-      "path": "mobile/lib/services/mpc_wallet_service.dart",
-      "accessCount": 13,
-      "lastAccessed": 1783133216289,
+      "path": "mobile/lib/views/settings/settings_view.dart",
+      "accessCount": 25,
+      "lastAccessed": 1783325779335,
       "type": "file"
     },
     {
-      "path": "mobile/lib/views/settings/settings_view.dart",
-      "accessCount": 10,
-      "lastAccessed": 1783130523077,
+      "path": "mobile/lib/services/mpc_wallet_service.dart",
+      "accessCount": 16,
+      "lastAccessed": 1783322177132,
       "type": "file"
     },
     {
       "path": "mobile/lib/l10n/s.dart",
       "accessCount": 6,
       "lastAccessed": 1783130374332,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/views/settings/mandatory_backup_export_view.dart",
+      "accessCount": 6,
+      "lastAccessed": 1783322096331,
       "type": "file"
     },
     {
@@ -209,9 +215,15 @@
       "type": "file"
     },
     {
-      "path": "mobile/lib/views/settings/mandatory_backup_export_view.dart",
+      "path": "mobile/lib/services/locator.dart",
       "accessCount": 4,
-      "lastAccessed": 1783132853441,
+      "lastAccessed": 1783325676042,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/onboarding/onboarding_flow.dart",
+      "accessCount": 4,
+      "lastAccessed": 1783328732936,
       "type": "file"
     },
     {
@@ -230,6 +242,12 @@
       "path": "mobile/lib/utils/secure_storage.dart",
       "accessCount": 3,
       "lastAccessed": 1783133178903,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/middleware/rate_limit.rs",
+      "accessCount": 3,
+      "lastAccessed": 1783327057905,
       "type": "file"
     },
     {
@@ -260,6 +278,30 @@
       "path": "mobile/lib/bridge/mpc_bridge.dart",
       "accessCount": 2,
       "lastAccessed": 1783131770154,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/tx_service.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783325751383,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/config/api_config.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783328110498,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/api/auth_api.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783328277182,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/widgets/turnstile_gate.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783328583963,
       "type": "file"
     },
     {
@@ -320,6 +362,12 @@
       "path": "mobile/lib/bridge/frb_generated/frb_generated.dart",
       "accessCount": 1,
       "lastAccessed": 1783131620262,
+      "type": "file"
+    },
+    {
+      "path": "mobile/android/app/src/main/kotlin/com/cowallet/mpc/MpcKeystoreHandler.kt",
+      "accessCount": 1,
+      "lastAccessed": 1783319853061,
       "type": "file"
     }
   ],

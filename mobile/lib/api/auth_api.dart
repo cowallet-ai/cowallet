@@ -8,15 +8,19 @@ import '../utils/secure_storage.dart';
 /// 认证API - 匹配后端实际接口
 class AuthApi {
   /// 发送邮箱验证码（注册前验证邮箱所有权）
+  /// [turnstileToken] Cloudflare Turnstile 人机校验 token。后端仅在配置了
+  /// secret 时强制校验，否则忽略（兼容模式）。
   static Future<Result<Map<String, dynamic>>> sendEmailOtp({
     required String email,
     bool force = false,
+    String turnstileToken = '',
   }) async {
     return await DioClient.post(
       "/auth/email/send-otp",
       data: {
         "email": email,
         if (force) "force": true,
+        if (turnstileToken.isNotEmpty) "turnstile_token": turnstileToken,
       },
     );
   }
