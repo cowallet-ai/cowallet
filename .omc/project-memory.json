@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1783056420813,
+  "lastScanned": 1783304135295,
   "projectRoot": "/Users/mac/cat/cowallet",
   "techStack": {
     "languages": [
@@ -33,7 +33,7 @@
   },
   "build": {
     "buildCommand": "cargo build",
-    "testCommand": "cargo test -p mpc-core reshare 2>&1 | tail -20; echo \"=== api-server participant tests ===\"; cargo test -p api-server mpc_participant 2>&1 | tail -20",
+    "testCommand": "cargo test",
     "lintCommand": "cargo clippy",
     "devCommand": "cargo run",
     "scripts": {}
@@ -62,28 +62,28 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1783056420798,
+      "lastAccessed": 1783304135249,
       "keyFiles": []
     },
     "crates": {
       "path": "crates",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1783056420803,
+      "lastAccessed": 1783304135250,
       "keyFiles": []
     },
     "docker": {
       "path": "docker",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1783056420803,
+      "lastAccessed": 1783304135250,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 13,
-      "lastAccessed": 1783056420803,
+      "lastAccessed": 1783304135253,
       "keyFiles": [
         "API接入实施方案.md",
         "CoWallet-FENZ-2026-0142-SOLUTION-ZH.html",
@@ -96,7 +96,7 @@
       "path": "k8s",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1783056420804,
+      "lastAccessed": 1783304135253,
       "keyFiles": [
         "deployment.yml",
         "kustomization.yml",
@@ -107,7 +107,7 @@
       "path": "mobile",
       "purpose": null,
       "fileCount": 22,
-      "lastAccessed": 1783056420804,
+      "lastAccessed": 1783304135256,
       "keyFiles": [
         "BIP39_IMPLEMENTATION.md",
         "CRITICAL_SERVICES.md",
@@ -120,7 +120,7 @@
       "path": "prototype",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1783056420804,
+      "lastAccessed": 1783304135256,
       "keyFiles": [
         "index.html"
       ]
@@ -129,7 +129,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 4,
-      "lastAccessed": 1783056420804,
+      "lastAccessed": 1783304135256,
       "keyFiles": [
         "build_android.sh",
         "build_ios.sh",
@@ -141,7 +141,7 @@
       "path": "target",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1783056420805,
+      "lastAccessed": 1783304135256,
       "keyFiles": [
         "CACHEDIR.TAG"
       ]
@@ -150,7 +150,7 @@
       "path": "website",
       "purpose": null,
       "fileCount": 9,
-      "lastAccessed": 1783056420805,
+      "lastAccessed": 1783304135257,
       "keyFiles": [
         "next-env.d.ts",
         "next.config.ts",
@@ -163,7 +163,7 @@
       "path": "backend/migrations",
       "purpose": "Database migrations",
       "fileCount": 23,
-      "lastAccessed": 1783056420805,
+      "lastAccessed": 1783304135258,
       "keyFiles": [
         "001_initial_schema.sql",
         "002_audit_logs.sql",
@@ -174,44 +174,152 @@
   "hotPaths": [
     {
       "path": "backend/api-server/src/services/mpc_participant/mod.rs",
-      "accessCount": 7,
-      "lastAccessed": 1783057183496,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/views/settings/settings_view.dart",
-      "accessCount": 5,
-      "lastAccessed": 1783056682969,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/l10n/s.dart",
-      "accessCount": 2,
-      "lastAccessed": 1783056659990,
-      "type": "file"
-    },
-    {
-      "path": "crates/mpc-core/src/dkls23/reshare.rs",
-      "accessCount": 1,
-      "lastAccessed": 1783056471513,
+      "accessCount": 28,
+      "lastAccessed": 1783126518671,
       "type": "file"
     },
     {
       "path": "mobile/lib/services/mpc_wallet_service.dart",
-      "accessCount": 1,
-      "lastAccessed": 1783056580472,
+      "accessCount": 13,
+      "lastAccessed": 1783133216289,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/views/settings/settings_view.dart",
+      "accessCount": 10,
+      "lastAccessed": 1783130523077,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/l10n/s.dart",
+      "accessCount": 6,
+      "lastAccessed": 1783130374332,
+      "type": "file"
+    },
+    {
+      "path": "crates/ffi-mobile/src/api.rs",
+      "accessCount": 5,
+      "lastAccessed": 1783131530900,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/main.dart",
+      "accessCount": 5,
+      "lastAccessed": 1783131910570,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/views/settings/mandatory_backup_export_view.dart",
+      "accessCount": 4,
+      "lastAccessed": 1783132853441,
       "type": "file"
     },
     {
       "path": "backend/api-server/src/routes/mpc.rs",
-      "accessCount": 1,
-      "lastAccessed": 1783057022135,
+      "accessCount": 3,
+      "lastAccessed": 1783061377753,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/views/settings/backup_shard_view.dart",
+      "accessCount": 3,
+      "lastAccessed": 1783130442398,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/utils/secure_storage.dart",
+      "accessCount": 3,
+      "lastAccessed": 1783133178903,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/auth.rs",
+      "accessCount": 2,
+      "lastAccessed": 1783061945722,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/reshare.rs",
+      "accessCount": 2,
+      "lastAccessed": 1783062340269,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/mpc_participant/types.rs",
+      "accessCount": 2,
+      "lastAccessed": 1783072823336,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/bridge/ffi.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783131540817,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/bridge/mpc_bridge.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783131770154,
       "type": "file"
     },
     {
       "path": "backend/api-server/src/services/mpc_participant/shard_store.rs",
       "accessCount": 1,
       "lastAccessed": 1783057096510,
+      "type": "file"
+    },
+    {
+      "path": "deploy.sh",
+      "accessCount": 1,
+      "lastAccessed": 1783057847629,
+      "type": "file"
+    },
+    {
+      "path": "docs/DEPLOY.md",
+      "accessCount": 1,
+      "lastAccessed": 1783057847683,
+      "type": "file"
+    },
+    {
+      "path": "docker-compose.prod.yml",
+      "accessCount": 1,
+      "lastAccessed": 1783059165462,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/tests/e2e_protocol_flow.rs",
+      "accessCount": 1,
+      "lastAccessed": 1783061144412,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/dkg.rs",
+      "accessCount": 1,
+      "lastAccessed": 1783072592135,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/backup_shard_service.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783126802419,
+      "type": "file"
+    },
+    {
+      "path": "crates/ffi-mobile/src/state.rs",
+      "accessCount": 1,
+      "lastAccessed": 1783131497700,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/bridge/frb_generated/api.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783131581808,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/bridge/frb_generated/frb_generated.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783131620262,
       "type": "file"
     }
   ],

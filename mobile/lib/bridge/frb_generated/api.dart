@@ -274,6 +274,19 @@ Future<bool> verifyBackupShardFeldman({
   expectedPublicKey: expectedPublicKey,
 );
 
+/// Load a raw 32-byte backup shard into the Party 2 slot so it can be exported.
+///
+/// Used by the mandatory post-rotation backup screen after an app relaunch:
+/// the refreshed backup shard was staged to durable storage on the Dart side,
+/// but the Rust in-memory Party 2 slot is empty on a cold start, so
+/// `export_backup_shard` (which reads `get_share(2)`) would otherwise fail.
+/// This upserts the staged bytes back into Party 2 without touching the device
+/// (0) or server (1) shards.
+Future<void> loadBackupShardForExport({required List<int> backupBytes}) =>
+    RustLib.instance.api.crateApiLoadBackupShardForExport(
+      backupBytes: backupBytes,
+    );
+
 /// Export the backup shard (Party 2) as a password-encrypted, base64-encoded string.
 ///
 /// Output format: version(1) || salt(16) || nonce(12) || ciphertext(32+16 tag)
