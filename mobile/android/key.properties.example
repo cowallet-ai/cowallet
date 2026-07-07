@@ -1,0 +1,23 @@
+# Android release signing credentials — TEMPLATE.
+#
+# Copy this file to `android/key.properties` (which is gitignored) and fill in
+# the real values. The build reads it via app/build.gradle.kts to sign release
+# builds. NEVER commit the real key.properties or the .jks keystore.
+#
+# Generate the keystore first (recommended defaults — alias "upload", 10000-day
+# validity). Run from the mobile/android directory and keep the resulting file
+# OUTSIDE the repo or at app/upload-keystore.jks (it is gitignored):
+#
+#   keytool -genkeypair -v \
+#     -keystore app/upload-keystore.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 \
+#     -alias upload \
+#     -dname "CN=CoWallet, O=MPC LABS LIMITED, C=HK"
+#
+# You will be prompted for the store password; reuse it for the key password.
+
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=upload
+# Path is resolved relative to the android/app directory.
+storeFile=upload-keystore.jks
