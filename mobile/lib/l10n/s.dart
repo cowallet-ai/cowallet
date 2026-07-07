@@ -511,6 +511,7 @@ class S {
   static String get txPending => _p('确认中…', 'Confirming…');
   static String get txConfirmed => _p('已确认', 'Confirmed');
   static String get txFailedStatus => _p('失败', 'Failed');
+  static String get turnstileTitle => _p('安全验证', 'Security check');
   static String get noTxYet => _p('暂无交易记录', 'No transactions yet');
   static String get demoData => _p('示例数据', 'Demo data');
   static String get regenerate => _p('再试一次', 'Regenerate');

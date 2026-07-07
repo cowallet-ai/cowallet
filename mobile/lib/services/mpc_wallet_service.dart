@@ -532,9 +532,25 @@ class MpcWalletService implements WalletService {
       // Must persist to hardware immediately.
       final walletInfo = await MpcBridge.reshareFinalize(localSessionId);
 
-      // Persist new device shard to hardware IMMEDIATELY after finalize
-      final newShardBytes = await MpcBridge.exportDeviceShard();
-      await SecureHardware.storeDeviceShard(Uint8List.fromList(newShardBytes));
+      // Persist the NEW device shard IMMEDIATELY after finalize, to the SAME
+      // storage path the wallet already uses. Previously this always wrote the
+      // hardware path, which left PIN-only users with a STALE shard in
+      // keyPinEncryptedShard — so post-rotation verification (and any shard
+      // load) used the old device shard and failed. Route by actual path.
+      if (await hasPinEncryptedShard()) {
+        // PIN path: re-encrypt the refreshed shard under the user's PIN.
+        final pin = await SecureStorage.get('wallet_pin');
+        if (pin != null && pin.isNotEmpty) {
+          await persistDeviceShardWithPin(pin);
+        } else {
+          // No PIN available to re-encrypt — surface rather than silently
+          // leaving a stale shard behind.
+          throw MpcException('PIN required to persist rotated device shard');
+        }
+      } else {
+        final newShardBytes = await MpcBridge.exportDeviceShard();
+        await SecureHardware.storeDeviceShard(Uint8List.fromList(newShardBytes));
+      }
 
       // Update stored address and public key
       await SecureStorage.save('mpc_address', walletInfo.address);
@@ -543,6 +559,13 @@ class MpcWalletService implements WalletService {
           .join();
       await SecureStorage.save('mpc_public_key', pubKeyHex);
       await SecureStorage.save('last_key_rotation', DateTime.now().toIso8601String());
+
+      // Bug fix: reshare puts all shards on a NEW polynomial, so any stored
+      // server commitment from a prior recovery is now stale. Leaving it made
+      // _verifyBackupShard take the Feldman branch with an outdated commitment
+      // and fail. Clear it so verification uses the fresh device/PIN shard
+      // (matches what runDkg does after a fresh keygen).
+      await SecureStorage.delete('mpc_server_commitment');
 
       // Re-derive backup shard (best-effort — device+server are already safe)
       await _refreshBackupShard(remoteSessionId, deviceBackupContrib);

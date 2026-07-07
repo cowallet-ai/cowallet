@@ -169,6 +169,14 @@ class KeyHealthService {
     }
     final publicKey = _hexToBytes(pubKeyHex);
 
+    final hasPin = await Services.mpcWallet.hasPinEncryptedShard();
+    List<int>? hwShard;
+    try {
+      hwShard = (await SecureHardware.loadDeviceShard())?.toList();
+    } catch (_) {
+      hwShard = null;
+    }
+
     if (commitmentHex != null && commitmentHex.isNotEmpty) {
       final serverCommitment = _hexToBytes(commitmentHex);
       return await MpcBridge.verifyBackupShardFeldman(
@@ -178,17 +186,11 @@ class KeyHealthService {
       );
     }
 
-    List<int>? deviceShard;
-    try {
-      deviceShard = (await SecureHardware.loadDeviceShard())?.toList();
-    } catch (_) {
-      deviceShard = null;
-    }
     // exportDeviceShard() returns `secret_share(32) || paillier_keypair`, so the
     // stored blob is >32 bytes. verifyBackupShard needs only the 32-byte secret
     // share (Party 0 scalar); take the first 32 bytes.
-    if (deviceShard != null && deviceShard.length >= 32) {
-      final secretShare = deviceShard.sublist(0, 32);
+    if (hwShard != null && hwShard.length >= 32) {
+      final secretShare = hwShard.sublist(0, 32);
       return await MpcBridge.verifyBackupShard(
         backupBytes: backupBytes,
         deviceShardBytes: secretShare,
@@ -199,7 +201,7 @@ class KeyHealthService {
     // PIN-only path: the device shard is not in hardware. Load it into Rust
     // memory via the PIN-decrypt path, then verify against the in-memory
     // Party 0 (empty deviceShardBytes triggers the FFI in-memory fallback).
-    if (await Services.mpcWallet.hasPinEncryptedShard()) {
+    if (hasPin) {
       await Services.mpcWallet.ensureShardLoaded();
       return await MpcBridge.verifyBackupShard(
         backupBytes: backupBytes,

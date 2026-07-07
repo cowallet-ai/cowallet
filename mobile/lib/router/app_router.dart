@@ -55,14 +55,12 @@ class AppRouter {
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
-  static final chatKey = GlobalKey<ChatViewState>();
-
   static void goToChatAndSend(BuildContext context, String message) {
     final shellState = context.findAncestorStateOfType<_AppShellState>();
     if (shellState != null) {
       shellState.switchToChat();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        chatKey.currentState?.sendMessage(message);
+        shellState._chatKey.currentState?.sendMessage(message);
       });
     }
   }
@@ -72,7 +70,7 @@ class AppShell extends StatefulWidget {
     if (shellState != null) {
       shellState.switchToChat();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        chatKey.currentState?.showTxDetail(txData);
+        shellState._chatKey.currentState?.showTxDetail(txData);
       });
     }
   }
@@ -84,14 +82,22 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
 
+  // Per-instance key (NOT a static/global singleton). A static GlobalKey caused
+  // "Duplicate GlobalKey" crashes: during navigation transitions two AppShell
+  // instances briefly coexist, and both mounted a ChatView with the same key.
+  // An instance field means each shell owns its own key, so there is never a
+  // collision. Cross-widget access still goes through _AppShellState via
+  // findAncestorStateOfType (see goToChatAndSend/goToChatAndShowTx).
+  final _chatKey = GlobalKey<ChatViewState>();
+
   void switchToChat() {
     setState(() => _currentIndex = 2);
   }
 
-  final _views = <Widget>[
+  late final _views = <Widget>[
     const HomeView(),
     const WalletView(),
-    ChatView(key: AppShell.chatKey),
+    ChatView(key: _chatKey),
     const DefiHubView(),
     const SettingsView(),
   ];

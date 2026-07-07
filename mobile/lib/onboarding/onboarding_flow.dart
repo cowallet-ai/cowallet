@@ -253,6 +253,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // auth-bound key, which triggers the biometric/device-credential prompt now —
   // as a result of the user's explicit choice, not automatically mid-DKG.
   Future<void> _startBioScan() async {
+    // Reentrancy guard: this runs several async steps (availability checks,
+    // keystore init, shard persistence + native prompt). Without this a rapid
+    // double-tap — or a tap during the gap before the first setState rebuilds —
+    // would fire it concurrently, repeating initializeWallet/persistDeviceShard
+    // and causing the "hangs and stays tappable" behaviour. Bail if already
+    // running or done.
+    if (_bioAuthenticating || _bioDone) return;
+
     // Immediately update UI before any async work
     setState(() {
       _bioAuthenticating = true;
@@ -279,7 +287,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       }
 
       if (!mounted) return;
-      setState(() => _bioAuthenticating = false);
+      // Keep _bioAuthenticating = true through the slow steps below (keystore
+      // init + shard persistence, which run BEFORE the native prompt appears).
+      // Previously this was reset to false here, so the spinner vanished and the
+      // button reappeared — letting the user tap again during the wait and
+      // defeating the reentrancy guard.
 
       // Enable biometrics and initialize the hardware-backed key store.
       await Services.biometrics.setEnabled(true);
@@ -291,7 +303,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       } else if (await sbManager.isAvailable()) {
         await sbManager.initializeWallet('onboarding');
       } else {
-        setState(() => _bioError = true);
+        setState(() {
+          _bioAuthenticating = false;
+          _bioError = true;
+        });
         return;
       }
 
@@ -327,6 +342,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
   }
 
+  // Kept as a fallback PIN path even though the UI link is currently hidden.
+  // ignore: unused_element
   void _skipBio() {
     Services.biometrics.setEnabled(false);
     // Do NOT persist via the hardware key here (that would fire a biometric
@@ -1409,8 +1426,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 40),
                 if (!_bioDone && !_bioAuthenticating) ...[
                   _primaryButton(S.bioActivate, _startBioScan),
-                  const SizedBox(height: 12),
-                  _secondaryLink(S.bioSkip, _skipBio),
+                  // NOTE: the "skip / use PIN" link is intentionally hidden from
+                  // the UI — users are steered to hardware-backed protection.
+                  // The PIN path (_skipBio / _onPinComplete /
+                  // persistDeviceShardWithPin) is deliberately KEPT as a
+                  // fallback (e.g. devices without biometrics) and may be
+                  // re-surfaced if needed, so it is not removed.
                 ],
                 if (_bioAuthenticating) ...[
                   const SizedBox(
