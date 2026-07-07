@@ -36,8 +36,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cowallet.ai"
+        // Store/runtime identity — aligned with iOS (com.cowallet.app), which
+        // already has an established App Store identity. Kept distinct from
+        // `namespace` (com.cowallet.ai) on purpose: namespace only drives the
+        // generated R class + Kotlin package layout, so leaving it unchanged
+        // avoids moving MainActivity.kt / touching the manifest.
+        applicationId = "com.cowallet.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
