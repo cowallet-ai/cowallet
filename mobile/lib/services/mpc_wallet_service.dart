@@ -180,9 +180,9 @@ class MpcWalletService implements WalletService {
 
       // Save the public key. The device shard is intentionally NOT persisted
       // here: storing it under a hardware-backed (biometric-bound) key would
-      // trigger a biometric prompt before the user has chosen their auth method
-      // on the bio/pin screen. The shard stays in Rust memory; the onboarding
-      // flow calls persistDeviceShard(...) after the user makes that choice.
+      // trigger a native prompt before the user reaches the protection screen.
+      // The shard stays in Rust memory; the onboarding flow calls
+      // persistDeviceShard() once the hardware key store is initialized.
       final pubKeyHex = walletInfo.publicKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
       await SecureStorage.save('mpc_public_key', pubKeyHex);
 
@@ -202,10 +202,9 @@ class MpcWalletService implements WalletService {
     }
   }
 
-  /// Persist the device shard (Party 0) after the user has chosen their auth
-  /// method on the bio/pin screen. Called by the onboarding flow once, after
-  /// DKG completes and the choice is made — NOT during DKG — so the biometric
-  /// prompt only appears when the user has opted into biometric protection.
+  /// Persist the device shard (Party 0) once the hardware key store is ready.
+  /// Called by the onboarding flow after DKG — NOT during DKG — so the native
+  /// keystore prompt only appears when the user reaches the protection screen.
   ///
   /// The shard is exported fresh from Rust memory (kept there by runDkg) and
   /// stored under the hardware-backed, auth-bound key (biometric / device
@@ -215,28 +214,13 @@ class MpcWalletService implements WalletService {
     await SecureHardware.storeDeviceShard(Uint8List.fromList(deviceShardBytes));
   }
 
-  /// Persist the device shard encrypted with the user's PIN (app-layer
-  /// Argon2id + AES-256-GCM, NO hardware/biometric key). Used for the PIN-only
-  /// auth path so storing the shard does not trigger a biometric prompt. The
-  /// ciphertext blob is kept in ordinary secure storage.
-  Future<void> persistDeviceShardWithPin(String pin) async {
-    final blob = await MpcBridge.exportDeviceShardEncrypted(pin);
-    await SecureStorage.save(SecureStorage.keyPinEncryptedShard, blob);
-  }
-
-  /// Whether the device shard is stored under the PIN-only (non-hardware) path.
-  Future<bool> hasPinEncryptedShard() async {
-    final blob = await SecureStorage.get(SecureStorage.keyPinEncryptedShard);
-    return blob != null && blob.isNotEmpty;
-  }
-
   /// 按需加载设备分片到 Rust 内存（签名前调用）
   /// Public so MpcSessionManager can call it during sign recovery.
   ///
-  /// If the shard was stored under the PIN-only path, [pinProvider] is invoked
-  /// to obtain the PIN for decryption; otherwise the hardware path is used
-  /// (which prompts for biometric/device-credential natively).
-  Future<void> ensureShardLoaded({Future<String?> Function()? pinProvider}) async {
+  /// The device shard is always hardware-backed: loading it fires the native
+  /// keystore prompt (biometric, with device-passcode fallback) to authorize
+  /// the auth-bound key. That prompt IS the authentication for shard ops.
+  Future<void> ensureShardLoaded() async {
     final pubKeyHex = await SecureStorage.get('mpc_public_key');
     if (pubKeyHex == null || pubKeyHex.isEmpty) {
       throw MpcException('Public key not found');
@@ -245,26 +229,6 @@ class MpcWalletService implements WalletService {
       pubKeyHex.length ~/ 2,
       (i) => int.parse(pubKeyHex.substring(i * 2, i * 2 + 2), radix: 16),
     );
-
-    // PIN-only path: decrypt the app-layer blob with the user's PIN (no biometric).
-    final pinBlob = await SecureStorage.get(SecureStorage.keyPinEncryptedShard);
-    if (pinBlob != null && pinBlob.isNotEmpty) {
-      final pin = pinProvider != null
-          ? await pinProvider()
-          : await SecureStorage.get('wallet_pin');
-      if (pin == null || pin.isEmpty) {
-        throw MpcException('PIN required to unlock device shard');
-      }
-      final ok = await MpcBridge.importDeviceShardEncrypted(
-        encryptedData: pinBlob,
-        pin: pin,
-        publicKey: publicKey,
-      );
-      if (!ok) {
-        throw MpcException('Failed to decrypt device shard (wrong PIN?)');
-      }
-      return;
-    }
 
     // Hardware path (biometric / device credential).
     final shardBytes = await SecureHardware.loadDeviceShard();
@@ -452,11 +416,8 @@ class MpcWalletService implements WalletService {
   /// - After hardware persist: device done; backup refresh is best-effort
   Future<WalletInfo> runReshare({String? walletId}) async {
     // Ensure device shard is loaded into Rust memory. Uses the same loader as
-    // signing so BOTH auth paths work: the hardware/biometric path AND the
-    // PIN-only path (where the shard lives as an app-layer encrypted blob under
-    // keyPinEncryptedShard, not in SecureHardware). Reading only the hardware
-    // path here previously made reshare fail for PIN users with
-    // "Device shard not found".
+    // signing: the hardware-backed shard load fires the native keystore prompt
+    // (biometric, with device-passcode fallback) to authorize the key.
     await ensureShardLoaded();
 
     final sessionResult = await MpcApi.createSession(
@@ -532,25 +493,10 @@ class MpcWalletService implements WalletService {
       // Must persist to hardware immediately.
       final walletInfo = await MpcBridge.reshareFinalize(localSessionId);
 
-      // Persist the NEW device shard IMMEDIATELY after finalize, to the SAME
-      // storage path the wallet already uses. Previously this always wrote the
-      // hardware path, which left PIN-only users with a STALE shard in
-      // keyPinEncryptedShard — so post-rotation verification (and any shard
-      // load) used the old device shard and failed. Route by actual path.
-      if (await hasPinEncryptedShard()) {
-        // PIN path: re-encrypt the refreshed shard under the user's PIN.
-        final pin = await SecureStorage.get('wallet_pin');
-        if (pin != null && pin.isNotEmpty) {
-          await persistDeviceShardWithPin(pin);
-        } else {
-          // No PIN available to re-encrypt — surface rather than silently
-          // leaving a stale shard behind.
-          throw MpcException('PIN required to persist rotated device shard');
-        }
-      } else {
-        final newShardBytes = await MpcBridge.exportDeviceShard();
-        await SecureHardware.storeDeviceShard(Uint8List.fromList(newShardBytes));
-      }
+      // Persist the NEW device shard IMMEDIATELY after finalize to the
+      // hardware-backed key store — the single storage path for the shard.
+      final newShardBytes = await MpcBridge.exportDeviceShard();
+      await SecureHardware.storeDeviceShard(Uint8List.fromList(newShardBytes));
 
       // Update stored address and public key
       await SecureStorage.save('mpc_address', walletInfo.address);

@@ -159,6 +159,53 @@ class AuthApi {
     return result;
   }
 
+  /// In-flight session recovery, shared across ALL callers (the 401 interceptor
+  /// AND the app-startup refresh). The backend refresh token is one-time-use
+  /// (rotated + blacklisted on each refresh), so two concurrent refreshes would
+  /// race — the loser presents an already-blacklisted token and gets 401,
+  /// wiping the session. Single-flight collapses every concurrent 401 into one
+  /// recovery attempt; the rest await the same Future and then retry.
+  static Future<bool>? _recovering;
+
+  /// Recover a valid access token. Tries the refresh token first; if that fails
+  /// (e.g. the 7-day refresh token expired or was already rotated), falls back
+  /// to challenge-response re-login using the device hardware key.
+  ///
+  /// [allowInteractiveLogin] gates the challenge-response fallback, which fires
+  /// a biometric/device-credential prompt via signChallenge. Single-flight
+  /// means at most ONE prompt per expiry event, not one per pending request.
+  ///
+  /// Does NOT clear auth data on failure: a transient failure (network, 503
+  /// blacklist-check) or a cancelled biometric prompt must not log the user
+  /// out. Returns false and leaves stored tokens intact for the next attempt.
+  static Future<bool> recoverSession({bool allowInteractiveLogin = true}) {
+    final existing = _recovering;
+    if (existing != null) return existing;
+    final future = _doRecoverSession(allowInteractiveLogin);
+    _recovering = future;
+    return future.whenComplete(() {
+      if (identical(_recovering, future)) _recovering = null;
+    });
+  }
+
+  static Future<bool> _doRecoverSession(bool allowInteractiveLogin) async {
+    // 1) Refresh token path (no user interaction). Goes through DioClient so the
+    //    X-Device-ID header is attached — the refresh endpoint 403s without it.
+    if (await refreshToken()) return true;
+
+    // 2) Fallback: challenge-response re-login with the device hardware key.
+    //    Requires a biometric/device-credential prompt.
+    if (!allowInteractiveLogin) return false;
+    final deviceId = await SecureStorage.getDeviceId();
+    if (deviceId == null || deviceId.isEmpty) return false;
+    try {
+      final result = await login(deviceId: deviceId, reason: '会话已过期，请验证以继续');
+      return result.isSuccess;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 使用 refresh_token 刷新 access_token
   static Future<bool> refreshToken() async {
     final refreshToken = await SecureStorage.getRefreshToken();

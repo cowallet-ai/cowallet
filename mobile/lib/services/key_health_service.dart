@@ -169,7 +169,6 @@ class KeyHealthService {
     }
     final publicKey = _hexToBytes(pubKeyHex);
 
-    final hasPin = await Services.mpcWallet.hasPinEncryptedShard();
     List<int>? hwShard;
     try {
       hwShard = (await SecureHardware.loadDeviceShard())?.toList();
@@ -198,18 +197,14 @@ class KeyHealthService {
       );
     }
 
-    // PIN-only path: the device shard is not in hardware. Load it into Rust
-    // memory via the PIN-decrypt path, then verify against the in-memory
+    // Hardware shard missing from the loaded bytes: load it into Rust memory
+    // (fires the native keystore prompt), then verify against the in-memory
     // Party 0 (empty deviceShardBytes triggers the FFI in-memory fallback).
-    if (hasPin) {
-      await Services.mpcWallet.ensureShardLoaded();
-      return await MpcBridge.verifyBackupShard(
-        backupBytes: backupBytes,
-        expectedPublicKey: publicKey,
-      );
-    }
-
-    throw Exception('Device shard not available');
+    await Services.mpcWallet.ensureShardLoaded();
+    return await MpcBridge.verifyBackupShard(
+      backupBytes: backupBytes,
+      expectedPublicKey: publicKey,
+    );
   }
 
   Future<bool> testBackupKey() async {

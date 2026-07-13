@@ -27,7 +27,7 @@ import '../platform/cloud_backup.dart';
 import '../router/app_router.dart';
 
 /// The onboarding stages of cowallet.
-enum _Stage { hero, intro, email, emailOtp, creating, bio, pin, name, backup, ready, persona }
+enum _Stage { hero, intro, email, emailOtp, creating, bio, name, backup, ready, persona }
 
 class OnboardingFlow extends StatefulWidget {
   const OnboardingFlow({super.key});
@@ -75,12 +75,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // --- Persona stage state ---
   String? _selectedPersona;
 
-  // --- PIN stage state ---
-  String _pinInput = '';
-  String? _pinFirst; // first entry, waiting for confirm
-  bool _pinMismatch = false;
-  bool _pinDone = false;
-
   // --- Backup stage state ---
   bool _backupSkipped = false;
   bool _backupSaving = false;
@@ -108,7 +102,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
     if (mounted) {
       // Build history so back button works from restored stage
-      final stageOrder = [_Stage.hero, _Stage.intro, _Stage.email, _Stage.emailOtp, _Stage.creating, _Stage.bio, _Stage.pin, _Stage.name, _Stage.backup, _Stage.ready, _Stage.persona];
+      final stageOrder = [_Stage.hero, _Stage.intro, _Stage.email, _Stage.emailOtp, _Stage.creating, _Stage.bio, _Stage.name, _Stage.backup, _Stage.ready, _Stage.persona];
       final targetIdx = stageOrder.indexOf(stage);
       setState(() {
         _history.clear();
@@ -268,32 +262,27 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     });
 
     try {
-      final available = await Services.biometrics.isAvailable();
+      // The device shard is hardware-backed and its key is bound to device
+      // auth. If the device has NO lock at all (no biometric, no passcode),
+      // there is nothing to bind to — guide the user to set one up in system
+      // settings, then let them retry. We do NOT proceed without a lock.
+      final supported = await Services.biometrics.isDeviceSupported();
       if (!mounted) return;
-
-      if (!available) {
-        await Services.biometrics.setEnabled(false);
+      if (!supported) {
         setState(() => _bioAuthenticating = false);
-        await _persistShardThen(_Stage.name);
+        await Services.promptDeviceSecuritySetup();
         return;
       }
 
-      final hasEnrolled = await Services.biometrics.hasEnrolledBiometrics();
-      if (!hasEnrolled) {
-        await Services.biometrics.setEnabled(false);
-        setState(() => _bioAuthenticating = false);
-        await _persistShardThen(_Stage.name);
-        return;
-      }
-
-      if (!mounted) return;
       // Keep _bioAuthenticating = true through the slow steps below (keystore
       // init + shard persistence, which run BEFORE the native prompt appears).
       // Previously this was reset to false here, so the spinner vanished and the
       // button reappeared — letting the user tap again during the wait and
       // defeating the reentrancy guard.
 
-      // Enable biometrics and initialize the hardware-backed key store.
+      // Mark device-auth protection as enabled and initialize the
+      // hardware-backed key store. The native prompt (biometric, with device
+      // passcode fallback) fires during persistDeviceShard below.
       await Services.biometrics.setEnabled(true);
 
       final seManager = SecureEnclaveManager();
@@ -327,29 +316,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         _bioError = true;
       });
     }
-  }
-
-  /// Persist the device shard, then advance to [next]. Used on the
-  /// biometric-unavailable / not-enrolled paths where the hardware key falls
-  /// back to a device-credential prompt.
-  Future<void> _persistShardThen(_Stage next) async {
-    try {
-      final walletService = Services.wallet as MpcWalletService;
-      await walletService.persistDeviceShard();
-      if (mounted) _goTo(next);
-    } catch (e) {
-      if (mounted) setState(() => _bioError = true);
-    }
-  }
-
-  // Kept as a fallback PIN path even though the UI link is currently hidden.
-  // ignore: unused_element
-  void _skipBio() {
-    Services.biometrics.setEnabled(false);
-    // Do NOT persist via the hardware key here (that would fire a biometric
-    // prompt). The device shard stays in Rust memory; it is persisted with the
-    // user's PIN in _onPinComplete once they set it — a true no-biometric path.
-    _goTo(_Stage.pin);
   }
 
   // ---- Name ----
@@ -514,8 +480,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         return _creatingStage();
       case _Stage.bio:
         return _bioStage();
-      case _Stage.pin:
-        return _pinStage();
       case _Stage.name:
         return _nameStage();
       case _Stage.backup:
@@ -1426,12 +1390,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 40),
                 if (!_bioDone && !_bioAuthenticating) ...[
                   _primaryButton(S.bioActivate, _startBioScan),
-                  // NOTE: the "skip / use PIN" link is intentionally hidden from
-                  // the UI — users are steered to hardware-backed protection.
-                  // The PIN path (_skipBio / _onPinComplete /
-                  // persistDeviceShardWithPin) is deliberately KEPT as a
-                  // fallback (e.g. devices without biometrics) and may be
-                  // re-surfaced if needed, so it is not removed.
+                  // Device auth (biometric + system passcode fallback) is the
+                  // only protection path. If the device has no lock configured,
+                  // _startBioScan guides the user to system settings.
                 ],
                 if (_bioAuthenticating) ...[
                   const SizedBox(
@@ -1450,177 +1411,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ],
       ),
-    );
-  }
-
-  // ===================== STAGE 5b: PIN =====================
-
-  void _onPinDigit(String digit) {
-    if (_pinInput.length >= 6) return;
-    setState(() {
-      _pinInput += digit;
-      _pinMismatch = false;
-    });
-    if (_pinInput.length == 6) {
-      _onPinComplete(_pinInput);
-    }
-  }
-
-  void _onPinBackspace() {
-    if (_pinInput.isEmpty) return;
-    setState(() {
-      _pinInput = _pinInput.substring(0, _pinInput.length - 1);
-      _pinMismatch = false;
-    });
-  }
-
-  Future<void> _onPinComplete(String pin) async {
-    if (_pinFirst == null) {
-      setState(() {
-        _pinFirst = pin;
-        _pinInput = '';
-      });
-    } else {
-      if (pin == _pinFirst) {
-        await SecureStorage.save('wallet_pin', pin);
-        // PIN-only auth path: encrypt and persist the device shard with the PIN
-        // (app-layer, no hardware key → no biometric prompt). The shard has been
-        // held in Rust memory since DKG (runDkg no longer auto-persists it).
-        try {
-          final walletService = Services.wallet as MpcWalletService;
-          await walletService.persistDeviceShardWithPin(pin);
-        } catch (e) {
-          if (!mounted) return;
-          setState(() {
-            _pinMismatch = true;
-            _pinInput = '';
-            _pinFirst = null;
-          });
-          showTopToast(context, 'Failed to secure wallet with PIN: $e',
-              backgroundColor: CwColors.danger);
-          return;
-        }
-        setState(() {
-          _pinDone = true;
-          _pinFirst = null;
-          _pinInput = '';
-        });
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted) _goTo(_Stage.name);
-        });
-      } else {
-        setState(() {
-          _pinMismatch = true;
-          _pinInput = '';
-          _pinFirst = null;
-        });
-      }
-    }
-  }
-
-  Widget _pinStage() {
-    final isConfirm = _pinFirst != null && !_pinDone;
-    return SingleChildScrollView(
-      key: const ValueKey('pin'),
-      child: Column(
-        children: [
-          _topBar(step: 2, total: 3),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-                Icon(
-                  _pinDone ? Icons.check_circle : Icons.lock_outline,
-                  size: 56,
-                  color: _pinDone ? CwColors.success : CwColors.accent,
-                ),
-                const SizedBox(height: 32),
-                _heading(_pinDone ? S.pinDone : (isConfirm ? S.pinConfirmH1 : S.pinH1)),
-                const SizedBox(height: 8),
-                _subtitle(isConfirm ? S.pinConfirmSub : S.pinSub),
-                const SizedBox(height: 32),
-                if (_pinMismatch)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Text(
-                      S.pinMismatch,
-                      style: TextStyle(color: CwColors.danger, fontSize: 14),
-                    ),
-                  ),
-                if (!_pinDone) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(6, (i) {
-                      final filled = i < _pinInput.length;
-                      return Container(
-                        width: 16,
-                        height: 16,
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: filled ? CwColors.accent : Colors.transparent,
-                          border: Border.all(
-                            color: filled ? CwColors.accent : CwColors.ink4,
-                            width: 2,
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 40),
-                  _buildNumPad(),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNumPad() {
-    return Column(
-      children: [
-        for (final row in [['1','2','3'], ['4','5','6'], ['7','8','9'], ['','0','⌫']])
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: row.map((key) {
-                if (key.isEmpty) return const SizedBox(width: 72, height: 56);
-                return GestureDetector(
-                  onTap: () {
-                    if (key == '⌫') {
-                      _onPinBackspace();
-                    } else {
-                      _onPinDigit(key);
-                    }
-                  },
-                  child: Container(
-                    width: 72,
-                    height: 56,
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: CwColors.bgCard,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: CwColors.line),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      key,
-                      style: TextStyle(
-                        fontSize: key == '⌫' ? 20 : 24,
-                        fontWeight: FontWeight.w500,
-                        color: CwColors.ink1,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-      ],
     );
   }
 

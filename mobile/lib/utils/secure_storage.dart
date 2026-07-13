@@ -28,9 +28,6 @@ class SecureStorage {
   static const String keyRotationPendingShard = "rotation_pending_shard";
   static const String keyRotationPendingCreatedAt = "rotation_pending_created_at";
   static const String keyOnboardingStep = "onboarding_step";
-  /// PIN-encrypted device shard blob (base64). Present only when the user chose
-  /// PIN protection instead of biometric/hardware for the device shard (F-002-ish).
-  static const String keyPinEncryptedShard = "pin_encrypted_device_shard";
 
   // 存token
   static Future<void> saveToken(String token) async {

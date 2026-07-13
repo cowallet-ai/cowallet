@@ -133,9 +133,9 @@ class MpcTxService implements TxService {
         : Uint8List(0);
 
     // MANDATORY user authentication before signing — never skip.
-    // Shard-op variant: biometric users authenticate once via the native
-    // keystore prompt during shard decryption (no double prompt); PIN users
-    // authenticate here via PinVerifyDialog.
+    // Shard-op variant: the native keystore prompt fired during shard
+    // decryption (biometric, with device-passcode fallback) IS the auth, so
+    // there's no separate prompt here — just a device-lock existence check.
     final authed = await Services.authenticateForShardOp(reason: S.biometricAuthReason);
     if (!authed) {
       throw TxSigningException('User authentication required to sign transaction');

@@ -127,6 +127,15 @@ class S {
 
   static String get biometricAuth => _localizations?.biometricAuth ?? _p('生物识别', 'Biometric Authentication');
   static String get biometricAuthReason => _localizations?.biometricAuthReason ?? _p('请验证身份以继续', 'Authenticate to proceed');
+  // Device-security setup gate (shown when the device has no biometric AND no
+  // system passcode/PIN/pattern — there is nothing to authenticate against).
+  static String get deviceSecurityRequiredTitle => _p('需要设备锁', 'Set up device security');
+  static String get deviceSecurityRequiredBody => _p(
+    '你的手机还没有设置锁屏密码或生物识别。为保护你的钱包,请先在系统设置里开启锁屏密码/指纹/面容,再回来继续。',
+    'Your phone has no screen lock or biometrics set up. To protect your wallet, enable a passcode / fingerprint / face lock in system settings, then come back.',
+  );
+  static String get deviceSecurityOpenSettings => _p('打开系统设置', 'Open settings');
+  static String get deviceSecurityCancel => _p('稍后', 'Not now');
   static String get biometricNotAvailable => _localizations?.biometricNotAvailable ?? _p('此设备不支持', 'Not available on this device');
   static String get biometricEnable => _localizations?.biometricEnable ?? _p('开启', 'Enable');
   static String get biometricDisable => _localizations?.biometricDisable ?? _p('关闭', 'Disable');

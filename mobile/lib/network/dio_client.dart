@@ -9,7 +9,17 @@ import 'result.dart';
 
 class DioClient {
   static Dio? _instance;
-  static bool _isRefreshing = false;
+
+  /// Injected by the app layer (main.dart) to recover a session on 401 —
+  /// refresh-token first, then challenge-response re-login. Kept as a callback
+  /// so this low-level network file doesn't import AuthApi (avoids a cycle) and
+  /// so both the interceptor and startup share ONE single-flight recovery.
+  /// Returns true if a valid token is now stored.
+  static Future<bool> Function()? sessionRecoverer;
+
+  /// Marks a request that has already been retried after a recovery, so a
+  /// second 401 on the retry doesn't trigger another recovery loop.
+  static const String _retriedFlag = 'x-session-retried';
 
   static Dio get instance {
     if (_instance == null) {
@@ -66,34 +76,44 @@ class DioClient {
           return handler.next(response);
         },
         onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401 && !_isRefreshing) {
-            // Skip refresh for the refresh endpoint itself
-            final path = e.requestOptions.path;
-            if (path.contains('/auth/refresh') || path.contains('/auth/register') || path.contains('/auth/login')) {
+          final opts = e.requestOptions;
+          final path = opts.path;
+
+          // Only attempt recovery on a genuine 401, once per request, and never
+          // for the auth endpoints themselves (they'd recurse). The recoverer
+          // is single-flight, so concurrent 401s collapse into ONE refresh /
+          // re-login and all retry afterwards.
+          final isAuthPath = path.contains('/auth/refresh') ||
+              path.contains('/auth/login') ||
+              path.contains('/auth/register') ||
+              path.contains('/auth/challenge');
+          final alreadyRetried = opts.extra[_retriedFlag] == true;
+
+          if (e.response?.statusCode != 401 ||
+              isAuthPath ||
+              alreadyRetried ||
+              sessionRecoverer == null) {
+            return handler.next(e);
+          }
+
+          try {
+            final recovered = await sessionRecoverer!();
+            if (!recovered) {
+              // Leave stored tokens as-is: a transient failure or a declined
+              // biometric prompt must not silently log the user out. The next
+              // request (or app restart) retries recovery.
+              print("⚠️  Session recovery failed for $path");
               return handler.next(e);
             }
-
-            _isRefreshing = true;
-            try {
-              final refreshed = await _tryRefreshToken();
-              if (refreshed) {
-                // Retry the original request with new token
-                final token = await SecureStorage.getToken();
-                final opts = e.requestOptions;
-                opts.headers["Authorization"] = "Bearer $token";
-                final response = await _instance!.fetch(opts);
-                return handler.resolve(response);
-              } else {
-                print("⚠️  Token refresh failed - clearing auth data");
-                await SecureStorage.clearAuthData();
-              }
-            } catch (_) {
-              await SecureStorage.clearAuthData();
-            } finally {
-              _isRefreshing = false;
-            }
+            // Retry the original request once with the fresh token.
+            final token = await SecureStorage.getToken();
+            opts.headers["Authorization"] = "Bearer $token";
+            opts.extra[_retriedFlag] = true;
+            final response = await _instance!.fetch(opts);
+            return handler.resolve(response);
+          } catch (_) {
+            return handler.next(e);
           }
-          return handler.next(e);
         },
       ),
       // 日志拦截器，开发环境开启，生产环境关闭
@@ -266,42 +286,6 @@ class DioClient {
       print("❌ [DioClient] Stream request failed: $e");
       return null;
     }
-  }
-
-  /// Attempt to refresh the access token using the stored refresh token.
-  /// Uses a separate Dio instance to avoid interceptor recursion.
-  static Future<bool> _tryRefreshToken() async {
-    final refreshToken = await SecureStorage.getRefreshToken();
-    if (refreshToken == null || refreshToken.isEmpty) return false;
-
-    try {
-      final dio = Dio(BaseOptions(
-        baseUrl: ApiConfig.apiBaseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-        headers: {"Content-Type": "application/json"},
-      ));
-
-      final response = await dio.post(
-        "/auth/refresh",
-        data: {"refresh_token": refreshToken},
-      );
-
-      if (response.statusCode == 200 && response.data != null) {
-        final newToken = response.data["token"] as String?;
-        final newRefresh = response.data["refresh_token"] as String?;
-        if (newToken != null) {
-          await SecureStorage.saveToken(newToken);
-        }
-        if (newRefresh != null) {
-          await SecureStorage.saveRefreshToken(newRefresh);
-        }
-        return newToken != null;
-      }
-    } catch (e) {
-      print("❌ Token refresh error: $e");
-    }
-    return false;
   }
 
   // 错误处理

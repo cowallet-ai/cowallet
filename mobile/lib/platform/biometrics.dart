@@ -2,6 +2,12 @@ abstract class BiometricService {
   /// Check if biometric authentication is available on this device
   Future<bool> isAvailable();
 
+  /// Whether the device has ANY secure unlock configured (biometric OR a
+  /// system passcode/PIN/pattern). This is the gate for native device auth:
+  /// if false, there is no credential to authenticate against and the user
+  /// must set one up in system settings first.
+  Future<bool> isDeviceSupported();
+
   /// Perform biometric authentication
   Future<bool> authenticate({required String reason});
 
@@ -26,6 +32,9 @@ class BiometricServiceStub implements BiometricService {
 
   @override
   Future<bool> isAvailable() async => true;
+
+  @override
+  Future<bool> isDeviceSupported() async => true;
 
   @override
   Future<bool> authenticate({required String reason}) async => true;

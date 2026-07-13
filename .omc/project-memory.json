@@ -191,15 +191,75 @@
   },
   "hotPaths": [
     {
+      "path": "mobile/lib/onboarding/onboarding_flow.dart",
+      "accessCount": 16,
+      "lastAccessed": 1783909726159,
+      "type": "file"
+    },
+    {
       "path": "backend/api-server/src/routes/account.rs",
       "accessCount": 11,
       "lastAccessed": 1783906392781,
       "type": "file"
     },
     {
+      "path": "mobile/lib/services/mpc_wallet_service.dart",
+      "accessCount": 11,
+      "lastAccessed": 1783909771660,
+      "type": "file"
+    },
+    {
+      "path": "mobile/ios/Runner/MpcSecureEnclave.swift",
+      "accessCount": 10,
+      "lastAccessed": 1783913452101,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/locator.dart",
+      "accessCount": 6,
+      "lastAccessed": 1783909419106,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/main.dart",
+      "accessCount": 6,
+      "lastAccessed": 1783911531117,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/services/key_health_service.dart",
+      "accessCount": 5,
+      "lastAccessed": 1783909370526,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/network/dio_client.dart",
+      "accessCount": 5,
+      "lastAccessed": 1783911434512,
+      "type": "file"
+    },
+    {
       "path": "mobile/lib/views/settings/settings_view.dart",
       "accessCount": 4,
       "lastAccessed": 1783905107231,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/l10n/s.dart",
+      "accessCount": 4,
+      "lastAccessed": 1783909123233,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/utils/secure_storage.dart",
+      "accessCount": 4,
+      "lastAccessed": 1783910247188,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/api/auth_api.dart",
+      "accessCount": 4,
+      "lastAccessed": 1783911382309,
       "type": "file"
     },
     {
@@ -215,6 +275,18 @@
       "type": "file"
     },
     {
+      "path": "mobile/lib/platform/biometrics.dart",
+      "accessCount": 3,
+      "lastAccessed": 1783908871690,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/platform/biometrics_impl.dart",
+      "accessCount": 3,
+      "lastAccessed": 1783908913579,
+      "type": "file"
+    },
+    {
       "path": "backend/api-server/src/routes/mod.rs",
       "accessCount": 2,
       "lastAccessed": 1783904866271,
@@ -227,21 +299,9 @@
       "type": "file"
     },
     {
-      "path": "mobile/lib/api/auth_api.dart",
-      "accessCount": 2,
-      "lastAccessed": 1783904897495,
-      "type": "file"
-    },
-    {
       "path": "mobile/lib/l10n/app_localizations.dart",
       "accessCount": 2,
       "lastAccessed": 1783904959392,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/l10n/s.dart",
-      "accessCount": 2,
-      "lastAccessed": 1783904979114,
       "type": "file"
     },
     {
@@ -263,15 +323,15 @@
       "type": "file"
     },
     {
-      "path": "backend/api-server/src/routes/auth.rs",
-      "accessCount": 1,
-      "lastAccessed": 1783904331364,
+      "path": "mobile/lib/services/tx_service.dart",
+      "accessCount": 2,
+      "lastAccessed": 1783909761040,
       "type": "file"
     },
     {
-      "path": "mobile/lib/utils/secure_storage.dart",
+      "path": "backend/api-server/src/routes/auth.rs",
       "accessCount": 1,
-      "lastAccessed": 1783904344770,
+      "lastAccessed": 1783904331364,
       "type": "file"
     },
     {
@@ -281,15 +341,51 @@
       "type": "file"
     },
     {
-      "path": "mobile/lib/network/dio_client.dart",
-      "accessCount": 1,
-      "lastAccessed": 1783904475840,
-      "type": "file"
-    },
-    {
       "path": "backend/api-server/src/middleware/auth.rs",
       "accessCount": 1,
       "lastAccessed": 1783904797401,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/widgets/pin_verify_dialog.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783907731679,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/views/chat/chat_view.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783908268587,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/views/keys/keys_view.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783908268641,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/platform/device_identity.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783912649734,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/platform/se_manager.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783912649789,
+      "type": "file"
+    },
+    {
+      "path": "mobile/lib/platform/ios_se_channel.dart",
+      "accessCount": 1,
+      "lastAccessed": 1783912705140,
+      "type": "file"
+    },
+    {
+      "path": "mobile/ios/Runner/MpcSecureStorage.swift",
+      "accessCount": 1,
+      "lastAccessed": 1783912850706,
       "type": "file"
     }
   ],

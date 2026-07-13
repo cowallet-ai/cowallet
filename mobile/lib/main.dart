@@ -10,7 +10,7 @@ import 'package:cowallet/state/app_state.dart';
 import 'package:cowallet/services/locator.dart';
 import 'package:cowallet/services/push_service.dart';
 import 'package:cowallet/api/auth_api.dart';
-import 'package:cowallet/utils/secure_storage.dart';
+import 'package:cowallet/network/dio_client.dart';
 import 'package:cowallet/l10n/app_localizations.dart';
 import 'package:cowallet/l10n/s.dart';
 import 'package:cowallet/views/settings/mandatory_backup_export_view.dart';
@@ -20,6 +20,11 @@ void main() async {
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
+
+  // Wire the 401 interceptor to the single-flight session recoverer so a token
+  // expiry mid-session self-heals (refresh → challenge-response re-login)
+  // instead of dumping the user. Shares one in-flight recovery with startup.
+  DioClient.sessionRecoverer = AuthApi.recoverSession;
 
   // 🔥 INSTANT FIRST PAINT - Native splash shows immediately
   runApp(const CowalletApp());
@@ -162,13 +167,11 @@ class _CowalletAppState extends State<CowalletApp> {
 
   Future<void> _refreshSessionInBackground() async {
     try {
-      final tokenValid = await AuthApi.isLoggedIn();
-      if (tokenValid) return;
-
-      final refreshed = await AuthApi.refreshToken();
-      if (!refreshed) {
-        await AuthApi.login(deviceId: (await SecureStorage.getDeviceId()) ?? '');
-      }
+      if (await AuthApi.isLoggedIn()) return;
+      // Single-flight recovery shared with the 401 interceptor: refresh first,
+      // then challenge-response re-login. Prevents startup and an early 401
+      // from racing over the one-time-use refresh token.
+      await AuthApi.recoverSession();
     } catch (_) {}
   }
 
