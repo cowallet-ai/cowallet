@@ -264,3 +264,70 @@ export const termsContent: LegalContent = {
     },
   ],
 };
+
+export const supportContent: LegalContent = {
+  title: { zh: "支持中心", en: "Support" },
+  updated: {
+    zh: `最后更新：${EFFECTIVE_DATE}`,
+    en: `Last updated: ${EFFECTIVE_DATE}`,
+  },
+  intro: {
+    zh: "需要帮助？下面是使用 cowallet 时最常见的问题解答。如果没有找到你要的答案，欢迎随时通过邮件联系我们，我们会尽快回复。",
+    en: "Need help? Below are answers to the most common questions about using cowallet. If you can't find what you're looking for, email us any time and we'll get back to you as soon as we can.",
+  },
+  sections: [
+    {
+      heading: { zh: "联系我们", en: "Contact Us" },
+      paragraphs: [
+        {
+          zh: "• 一般支持与咨询：support@cowallet.ai",
+          en: "• General support & questions: support@cowallet.ai",
+        },
+        {
+          zh: "• 隐私相关问题：privacy@cowallet.ai",
+          en: "• Privacy inquiries: privacy@cowallet.ai",
+        },
+        {
+          zh: "• 我们通常在 1–2 个工作日内回复。",
+          en: "• We typically respond within 1–2 business days.",
+        },
+      ],
+    },
+    {
+      heading: { zh: "什么是 MPC 钱包？", en: "What is an MPC wallet?" },
+      paragraphs: [
+        {
+          zh: "cowallet 使用 MPC（多方计算）门限签名技术。你的私钥被拆分为三份分片，永不以完整形态出现在任何单一位置。签名交易时，多份分片协同完成，无需重建完整私钥。这意味着没有任何单点可以独自动用你的资产。",
+          en: "cowallet uses MPC (Multi-Party Computation) threshold signatures. Your private key is split into three shards and never exists in complete form in any single place. Transactions are signed by combining shards, without ever reconstructing the full key. This means no single point can move your assets on its own.",
+        },
+      ],
+    },
+    {
+      heading: { zh: "我忘记了设备密码 / 更换了手机怎么办？", en: "I lost my device or forgot my passcode — what now?" },
+      paragraphs: [
+        {
+          zh: "cowallet 采用 2-of-3 分片模型（设备、服务器、备份）。即使丢失设备，你也可以借助备份分片在新设备上恢复访问。请务必妥善保管你的备份分片——它是恢复资产的关键。",
+          en: "cowallet uses a 2-of-3 shard model (device, server, backup). Even if you lose your device, you can restore access on a new device using your backup shard. Please keep your backup shard safe — it is essential for recovering your assets.",
+        },
+      ],
+    },
+    {
+      heading: { zh: "cowallet 支持哪些区块链？", en: "Which blockchains does cowallet support?" },
+      paragraphs: [
+        {
+          zh: "cowallet 支持主流 EVM 链，包括以太坊、Base、Arbitrum、Optimism、BSC 和 Polygon。",
+          en: "cowallet supports major EVM chains, including Ethereum, Base, Arbitrum, Optimism, BSC, and Polygon.",
+        },
+      ],
+    },
+    {
+      heading: { zh: "cowallet 会保管我的资产吗？", en: "Does cowallet custody my funds?" },
+      paragraphs: [
+        {
+          zh: "不会。cowallet 是非托管钱包。我们无法单独动用你的资产，你始终拥有完全控制权，也因此对自己资产的安全负全部责任。",
+          en: "No. cowallet is non-custodial. We cannot move your assets on our own, you retain full control at all times, and you are therefore solely responsible for the security of your funds.",
+        },
+      ],
+    },
+  ],
+};

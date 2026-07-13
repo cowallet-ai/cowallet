@@ -411,9 +411,6 @@ class _WalletViewState extends State<WalletView> {
         const SizedBox(width: 10),
         _actionBtn(context, Icons.arrow_downward_rounded, S.receive,
             () => AppShell.goToChatAndSend(context, S.actionReceive)),
-        const SizedBox(width: 10),
-        _actionBtn(context, Icons.swap_horiz_rounded, S.swap,
-            () => AppShell.goToChatAndSend(context, S.actionSwap)),
       ],
     );
   }

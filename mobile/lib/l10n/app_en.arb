@@ -144,6 +144,16 @@
   "resetWalletConfirm": "Reset",
   "resetWalletChecking": "Checking balance...",
 
+  "deleteAccount": "Delete Account",
+  "deleteAccountSub": "Permanently delete your account and all data",
+  "deleteAccountHasBalance": "Your wallet still has a balance. Deleting your account permanently destroys your keys and the funds cannot be recovered. We recommend transferring your assets out first. Continue anyway?",
+  "deleteAccountConfirmTitle": "Delete Account Permanently?",
+  "deleteAccountConfirmBody": "This cannot be undone. Your wallet, key shares, transaction history, and all data will be permanently deleted and cannot be recovered.",
+  "deleteAccountConfirm": "Delete Permanently",
+  "deleteAccountDeleting": "Deleting account...",
+  "deleteAccountSuccess": "Account deleted",
+  "deleteAccountFailed": "Deletion failed, please try again",
+
   "signoff1": "CoWallet · 2026",
   "signoff2": "v{version}",
   "@signoff2": {

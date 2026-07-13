@@ -12,6 +12,7 @@ import '../../services/settings_service.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 import '../../api/wallet_api.dart';
+import '../../api/auth_api.dart';
 import 'mandatory_backup_export_view.dart';
 
 class SettingsView extends StatefulWidget {
@@ -195,11 +196,17 @@ class _SettingsViewState extends State<SettingsView> {
     _settings.setWeeklyReportEnabled(!_settings.weeklyReportEnabled);
   }
 
-  Future<void> _handleResetOnboarding() async {
+  /// Permanent account deletion (App Store Guideline 5.1.1(v)).
+  ///
+  /// Flow: check balance (warn if funds remain, but do NOT block — Apple
+  /// requires deletion always be available) → final irreversible-confirm dialog
+  /// → biometric/PIN auth → call backend DELETE /account → wipe local storage →
+  /// return to onboarding.
+  Future<void> _handleDeleteAccount() async {
     final balanceService = Services.balance;
     final address = CowalletApp.of(context).walletAddress;
 
-    // Show loading while refreshing balance
+    // Refresh balance so the warning reflects current funds.
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -217,46 +224,44 @@ class _SettingsViewState extends State<SettingsView> {
       ),
     );
 
-    await balanceService.refresh(address);
+    if (address.isNotEmpty) {
+      await balanceService.refresh(address);
+    }
     if (!mounted) return;
     Navigator.pop(context); // dismiss loading
 
     final totalUsd = double.tryParse(balanceService.portfolioTotalUsd) ?? 0.0;
 
+    // If funds remain, warn but still allow deletion (Apple 5.1.1(v)).
     if (totalUsd > 0) {
-      // Wallet has assets — warn user to transfer first
-      if (!mounted) return;
-      showDialog(
+      final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(S.resetWalletTitle),
-          content: Text(S.resetWalletHasBalance),
+          content: Text(S.deleteAccountHasBalance),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: () => Navigator.pop(ctx, false),
               child: Text(S.cancel),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (_) => false);
-              },
-              child: Text(S.resetWalletGoTransfer),
+              style: FilledButton.styleFrom(backgroundColor: CwColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(S.deleteAccountConfirm),
             ),
           ],
         ),
       );
-      return;
+      if (proceed != true) return;
     }
 
-    // Balance is zero — show final confirmation
+    // Final irreversible confirmation.
     if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(S.resetWalletConfirmTitle),
-        content: Text(S.resetWalletConfirmBody),
+        title: Text(S.deleteAccountConfirmTitle),
+        content: Text(S.deleteAccountConfirmBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -265,16 +270,30 @@ class _SettingsViewState extends State<SettingsView> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: CwColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(S.resetWalletConfirm),
+            child: Text(S.deleteAccountConfirm),
           ),
         ],
       ),
     );
+    if (confirmed != true) return;
 
-    if (confirmed == true && mounted) {
+    // Require device auth before an irreversible destructive action.
+    final authed = await Services.authenticate(reason: S.biometricAuthReason);
+    if (!authed || !mounted) return;
+
+    LoadingOverlay.show(context);
+    final result = await AuthApi.deleteAccount();
+    LoadingOverlay.dismiss();
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      // Backend wiped the account; AuthApi.deleteAccount already cleared local
+      // secure storage. Reset in-memory onboarding state and return to start.
       CowalletApp.of(context).resetOnboarding();
-      Navigator.pushNamedAndRemoveUntil(
-          context, '/onboarding', (_) => false);
+      showTopToast(context, S.deleteAccountSuccess, backgroundColor: CwColors.success);
+      Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (_) => false);
+    } else {
+      showTopToast(context, S.deleteAccountFailed, backgroundColor: CwColors.danger);
     }
   }
 
@@ -732,16 +751,13 @@ class _SettingsViewState extends State<SettingsView> {
         const Divider(indent: 52, height: 1),
         _settingRow(
           context,
-          icon: Icons.restart_alt,
-          iconColor: CwColors.ink3,
-          iconBg: CwColors.bgSubtle,
-          title: S.redoOnboarding,
-          subtitle: S.redoOnboardingSub,
-          trailing: Text(
-            '↻',
-            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink3),
-          ),
-          onTap: () => _handleResetOnboarding(),
+          icon: Icons.delete_forever,
+          iconColor: CwColors.danger,
+          iconBg: CwColors.dangerSoft,
+          title: S.deleteAccount,
+          subtitle: S.deleteAccountSub,
+          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          onTap: () => _handleDeleteAccount(),
         ),
       ],
     );

@@ -195,6 +195,26 @@ class AuthApi {
     await SecureStorage.clearAuthData();
   }
 
+  /// 永久删除账户 (App Store 5.1.1(v) 合规要求)
+  ///
+  /// 调用后端 `DELETE /account`，服务器在一个事务内删除该用户的所有数据
+  /// (钱包、分片、交易、策略、会话、聊天记录等)。成功后清空本地全部安全存储，
+  /// 使 App 回到未注册的初始状态。
+  ///
+  /// 注意: 这不可撤销。设备上的密钥分片一并清除，账户无法恢复。
+  static Future<Result<void>> deleteAccount() async {
+    final result = await DioClient.delete("/account");
+    if (result.isSuccess) {
+      // 服务器已删除账户，抹掉本地所有 token / 钱包地址 / 分片 / 设置。
+      await SecureStorage.clearAll();
+      return Result.success(null);
+    }
+    return Result.error(
+      result.errorMessage ?? 'Failed to delete account',
+      result.errorCode ?? 500,
+    );
+  }
+
   /// 检查是否已登录且 token 未过期
   static Future<bool> isLoggedIn() async {
     String? token = await SecureStorage.getToken();

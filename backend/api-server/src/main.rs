@@ -168,6 +168,7 @@ async fn main() {
         .layer(axum_mw::from_fn(strict_rate_limit_middleware));
 
     let protected = Router::new()
+        .nest("/account", routes::account::router())
         .nest("/mpc", mpc_routes)
         .nest("/tx", routes::tx::router())
         .nest("/policy", routes::policy::router())

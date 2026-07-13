@@ -35,9 +35,12 @@
 - ☐ **关键词**(100 字符,逗号分隔)
 - ☐ **推广文本**(170 字符,可后续更新不需审核)
 - ☐ **What's New / 更新说明**
-- ☐ **技术支持 URL**(必填,需可访问)
-- ☐ **营销 URL**(可选)
-- ☐ **隐私政策 URL**(必填)→ 已有 `website/src/app/privacy`,需部署到公网域名后填入
+- ☑ **技术支持 URL**(必填):`https://cowallet.ai/support` — 已新建(FAQ + support@cowallet.ai)
+- ☑ **营销 URL**(可选):`https://cowallet.ai`
+- ☑ **隐私政策 URL**(必填):`https://cowallet.ai/privacy`
+- ☑ **服务条款 / EULA URL**:`https://cowallet.ai/terms`
+- ⚠️ 上述 URL 均需 **`cowallet.ai` 正式部署上线**后才可用;审核期间必须公网可访问
+- ⚠️ 邮箱域名不一致:support 页用 `@cowallet.ai`,但 privacy/terms 正文里写的是 `@cowallet.app` — 需统一(见待办)
 
 ## 3. 视觉物料
 

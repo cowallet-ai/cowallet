@@ -177,6 +177,16 @@ class S {
   static String get resetWalletConfirm => _localizations?.resetWalletConfirm ?? _p('重置', 'Reset');
   static String get resetWalletChecking => _localizations?.resetWalletChecking ?? _p('检查余额中...', 'Checking balance...');
 
+  static String get deleteAccount => _localizations?.deleteAccount ?? _p('删除账户', 'Delete Account');
+  static String get deleteAccountSub => _localizations?.deleteAccountSub ?? _p('永久删除账户及全部数据', 'Permanently delete your account and all data');
+  static String get deleteAccountHasBalance => _localizations?.deleteAccountHasBalance ?? _p('你的钱包仍有余额。删除账户将永久销毁密钥，资产将无法找回。建议先将资产转出。仍要继续吗？', 'Your wallet still has a balance. Deleting your account permanently destroys your keys and the funds cannot be recovered. We recommend transferring your assets out first. Continue anyway?');
+  static String get deleteAccountConfirmTitle => _localizations?.deleteAccountConfirmTitle ?? _p('永久删除账户？', 'Delete Account Permanently?');
+  static String get deleteAccountConfirmBody => _localizations?.deleteAccountConfirmBody ?? _p('此操作不可撤销。你的钱包、密钥分片、交易记录和所有数据将被永久删除，且无法恢复。', 'This cannot be undone. Your wallet, key shares, transaction history, and all data will be permanently deleted and cannot be recovered.');
+  static String get deleteAccountConfirm => _localizations?.deleteAccountConfirm ?? _p('永久删除', 'Delete Permanently');
+  static String get deleteAccountDeleting => _localizations?.deleteAccountDeleting ?? _p('正在删除账户...', 'Deleting account...');
+  static String get deleteAccountSuccess => _localizations?.deleteAccountSuccess ?? _p('账户已删除', 'Account deleted');
+  static String get deleteAccountFailed => _localizations?.deleteAccountFailed ?? _p('删除失败，请稍后重试', 'Deletion failed, please try again');
+
   static String get signoff1 => _localizations?.signoff1 ?? _p('用 ❤️ 为未来的货币而建', 'Built with ❤️ for the future of money');
   static String signoff2(String version) => _localizations?.signoff2(version) ?? 'v$version';
 

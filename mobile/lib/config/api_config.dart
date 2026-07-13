@@ -1,6 +1,6 @@
 class ApiConfig {
   // 后端API地址
-  static const String baseUrl = "https://devapi.cowallet.ai";
+  static const String baseUrl = "https://api.cowallet.ai";
 
   // API统一前缀
   static const String apiPrefix = "/api/v1";
@@ -24,11 +24,14 @@ class ApiConfig {
   // 健康检查接口
   static const String healthCheck = "$baseUrl/health";
 
-  /// Cloudflare Turnstile site key (public). When empty, the client skips the
-  /// human-check step and the backend runs in compat mode (no enforcement).
-  /// Override at build time with --dart-define=TURNSTILE_SITE_KEY=...
-  static const String turnstileSiteKey =
-      String.fromEnvironment('TURNSTILE_SITE_KEY', defaultValue: '');
+  /// Cloudflare Turnstile site key (public — it is embedded in every client
+  /// build, so hardcoding it here is not a secret leak). Baked in as the
+  /// default so that Xcode Archive builds (which bypass --dart-define) still
+  /// pick it up. Override at build time with --dart-define=TURNSTILE_SITE_KEY=...
+  static const String turnstileSiteKey = String.fromEnvironment(
+    'TURNSTILE_SITE_KEY',
+    defaultValue: '0x4AAAAAADwZ4E_eMbcQb-Yh',
+  );
 }
 
 /// Supported blockchain networks configuration

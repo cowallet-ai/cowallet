@@ -377,6 +377,33 @@ class AppLocalizationsZh extends AppLocalizations {
   String get resetWalletChecking => '检查余额中...';
 
   @override
+  String get deleteAccount => '删除账户';
+
+  @override
+  String get deleteAccountSub => '永久删除账户及全部数据';
+
+  @override
+  String get deleteAccountHasBalance => '你的钱包仍有余额。删除账户将永久销毁密钥，资产将无法找回。建议先将资产转出。仍要继续吗？';
+
+  @override
+  String get deleteAccountConfirmTitle => '永久删除账户？';
+
+  @override
+  String get deleteAccountConfirmBody => '此操作不可撤销。你的钱包、密钥分片、交易记录和所有数据将被永久删除，且无法恢复。';
+
+  @override
+  String get deleteAccountConfirm => '永久删除';
+
+  @override
+  String get deleteAccountDeleting => '正在删除账户...';
+
+  @override
+  String get deleteAccountSuccess => '账户已删除';
+
+  @override
+  String get deleteAccountFailed => '删除失败，请稍后重试';
+
+  @override
   String get signoff1 => 'CoWallet · 2026';
 
   @override
