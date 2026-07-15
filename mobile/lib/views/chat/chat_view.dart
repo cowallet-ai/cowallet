@@ -29,6 +29,8 @@ import 'widgets/clarify_widget.dart';
 import 'widgets/add_contact_widget.dart';
 import 'widgets/session_list_sheet.dart';
 import '../../models/contact.dart';
+import '../../widgets/ai_consent_sheet.dart';
+import '../../widgets/top_toast.dart';
 
 // ---------------------------------------------------------------------------
 // Message model
@@ -283,13 +285,21 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     );
   }
 
-  /// Shown when the device has no usable system speech-recognition engine
-  /// (common on Chinese ROMs where Google's recognizer is stripped). Rather
-  /// than a dead-end "unavailable" toast, guide the user to install/enable
-  /// Google's Speech Services, which provides the on-device recognizer that
-  /// `speech_to_text` depends on.
+  /// Shown when the device has no usable system speech-recognition engine.
+  ///
+  /// iOS ships a built-in recognizer (SFSpeechRecognizer) and has nothing for
+  /// the user to install, so we only surface a plain, platform-neutral notice.
+  /// The actionable "enable a speech service" flow is Android-only (some ROMs
+  /// ship without a system recognizer) and is gated behind [Platform.isAndroid]
+  /// so no third-party platform guidance ever reaches iOS.
   Future<void> _showSpeechUnavailableGuide() async {
     if (!mounted) return;
+
+    if (!Platform.isAndroid) {
+      _showVoiceError(S.voiceUnavailable);
+      return;
+    }
+
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -309,27 +319,22 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     );
     if (go != true) return;
 
-    // Deep-link to Google Speech Services. On Android, force the Play Store
-    // (com.android.vending) explicitly — otherwise `market://` is intercepted
-    // by the vendor app store (e.g. OPPO/Xiaomi), which does not carry Google
-    // apps. Fall back to a web Play Store URL if the Play Store app is absent.
+    // Android only: help the user obtain a system speech-recognition service.
+    // Force the primary app store (com.android.vending) explicitly — otherwise
+    // `market://` is intercepted by some vendor stores that do not carry it.
+    // Fall back to the web store URL if that store app is absent.
     const pkg = 'com.google.android.tts';
     final webUri =
         Uri.parse('https://play.google.com/store/apps/details?id=$pkg');
     try {
-      if (Platform.isAndroid) {
-        final intent = AndroidIntent(
-          action: 'action_view',
-          data: 'market://details?id=$pkg',
-          package: 'com.android.vending',
-        );
-        try {
-          await intent.launch();
-        } catch (_) {
-          // Play Store app not installed — open the web store in a browser.
-          await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        }
-      } else {
+      final intent = AndroidIntent(
+        action: 'action_view',
+        data: 'market://details?id=$pkg',
+        package: 'com.android.vending',
+      );
+      try {
+        await intent.launch();
+      } catch (_) {
         await launchUrl(webUri, mode: LaunchMode.externalApplication);
       }
     } catch (_) {
@@ -448,6 +453,34 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     final text = (override ?? _controller.text).trim();
     if (text.isEmpty) return;
 
+    // Gate every AI request behind explicit data-sharing consent. The message
+    // is only dispatched once consent is granted; declining leaves the input
+    // untouched so nothing is sent to the third-party AI providers.
+    if (!Services.settings.aiConsentGranted) {
+      _requestAiConsentThenSend(text, fromController: override == null);
+      return;
+    }
+
+    _dispatch(text);
+  }
+
+  /// Shows the consent sheet, and on approval sends [text]. When the text came
+  /// from the composer ([fromController]), it is preserved on decline so the
+  /// user does not lose what they typed.
+  Future<void> _requestAiConsentThenSend(String text, {required bool fromController}) async {
+    final granted = await AiConsentSheet.show(context);
+    if (!mounted) return;
+    if (!granted) {
+      showTopToast(context, S.aiConsentRequiredToast, backgroundColor: CwColors.ink3);
+      return;
+    }
+    await Services.settings.setAiConsentGranted(true);
+    if (!mounted) return;
+    _dispatch(text);
+  }
+
+  /// Appends the user message + AI placeholder and kicks off the stream.
+  void _dispatch(String text) {
     setState(() {
       _messages.add(ChatMsg(kind: ChatMsgKind.user, text: text));
       _controller.clear();

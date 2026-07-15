@@ -42,7 +42,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npm run build 2>&1 | tail -5 && echo \"--- html files ---\" && find out -name \"*.html\" | sort",
+    "buildCommand": "cd /Users/mac/cat/cowallet/website && npx tsc --noEmit > /tmp/tsc2.log 2>&1; echo \"tsc exit: $?\"; cat /tmp/tsc2.log",
     "testCommand": null,
     "lintCommand": "pnpm lint",
     "devCommand": "pnpm dev",

@@ -13,6 +13,7 @@ import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 import '../../api/wallet_api.dart';
 import '../../api/auth_api.dart';
+import '../../widgets/ai_consent_sheet.dart';
 import 'mandatory_backup_export_view.dart';
 
 class SettingsView extends StatefulWidget {
@@ -143,6 +144,41 @@ class _SettingsViewState extends State<SettingsView> {
 
   void _toggleVoiceInput() {
     _settings.setVoiceInputEnabled(!_settings.voiceInputEnabled);
+  }
+
+  /// AI data-sharing consent management.
+  /// - Not yet granted: show the disclosure sheet; persist if the user agrees.
+  /// - Already granted: offer to withdraw consent (disables the AI assistant).
+  Future<void> _handleAiDataSharing() async {
+    if (!_settings.aiConsentGranted) {
+      final granted = await AiConsentSheet.show(context);
+      if (granted) {
+        await _settings.setAiConsentGranted(true);
+      }
+      return;
+    }
+
+    final revoke = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.aiConsentRevokeTitle),
+        content: Text(S.aiConsentRevokeBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: CwColors.danger),
+            child: Text(S.aiConsentRevokeConfirm),
+          ),
+        ],
+      ),
+    );
+    if (revoke == true) {
+      await _settings.setAiConsentGranted(false);
+    }
   }
 
   void _showAiModelPicker() {
@@ -713,6 +749,20 @@ class _SettingsViewState extends State<SettingsView> {
             ],
           ),
           onTap: _showAiModelPicker,
+        ),
+        const Divider(indent: 52, height: 1),
+        _settingRow(
+          context,
+          icon: Icons.privacy_tip_outlined,
+          iconColor: CwColors.ink3,
+          iconBg: CwColors.bgSubtle,
+          title: S.aiDataSharing,
+          subtitle: S.aiDataSharingSub,
+          trailing: CwChip(
+            label: _settings.aiConsentGranted ? S.aiConsentStatusOn : S.aiConsentStatusOff,
+            variant: _settings.aiConsentGranted ? ChipVariant.green : ChipVariant.neutral,
+          ),
+          onTap: _handleAiDataSharing,
         ),
       ],
     );

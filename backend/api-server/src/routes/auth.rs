@@ -52,11 +52,55 @@ struct SendEmailOtpResponse {
     message: String,
 }
 
+/// App Store / Play Store review bypass.
+///
+/// Returns `Some(fixed_otp)` when `email` is the configured review account.
+/// Active ONLY when both `REVIEW_BYPASS_EMAIL` and `REVIEW_BYPASS_OTP` are set,
+/// so it is disabled by default and can be switched off after review by simply
+/// clearing those env vars — no code change. Scoped to one exact address; it
+/// only skips the emailed OTP, never the device-key or MPC steps.
+fn review_bypass_otp_for(email: &str) -> Option<String> {
+    let allow = std::env::var("REVIEW_BYPASS_EMAIL").ok()?;
+    let otp = std::env::var("REVIEW_BYPASS_OTP").ok()?;
+    if allow.is_empty() || otp.is_empty() || !allow.eq_ignore_ascii_case(email.trim()) {
+        return None;
+    }
+    Some(otp)
+}
+
 /// Send OTP to email for registration verification.
 async fn send_email_otp(
     State(state): State<AppState>,
     Json(body): Json<SendEmailOtpRequest>,
 ) -> Result<Json<SendEmailOtpResponse>, StatusCode> {
+    // Review-account bypass: seed a deterministic OTP so App Review can register
+    // without receiving an email. Off unless env-configured; scoped to the one
+    // address. Skips Turnstile + rate limit + SES; always routes to register
+    // (is_registered=false) rather than the recovery flow.
+    if let Some(fixed_otp) = review_bypass_otp_for(&body.email) {
+        let db = state
+            .require_db()
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        let otp_hash = Sha256::digest(fixed_otp.as_bytes());
+        let expires_at = Utc::now() + chrono::Duration::minutes(30);
+        let _ = sqlx::query("DELETE FROM email_verifications WHERE email = $1 AND NOT verified")
+            .bind(&body.email)
+            .execute(db)
+            .await;
+        sqlx::query("INSERT INTO email_verifications (email, otp_hash, expires_at) VALUES ($1, $2, $3)")
+            .bind(&body.email)
+            .bind(otp_hash.as_slice())
+            .bind(expires_at)
+            .execute(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(Json(SendEmailOtpResponse {
+            sent: true,
+            is_registered: false,
+            message: format!("Verification code sent to {}", body.email),
+        }));
+    }
+
     // Human/bot check before doing any work. No-op unless TURNSTILE_SECRET_KEY
     // is configured (compat mode for local/dev).
     if let Err(e) =
@@ -324,36 +368,44 @@ async fn register(
 
         let has_wallet = has_shard && has_active_wallet;
 
-        if has_wallet && !body.force {
+        // Review account may re-register on reinstall without holding the backup
+        // shard: treat it like a forced reset (env-gated, one address only).
+        let is_review = review_bypass_otp_for(&body.email).is_some();
+        let force_reset = body.force || is_review;
+
+        if has_wallet && !force_reset {
             return Err(StatusCode::CONFLICT);
         }
 
-        if has_wallet && body.force {
-            // Require backup shard proof: client must provide SHA-256(backup_shard)
-            let backup_hash_hex = body.backup_shard_hash.as_deref()
-                .ok_or(StatusCode::PRECONDITION_REQUIRED)?;
+        if has_wallet && force_reset {
+            // Normal force re-register requires proof the client holds the backup
+            // shard (SHA-256(backup_shard)). The review account skips this check.
+            if !is_review {
+                let backup_hash_hex = body.backup_shard_hash.as_deref()
+                    .ok_or(StatusCode::PRECONDITION_REQUIRED)?;
 
-            // Verify the backup shard hash matches what we have on record
-            let stored_backup_hash: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
-                "SELECT backup_shard_hash FROM shard_metadata
-                 WHERE user_id = $1 AND location = 'server' LIMIT 1"
-            )
-            .bind(existing_id)
-            .fetch_optional(db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                // Verify the backup shard hash matches what we have on record
+                let stored_backup_hash: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
+                    "SELECT backup_shard_hash FROM shard_metadata
+                     WHERE user_id = $1 AND location = 'server' LIMIT 1"
+                )
+                .bind(existing_id)
+                .fetch_optional(db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-            match stored_backup_hash {
-                Some((Some(stored_hash),)) => {
-                    let provided_hash = hex::decode(backup_hash_hex)
-                        .map_err(|_| StatusCode::BAD_REQUEST)?;
-                    if provided_hash != stored_hash {
-                        return Err(StatusCode::FORBIDDEN);
+                match stored_backup_hash {
+                    Some((Some(stored_hash),)) => {
+                        let provided_hash = hex::decode(backup_hash_hex)
+                            .map_err(|_| StatusCode::BAD_REQUEST)?;
+                        if provided_hash != stored_hash {
+                            return Err(StatusCode::FORBIDDEN);
+                        }
                     }
-                }
-                _ => {
-                    // No backup hash on record — cannot verify, reject force re-register
-                    return Err(StatusCode::PRECONDITION_REQUIRED);
+                    _ => {
+                        // No backup hash on record — cannot verify, reject force re-register
+                        return Err(StatusCode::PRECONDITION_REQUIRED);
+                    }
                 }
             }
 

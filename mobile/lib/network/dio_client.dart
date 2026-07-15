@@ -151,7 +151,11 @@ class DioClient {
       );
 
       // 响应处理 - 根据你的后端实际返回格式调整
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      // 任意 2xx 均视为成功：DELETE /account 等接口返回 204 No Content（空 body），
+      // 只认 200/201 会把 204 误判为失败——账户已在服务端删除，客户端却弹"删除失败"
+      // 且跳过本地清理。Dio 默认 validateStatus 也只放行 2xx，与此判定一致。
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode >= 200 && statusCode < 300) {
         // 如果后端直接返回数据，没有外层包装
         return Result.success(response.data as T);
         // 如果后端有标准包装格式：{ "code": 0, "msg": "success", "data": {} }

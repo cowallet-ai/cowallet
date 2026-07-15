@@ -45,8 +45,8 @@ export const privacyContent: LegalContent = {
           en: "• Transaction & on-chain data: to display balances and history we query public blockchain data (via services such as the OKX Wallet API). On-chain data is public by nature.",
         },
         {
-          zh: "• AI 对话内容：当你使用 AI 助手（转账、余额查询、交易解读等）时，你的指令会被发送至 AI 服务商（AWS Bedrock 上的 Claude，或 DeepSeek 作为回退）以生成回应。",
-          en: "• AI conversation content: when you use the AI assistant (transfers, balance lookups, transaction explanations), your instructions are sent to our AI providers (Claude on AWS Bedrock, with DeepSeek as a fallback) to generate responses.",
+          zh: "• AI 对话内容与上下文：当你使用 AI 助手（转账、余额查询、交易解读等）时，你的指令连同处理该请求所需的上下文（钱包地址、资产概况、相关联系人等）会被发送至 AI 服务商（AWS Bedrock 上的 Claude，或 DeepSeek 作为回退）以生成回应。详见第 4 节。",
+          en: "• AI conversation content & context: when you use the AI assistant (transfers, balance lookups, transaction explanations), your instructions — together with the context needed to fulfill the request (wallet address, portfolio summary, relevant contacts) — are sent to our AI providers (Claude on AWS Bedrock, with DeepSeek as a fallback) to generate responses. See Section 4 for details.",
         },
         {
           zh: "• 推送令牌：若你启用通知，我们会保存 Firebase Cloud Messaging（FCM）推送令牌。",
@@ -93,20 +93,45 @@ export const privacyContent: LegalContent = {
       ],
     },
     {
-      heading: { zh: "4. 第三方服务", en: "4. Third-Party Services" },
+      heading: { zh: "4. AI 数据处理与你的同意", en: "4. AI Data Processing & Your Consent" },
+      paragraphs: [
+        {
+          zh: "为了让 AI 助手能回答你的问题并执行你授权的操作，我们会在你每次发起请求时，将下列信息发送给第三方 AI 服务商（Anthropic Claude，经 AWS Bedrock 提供；DeepSeek 作为回退）进行处理：",
+          en: "So the AI assistant can answer your questions and carry out actions you authorize, we send the following to our third-party AI providers (Anthropic Claude via AWS Bedrock, with DeepSeek as a fallback) for processing each time you make a request:",
+        },
+        {
+          zh: "• 你输入或语音转写的对话内容；• 你的钱包地址；• 资产概况（总额、各链余额与持仓代币）；• 与请求相关的联系人名称与地址；• 语言偏好与会话标识。",
+          en: "• your typed or voice-transcribed messages; • your wallet address; • portfolio summary (total value, per-chain balances, and token holdings); • contact names and addresses relevant to the request; • language preference and session identifiers.",
+        },
+        {
+          zh: "上述数据仅用于处理你的请求并生成回应。这些服务商不会使用你的数据来训练其模型。数据可能在服务商位于其他国家/地区的服务器上处理。",
+          en: "This data is used solely to process your request and generate a response. These providers do not use your data to train their models. Processing may occur on the providers' servers located in other countries or regions.",
+        },
+        {
+          zh: "我们会在你首次使用 AI 助手前，于 App 内向你展示上述说明并征得你的明确同意。你可以随时在「设置 › AI 数据使用」中撤回同意；撤回后 AI 助手将停止工作，但你仍可通过按钮完成转账、收款等操作。",
+          en: "We disclose the above and obtain your explicit consent in-app before you first use the AI assistant. You can withdraw consent at any time under Settings › AI Data Sharing; once withdrawn, the AI assistant stops working, though you can still use buttons for transfers, receiving, and other actions.",
+        },
+        {
+          zh: "我们通过合同要求上述 AI 服务商对你的数据提供与本政策同等或更高的保护，仅按我们的指示处理数据，且不得将其用于自身目的或模型训练。Anthropic 与 AWS 的相关条款见 anthropic.com/legal 与 aws.amazon.com/privacy；DeepSeek 的条款见其官方隐私政策。",
+          en: "We contractually require the AI providers above to protect your data to a standard equal to or stronger than this policy, to process it only on our instructions, and not to use it for their own purposes or model training. See anthropic.com/legal and aws.amazon.com/privacy for Anthropic and AWS terms, and DeepSeek's official privacy policy for its terms.",
+        },
+      ],
+    },
+    {
+      heading: { zh: "5. 第三方服务", en: "5. Third-Party Services" },
       paragraphs: [
         {
           zh: "我们依赖以下服务商，仅共享实现其功能所必需的最少数据：AWS Bedrock / DeepSeek（AI 推理）、OKX 钱包 API（余额与交易历史）、Anchorage Digital（受美国监管的云端分片托管，通过 SOC2 / ISO27001）、Firebase Cloud Messaging（推送通知），以及各区块链网络的 RPC 节点。",
           en: "We rely on the following providers and share only the minimum data needed for each to function: AWS Bedrock / DeepSeek (AI inference), OKX Wallet API (balances and transaction history), Anchorage Digital (US-regulated custody of the cloud shard, SOC2 / ISO27001), Firebase Cloud Messaging (push notifications), and blockchain RPC nodes for each network.",
         },
         {
-          zh: "这些服务商各自的隐私实践受其自身政策约束。",
-          en: "Each provider's privacy practices are governed by their own respective policies.",
+          zh: "我们仅在合同约束下与这些服务商共享实现相应功能所必需的最少数据，并要求它们提供与本政策同等或更高的数据保护。关于 AI 服务商的数据处理，详见第 4 节。",
+          en: "We share only the minimum data necessary with these providers under contractual terms that require them to protect your data to a standard equal to or stronger than this policy. For AI providers specifically, see Section 4.",
         },
       ],
     },
     {
-      heading: { zh: "5. 数据存储与安全", en: "5. Data Storage & Security" },
+      heading: { zh: "6. 数据存储与安全", en: "6. Data Storage & Security" },
       paragraphs: [
         {
           zh: "服务器分片以 AES-GCM 加密存储。传输采用 TLS，MPC 消息通道采用 Noise_XX 加密握手。门限签名（TSS）确保任一分片都不产生完整私钥——即使 cowallet 遭到入侵，攻击者也只拿到一份分片，无法动用你的资产。",
@@ -115,7 +140,7 @@ export const privacyContent: LegalContent = {
       ],
     },
     {
-      heading: { zh: "6. 你的权利", en: "6. Your Rights" },
+      heading: { zh: "7. 你的权利", en: "7. Your Rights" },
       paragraphs: [
         {
           zh: "你有权访问、更正或删除你的个人信息，撤回同意，以及导出数据。由于加密钱包的自主性，删除账户不会影响已上链的公开交易记录。如需行使权利，请通过下方邮箱联系我们。",
@@ -124,7 +149,7 @@ export const privacyContent: LegalContent = {
       ],
     },
     {
-      heading: { zh: "7. 儿童隐私", en: "7. Children's Privacy" },
+      heading: { zh: "8. 儿童隐私", en: "8. Children's Privacy" },
       paragraphs: [
         {
           zh: "cowallet 不面向 18 岁以下的用户，我们不会有意收集未成年人的个人信息。",
@@ -133,7 +158,7 @@ export const privacyContent: LegalContent = {
       ],
     },
     {
-      heading: { zh: "8. 政策变更", en: "8. Changes to This Policy" },
+      heading: { zh: "9. 政策变更", en: "9. Changes to This Policy" },
       paragraphs: [
         {
           zh: "我们可能不时更新本政策。重大变更将通过 App 内通知或本页顶部的更新日期告知。",
@@ -142,11 +167,11 @@ export const privacyContent: LegalContent = {
       ],
     },
     {
-      heading: { zh: "9. 联系我们", en: "9. Contact Us" },
+      heading: { zh: "10. 联系我们", en: "10. Contact Us" },
       paragraphs: [
         {
-          zh: "如对本隐私政策有任何疑问，请联系：privacy@cowallet.app",
-          en: "For any questions about this Privacy Policy, contact: privacy@cowallet.app",
+          zh: "如对本隐私政策有任何疑问，请联系：privacy@cowallet.ai",
+          en: "For any questions about this Privacy Policy, contact: privacy@cowallet.ai",
         },
       ],
     },
@@ -257,8 +282,8 @@ export const termsContent: LegalContent = {
       heading: { zh: "10. 联系我们", en: "10. Contact Us" },
       paragraphs: [
         {
-          zh: "如对本服务条款有任何疑问，请联系：legal@cowallet.app",
-          en: "For any questions about these Terms of Service, contact: legal@cowallet.app",
+          zh: "如对本服务条款有任何疑问，请联系：legal@cowallet.ai",
+          en: "For any questions about these Terms of Service, contact: legal@cowallet.ai",
         },
       ],
     },
