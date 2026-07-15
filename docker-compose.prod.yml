@@ -123,6 +123,10 @@ services:
       # FCM HTTP v1: service account JSON mounted read-only from the host.
       FCM_SERVICE_ACCOUNT_PATH: /secrets/fcm-sa.json
       SES_FROM_ADDRESS: ${SES_FROM_ADDRESS:-}
+      # App/Play Store review login bypass. Leave BOTH unset in prod normally;
+      # set only during a review window, then clear + redeploy afterwards.
+      REVIEW_BYPASS_EMAIL: ${REVIEW_BYPASS_EMAIL:-}
+      REVIEW_BYPASS_OTP: ${REVIEW_BYPASS_OTP:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_REGION: ${AWS_REGION:-us-east-1}

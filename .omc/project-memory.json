@@ -239,6 +239,12 @@
       "type": "file"
     },
     {
+      "path": "docker-compose.prod.yml",
+      "accessCount": 2,
+      "lastAccessed": 1784112939230,
+      "type": "file"
+    },
+    {
       "path": "mobile/lib/api/ai_api.dart",
       "accessCount": 1,
       "lastAccessed": 1784105312438,
@@ -290,6 +296,12 @@
       "path": "backend/api-server/src/services/email.rs",
       "accessCount": 1,
       "lastAccessed": 1784110292481,
+      "type": "file"
+    },
+    {
+      "path": "k8s/deployment.yml",
+      "accessCount": 1,
+      "lastAccessed": 1784112886228,
       "type": "file"
     }
   ],
