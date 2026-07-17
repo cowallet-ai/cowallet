@@ -244,6 +244,12 @@ async fn register(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
+    // Review account (env-gated, one exact address): skip the emailed-OTP check
+    // entirely so App Review can always re-register on a fresh install, regardless
+    // of OTP delivery / expiry / rate limit. Everything below treats
+    // `verification_id` as optional; no OTP row is consumed for this account.
+    let is_review = review_bypass_otp_for(&body.email).is_some();
+
     // Verify email OTP
     let otp_hash = Sha256::digest(body.otp.as_bytes());
     let verification: Option<(uuid::Uuid, i32)> = sqlx::query_as(
@@ -260,8 +266,9 @@ async fn register(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // If no matching OTP, check if there's a pending one that's been brute-forced
-    if verification.is_none() {
+    // If no matching OTP, check if there's a pending one that's been brute-forced.
+    // The review account bypasses this entirely (no OTP required).
+    if verification.is_none() && !is_review {
         // Increment attempt counter on the latest pending verification for this email
         let _: Option<(i32,)> = sqlx::query_as(
             "UPDATE email_verifications SET attempts = COALESCE(attempts, 0) + 1
@@ -289,7 +296,11 @@ async fn register(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let (verification_id, attempts) = verification.unwrap();
+    // Review account has no OTP row; `verification_id` stays None and no lockout applies.
+    let (verification_id, attempts): (Option<uuid::Uuid>, i32) = match verification {
+        Some((id, attempts)) => (Some(id), attempts),
+        None => (None, 0),
+    };
 
     // SECURITY (F-011): lock on the 5th failed guess (>=), not the 6th.
     if attempts >= 5 {
@@ -370,7 +381,7 @@ async fn register(
 
         // Review account may re-register on reinstall without holding the backup
         // shard: treat it like a forced reset (env-gated, one address only).
-        let is_review = review_bypass_otp_for(&body.email).is_some();
+        // `is_review` is computed once at the top of `register`.
         let force_reset = body.force || is_review;
 
         if has_wallet && !force_reset {
@@ -476,11 +487,14 @@ async fn register(
     // All pre-conditions passed (OTP matched, backup-hash verified for force
     // re-register, device key valid). Consume the OTP now — deferring to this
     // point means a 428/400 above leaves the code reusable for a retry.
-    sqlx::query("UPDATE email_verifications SET verified = TRUE WHERE id = $1")
-        .bind(verification_id)
-        .execute(db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // The review account has no OTP row to consume (verification_id is None).
+    if let Some(vid) = verification_id {
+        sqlx::query("UPDATE email_verifications SET verified = TRUE WHERE id = $1")
+            .bind(vid)
+            .execute(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
 
     // Register the device's hardware public key + algorithm (if supplied) so
     // challenge-response login can later verify ownership of the device key.

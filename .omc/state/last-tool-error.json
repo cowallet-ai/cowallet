@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"python3 -c \\\"import yaml,sys; d=yaml.safe_load(open('docker-compose.prod.yml')); e=d['services']['api-server']['environment']; print('REVIEW_BYPASS_EMAIL' in e, 'REVIEW_BYPASS_OTP' in e); ...",
-  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'yaml'",
-  "timestamp": "2026-07-15T10:55:50.814Z",
-  "retry_count": 1
-}
