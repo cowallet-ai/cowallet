@@ -711,6 +711,18 @@ impl SignSession {
             return Err(MpcError::SigningFailed("Paillier modulus proof failed: N may not be well-formed".into()));
         }
 
+        // Bind the device's public key to the PROVEN modulus and check its
+        // internal consistency before any homomorphic op runs under it. Without
+        // this, mod_proof only vouches for its own embedded N — a malicious
+        // device could send a device_pk with a small/inconsistent modulus, force
+        // MtA wraparound, and recover the server's secret multiplicand (x'_1).
+        {
+            let proven_n = num_bigint::BigUint::from_bytes_be(&mod_proof.n);
+            device_pk
+                .validate(&proven_n)
+                .map_err(|e| MpcError::SigningFailed(format!("device Paillier pk rejected: {}", e)))?;
+        }
+
         // Parse Enc(k_0^{-1})
         let c_k_inv: PaillierCiphertext = serde_json::from_slice(&encrypted_k_inv_bytes)
             .map_err(|e| MpcError::SigningFailed(format!("invalid k_inv ciphertext: {}", e)))?;
