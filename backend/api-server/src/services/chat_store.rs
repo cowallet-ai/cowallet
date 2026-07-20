@@ -149,6 +149,33 @@ impl ChatStore {
         Ok(messages)
     }
 
+    /// Load messages ONLY if the session belongs to `user_id`. Joining on
+    /// ownership prevents the IDOR where any authenticated caller could read
+    /// another user's chat history by guessing session UUIDs. A session owned
+    /// by someone else (or absent) yields an empty result.
+    pub async fn load_messages_for_user(
+        db: &PgPool,
+        session_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<ChatMessageRow>, sqlx::Error> {
+        let messages = sqlx::query_as::<_, ChatMessageRow>(
+            "SELECT m.* FROM chat_messages m
+             JOIN chat_sessions s ON s.id = m.session_id
+             WHERE m.session_id = $1 AND s.user_id = $2
+             ORDER BY m.created_at DESC LIMIT $3",
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .bind(limit)
+        .fetch_all(db)
+        .await?;
+
+        let mut messages = messages;
+        messages.reverse();
+        Ok(messages)
+    }
+
     /// List user's chat sessions
     pub async fn list_sessions(
         db: &PgPool,

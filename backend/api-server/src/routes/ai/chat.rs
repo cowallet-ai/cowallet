@@ -5,10 +5,11 @@ use crate::services::ai_provider::{
     ChatMessage, ChatRole, ToolDef,
     ToolCallInfo as ProviderToolCallInfo, StreamEvent,
 };
+use crate::middleware::auth::Claims;
 use crate::services::chat_store::ChatStore;
 use crate::state::AppState;
 use axum::{
-    Json,
+    Extension, Json,
     body::Body,
     extract::State,
     http::{StatusCode, header},
@@ -69,13 +70,22 @@ pub struct ToolCallInfo {
 
 pub(super) async fn chat_stream(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<ChatRequest>,
 ) -> Response {
     let user_message = req.message.clone();
 
-    let user_uuid = req.user_id.as_deref()
-        .and_then(|id| Uuid::parse_str(id).ok())
-        .unwrap_or_else(Uuid::nil);
+    // Identity comes from the verified JWT, NOT the request body. Trusting
+    // body-supplied user_id/wallet_address was an IDOR: any authenticated user
+    // could read another user's sessions and run wallet tools under a foreign
+    // address. The body fields are ignored.
+    let auth_user_id = claims.sub.clone();
+    let user_uuid = match Uuid::parse_str(&auth_user_id) {
+        Ok(u) => u,
+        Err(_) => {
+            return sse_error_response("invalid authenticated user");
+        }
+    };
 
     let session_id = req.session_id.as_deref()
         .and_then(|s| Uuid::parse_str(s).ok());
@@ -311,11 +321,29 @@ pub(super) async fn chat_stream(
             }
         }
 
-        // Execute tools based on kind
+        // Execute tools based on kind. Identity is the authenticated user, not
+        // the body. The body-supplied wallet_address is only honored if it
+        // actually belongs to this user (else dropped to None), so tools can't
+        // be driven against a wallet the caller doesn't own.
+        let verified_wallet_address = match (&state.db, req.wallet_address.as_deref()) {
+            (Some(db), Some(addr)) => {
+                let owned: Option<(Uuid,)> = sqlx::query_as(
+                    "SELECT id FROM wallets WHERE user_id = $1 AND lower(eth_address) = lower($2) LIMIT 1",
+                )
+                .bind(user_uuid)
+                .bind(addr)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten();
+                if owned.is_some() { Some(addr.to_string()) } else { None }
+            }
+            _ => None,
+        };
         let tool_ctx = ToolContext {
             app_state: state.clone(),
-            user_id: req.user_id.clone(),
-            wallet_address: req.wallet_address.clone(),
+            user_id: Some(auth_user_id.clone()),
+            wallet_address: verified_wallet_address,
             auth_method: req.auth_method.clone(),
             // F-013: pass the user's ORIGINAL typed message (not the context-injected
             // variant) so tools can cross-validate LLM-chosen recipient addresses.
@@ -593,6 +621,22 @@ pub(super) async fn chat_stream(
 
 fn sse_event(event: &str, data: &serde_json::Value) -> Result<Bytes, Infallible> {
     Ok(Bytes::from(format!("event: {}\ndata: {}\n\n", event, data)))
+}
+
+/// Build a one-shot SSE response carrying a single `error` event. Used for
+/// pre-stream failures (e.g. an unparseable authenticated user id).
+fn sse_error_response(message: &str) -> Response {
+    let body = format!(
+        "event: error\ndata: {}\n\n",
+        serde_json::json!({ "message": message })
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header("X-Accel-Buffering", "no")
+        .body(Body::from(body))
+        .unwrap()
 }
 
 /// Sanitize client-supplied, untrusted context (portfolio / contacts) before
