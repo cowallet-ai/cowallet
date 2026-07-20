@@ -5,9 +5,11 @@
 //! passes it to the backend, which verifies it server-side against
 //! Cloudflare's siteverify API.
 //!
-//! Compatibility: verification is only enforced when `TURNSTILE_SECRET_KEY` is
-//! configured. When it is absent (local dev / tests) the check is skipped so
-//! existing flows are not blocked. See [`verify`].
+//! Compatibility: verification is enforced when `TURNSTILE_SECRET_KEY` is
+//! configured. When it is absent the check is skipped in non-production
+//! environments (local dev / tests) so existing flows are not blocked. In
+//! production (`APP_ENV=production`) a missing secret is a hard error — the
+//! service refuses to fail open. See [`verify`].
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -34,10 +36,23 @@ pub async fn verify(
     token: &str,
     remote_ip: Option<&str>,
 ) -> Result<(), String> {
-    // Compat mode: no secret configured → skip enforcement.
+    // Compat mode: no secret configured → skip enforcement, BUT never fail-open
+    // in production. If APP_ENV=production and the secret is missing/blank, an
+    // accidentally-deleted env would silently disable the human check, so we
+    // reject instead. Non-production (local/dev/test/CI) still skips for
+    // convenience.
     let secret = match std::env::var("TURNSTILE_SECRET_KEY") {
         Ok(s) if !s.trim().is_empty() => s,
         _ => {
+            let is_production = std::env::var("APP_ENV")
+                .map(|v| v.eq_ignore_ascii_case("production"))
+                .unwrap_or(false);
+            if is_production {
+                tracing::error!(
+                    "TURNSTILE_SECRET_KEY missing in production; refusing to fail open"
+                );
+                return Err("Turnstile misconfigured (secret missing in production)".to_string());
+            }
             tracing::debug!("Turnstile disabled (TURNSTILE_SECRET_KEY not set); skipping check");
             return Ok(());
         }

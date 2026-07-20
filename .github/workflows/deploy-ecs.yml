@@ -130,6 +130,7 @@ jobs:
                 ports:
                   - "3000:3000"
                 environment:
+                  APP_ENV: ${APP_ENV}
                   DATABASE_URL: ${DATABASE_URL}
                   REDIS_URL: ${REDIS_URL}
                   NATS_URL: ${NATS_URL}
@@ -147,6 +148,7 @@ jobs:
 
             # 写入环境变量文件（仅首次或有变化时更新）
             cat > .env << 'ENV_EOF'
+            APP_ENV=production
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD || 'changeme' }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             REDIS_URL=${{ secrets.REDIS_URL }}
