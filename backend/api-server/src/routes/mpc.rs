@@ -35,6 +35,34 @@ async fn resolve_wallet_id(
     Err(StatusCode::BAD_REQUEST)
 }
 
+/// Resolve a wallet identifier (UUID or 0x-address) to a UUID AND verify it
+/// belongs to `user_id`. Plain `resolve_wallet_id` maps any identifier to a
+/// wallet regardless of owner — using it on authenticated routes is an IDOR
+/// (enumerate presign counts, run MPC work against wallets you don't own).
+/// A wallet that exists but belongs to someone else returns NOT_FOUND (same as
+/// a missing wallet) so ownership can't be probed.
+async fn resolve_owned_wallet_id(
+    wid: &str,
+    user_id: uuid::Uuid,
+    db: &sqlx::PgPool,
+) -> Result<uuid::Uuid, StatusCode> {
+    let wallet_id = resolve_wallet_id(wid, db).await?;
+    let owner: Option<(uuid::Uuid,)> = sqlx::query_as(
+        "SELECT user_id FROM wallets WHERE id = $1"
+    )
+    .bind(wallet_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| {
+        tracing::error!("wallet ownership lookup error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    match owner {
+        Some((owner_id,)) if owner_id == user_id => Ok(wallet_id),
+        _ => Err(StatusCode::NOT_FOUND),
+    }
+}
+
 /// Parse the authenticated user's UUID from JWT claims.
 fn claims_user_id(claims: &Claims) -> Result<uuid::Uuid, StatusCode> {
     uuid::Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)
@@ -119,9 +147,11 @@ pub async fn create_session(
     let user_id = uuid::Uuid::parse_str(&claims.sub)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    // Resolve wallet_id: accept UUID or 0x-prefixed address
+    // Resolve wallet_id: accept UUID or 0x-prefixed address, scoped to the
+    // authenticated owner so a caller can't bind a session to someone else's
+    // wallet.
     let wallet_id: Option<uuid::Uuid> = match &body.wallet_id {
-        Some(wid) => Some(resolve_wallet_id(wid, db).await?),
+        Some(wid) => Some(resolve_owned_wallet_id(wid, user_id, db).await?),
         None => None,
     };
 
@@ -857,33 +887,26 @@ pub(crate) struct PresignStatusResponse {
 /// Returns the number of available presignatures for the given wallet.
 pub async fn presign_status(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Query(query): Query<PresignStatusQuery>,
 ) -> Result<Json<PresignStatusResponse>, StatusCode> {
     let presign_mgr = state.presign_manager
         .as_ref()
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let wallet_id = if let Some(id) = query.wallet_id {
-        id
+    let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let user_id = claims_user_id(&claims)?;
+
+    // Scope the wallet to the authenticated caller — previously the claims were
+    // discarded, letting any user enumerate presign availability for ANY wallet.
+    let wallet_ident = if let Some(id) = query.wallet_id {
+        id.to_string()
     } else if let Some(addr) = &query.address {
-        let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-        let addr_bytes = hex::decode(addr.trim_start_matches("0x"))
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-        let row: Option<(uuid::Uuid,)> = sqlx::query_as(
-            "SELECT id FROM wallets WHERE eth_address = $1"
-        )
-        .bind(addr_bytes)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| {
-            tracing::error!("presign_status wallet lookup error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        row.ok_or(StatusCode::NOT_FOUND)?.0
+        addr.clone()
     } else {
         return Err(StatusCode::BAD_REQUEST);
     };
+    let wallet_id = resolve_owned_wallet_id(&wallet_ident, user_id, db).await?;
 
     let available = presign_mgr
         .get_available_count(wallet_id)
@@ -927,7 +950,7 @@ pub async fn presign_generate(
     let user_id = uuid::Uuid::parse_str(&claims.sub)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let wallet_id = resolve_wallet_id(&body.wallet_id, db).await?;
+    let wallet_id = resolve_owned_wallet_id(&body.wallet_id, user_id, db).await?;
 
     let count = body.count.unwrap_or(5).min(50);
 
