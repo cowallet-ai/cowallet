@@ -1,5 +1,13 @@
 //! Multiplicative-to-Additive (MtA) protocol using Paillier homomorphism.
 //!
+//! ⚠️ SECURITY / STATUS: This standalone MtA implementation is NOT currently
+//! wired into the DKLS23 signing path (which uses an inline Paillier MtA with
+//! range + modulus proofs in `dkls23::sign`). Critically, `MtABob`'s handling
+//! below does NOT verify a range proof on Alice's ciphertext, so a malicious
+//! Alice could feed an out-of-range value and mount a wraparound attack. Do NOT
+//! use this module in production before adding range-proof verification
+//! (mirroring `crypto::paillier_proof`). Kept for reference/experimentation.
+//!
 //! Converts a multiplicative sharing of a value into an additive sharing:
 //!   Given: Alice holds `a`, Bob holds `b`
 //!   Want: Alice gets `alpha`, Bob gets `beta` such that alpha + beta = a * b (mod q)

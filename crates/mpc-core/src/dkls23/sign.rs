@@ -519,7 +519,8 @@ impl SignSession {
         let lagrange = self.compute_lagrange_coefficient()?;
         let x_prime_i = x_i * lagrange;
 
-        let k_i_inv = my_k.invert().unwrap_or(Scalar::ONE);
+        let k_i_inv = Option::<Scalar>::from(my_k.invert())
+            .ok_or_else(|| MpcError::SigningFailed("ephemeral nonce k is zero (non-invertible)".into()))?;
 
         let other_party_index = self.round1_messages.iter()
             .find(|msg| msg.party_index != self.party_index)
@@ -761,7 +762,8 @@ impl SignSession {
             MpcError::SigningFailed("r not computed".into()))?;
         let my_k = self.my_k.ok_or_else(||
             MpcError::SigningFailed("k_1 not set".into()))?;
-        let k_1_inv = my_k.invert().unwrap_or(Scalar::ONE);
+        let k_1_inv = Option::<Scalar>::from(my_k.invert())
+            .ok_or_else(|| MpcError::SigningFailed("ephemeral nonce k_1 is zero (non-invertible)".into()))?;
 
         // Compute Enc(s) using three terms, ALL homomorphic over Enc(k_0^{-1}):
         //   s = k_0^{-1}*k_1^{-1}*m + k_0^{-1}*k_1^{-1}*r*x'_0 + k_0^{-1}*k_1^{-1}*r*x'_1
@@ -962,11 +964,15 @@ impl SignSession {
             }
         }
 
-        // Fallback: use computed recovery id if ecrecover didn't match
-        // (shouldn't happen if signature is correct)
-        let aggregate_r = self.aggregate_r_point
-            .ok_or_else(|| MpcError::SigningFailed("aggregate R not set for fallback".into()))?;
-        self.compute_recovery_id(&aggregate_r, &Scalar::ONE)
+        // Neither recovery id reproduced our known public key — the (r, s) does
+        // NOT verify against this wallet. This happens when the server returned
+        // a malformed Enc(s). Fail closed rather than emitting a signature that
+        // won't verify on-chain (the old code fell back to a computed recovery
+        // id and returned Ok, masking an invalid signature as success).
+        Err(MpcError::SigningFailed(
+            "assembled signature does not recover to the wallet public key; \
+             aborting (server may have returned an invalid share)".into(),
+        ))
     }
 
     /// Local/simulated signing (for testing only, reconstructs full key).
@@ -1015,7 +1021,8 @@ impl SignSession {
         let m = m_ct.unwrap();
 
         // Compute k_inv
-        let k_inv = k.invert().unwrap_or(Scalar::ONE);
+        let k_inv = Option::<Scalar>::from(k.invert())
+            .ok_or_else(|| MpcError::SigningFailed("ephemeral nonce k is zero (non-invertible)".into()))?;
 
         // Compute s = k^{-1} * (m + r * secret)
         let s = k_inv * (m + r_scalar * secret);
