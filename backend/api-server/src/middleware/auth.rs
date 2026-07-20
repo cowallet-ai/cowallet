@@ -69,9 +69,16 @@ pub struct TokenPair {
 }
 
 fn jwt_secret() -> Vec<u8> {
-    std::env::var("JWT_SECRET")
-        .expect("JWT_SECRET environment variable must be set")
-        .into_bytes()
+    let secret = std::env::var("JWT_SECRET")
+        .expect("JWT_SECRET environment variable must be set");
+    // HS256 security depends on secret strength; a short secret is brute-forceable.
+    // CLAUDE.md mandates >= 32 chars.
+    assert!(
+        secret.len() >= 32,
+        "JWT_SECRET must be at least 32 characters (got {})",
+        secret.len()
+    );
+    secret.into_bytes()
 }
 
 /// Issue a pair of access token (24h) and refresh token (7d)

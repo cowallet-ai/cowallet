@@ -5,7 +5,7 @@ use aes_gcm::{
 use hkdf::Hkdf;
 use rand::RngCore;
 use sha2::{Sha256, Digest};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -90,7 +90,7 @@ impl EncryptionService {
 
     /// Derive a context-specific encryption key using HKDF-SHA256
     /// This ensures different shards/purposes use different keys even from the same root key
-    fn derive_key(&self) -> [u8; 32] {
+    fn derive_key(&self) -> Zeroizing<[u8; 32]> {
         self.derive_key_with_salt(&[])
     }
 
@@ -98,12 +98,14 @@ impl EncryptionService {
     /// identity (user_id[/wallet_id]) as salt makes every user's shard key
     /// distinct, so a single static root key no longer encrypts every shard
     /// under the same derived key.
-    fn derive_key_with_salt(&self, salt: &[u8]) -> [u8; 32] {
+    fn derive_key_with_salt(&self, salt: &[u8]) -> Zeroizing<[u8; 32]> {
         let salt_opt = if salt.is_empty() { None } else { Some(salt) };
         let hkdf = Hkdf::<Sha256>::new(salt_opt, &self.root_key);
         let info = format!("cowallet-v1-{}", self.context);
-        let mut derived_key = [0u8; 32];
-        hkdf.expand(info.as_bytes(), &mut derived_key)
+        // Zeroizing so the derived key material is wiped when the caller's local
+        // drops, instead of lingering on the stack/heap after encrypt/decrypt.
+        let mut derived_key = Zeroizing::new([0u8; 32]);
+        hkdf.expand(info.as_bytes(), derived_key.as_mut())
             .expect("HKDF expand failed (should never happen with valid length)");
         derived_key
     }
@@ -117,7 +119,7 @@ impl EncryptionService {
 
         // Derive context-specific key
         let derived_key = self.derive_key();
-        let key = Key::<Aes256Gcm>::from_slice(&derived_key);
+        let key = Key::<Aes256Gcm>::from_slice(&derived_key[..]);
         let cipher = Aes256Gcm::new(key);
 
         // Encrypt
@@ -137,7 +139,7 @@ impl EncryptionService {
 
         // Derive context-specific key
         let derived_key = self.derive_key();
-        let key = Key::<Aes256Gcm>::from_slice(&derived_key);
+        let key = Key::<Aes256Gcm>::from_slice(&derived_key[..]);
         let cipher = Aes256Gcm::new(key);
 
         cipher
@@ -156,7 +158,7 @@ impl EncryptionService {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let derived_key = self.derive_key_with_salt(aad);
-        let key = Key::<Aes256Gcm>::from_slice(&derived_key);
+        let key = Key::<Aes256Gcm>::from_slice(&derived_key[..]);
         let cipher = Aes256Gcm::new(key);
 
         let ciphertext = cipher
@@ -171,7 +173,7 @@ impl EncryptionService {
         let nonce = Nonce::from_slice(&encrypted.nonce);
 
         let derived_key = self.derive_key_with_salt(aad);
-        let key = Key::<Aes256Gcm>::from_slice(&derived_key);
+        let key = Key::<Aes256Gcm>::from_slice(&derived_key[..]);
         let cipher = Aes256Gcm::new(key);
 
         cipher

@@ -75,8 +75,10 @@ impl PresignManager {
             plaintext.extend_from_slice(&k_bytes);
             plaintext.extend_from_slice(r_bytes);
 
-            // Encrypt with AES-256-GCM
-            let encrypted = self.encryption.encrypt(&plaintext)
+            // Encrypt with AES-256-GCM, bound to the wallet via AAD so a
+            // presignature row copied/swapped to another wallet will not decrypt
+            // (parity with shard encryption).
+            let encrypted = self.encryption.encrypt_bound(&plaintext, wallet_id.as_bytes())
                 .map_err(|e| format!("encryption failed: {}", e))?;
 
             // Combine nonce + ciphertext for DB storage
@@ -140,8 +142,8 @@ impl PresignManager {
             None => return Ok(None),
         };
 
-        // Decrypt the presignature data
-        let data = self.decrypt_presig_data(&presig_data)?;
+        // Decrypt the presignature data, bound to the same wallet.
+        let data = self.decrypt_presig_data(&presig_data, wallet_id)?;
 
         Ok(Some(PresignatureData {
             id: presig_id,
@@ -315,7 +317,7 @@ impl PresignManager {
     }
 
     /// Decrypt stored presig_data bytes into (k_bytes, R_bytes).
-    fn decrypt_presig_data(&self, stored: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+    fn decrypt_presig_data(&self, stored: &[u8], wallet_id: Uuid) -> Result<(Vec<u8>, Vec<u8>), String> {
 
         if stored.len() < 12 {
             return Err("presig_data too short (missing nonce)".into());
@@ -326,7 +328,7 @@ impl PresignManager {
         let ciphertext = stored[12..].to_vec();
 
         let encrypted = EncryptedData { nonce, ciphertext };
-        let plaintext = self.encryption.decrypt(&encrypted)
+        let plaintext = self.encryption.decrypt_bound(&encrypted, wallet_id.as_bytes())
             .map_err(|e| format!("presig decryption failed: {}", e))?;
 
         if plaintext.len() != PRESIG_DATA_LEN {

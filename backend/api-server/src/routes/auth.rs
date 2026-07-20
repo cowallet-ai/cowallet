@@ -1026,6 +1026,24 @@ async fn initiate_recovery(
         return Err(StatusCode::LOCKED);
     }
 
+    // Per-user hourly cap on recovery initiations. Without this, an attacker can
+    // guess up to 4 OTPs per session, then re-initiate (which expires the prior
+    // pending session) to get a fresh code — never tripping the 5-attempt lock
+    // and effectively grinding the 10^6 OTP space. Cap the number of sessions
+    // created per user per hour so re-initiation can't be used to dodge lockout.
+    let recent_sessions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM recovery_sessions
+         WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'"
+    )
+    .bind(user_id)
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    if recent_sessions >= 5 {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
     // Invalidate all previous pending recovery sessions for this user
     let _ = sqlx::query(
         "UPDATE recovery_sessions SET status = 'expired' WHERE user_id = $1 AND status = 'pending'"
