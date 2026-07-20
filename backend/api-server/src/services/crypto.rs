@@ -18,6 +18,37 @@ pub enum CryptoError {
     InvalidKeyLength,
 }
 
+/// Validate the raw 32-byte root encryption key at startup.
+///
+/// Length alone is not enough: an all-zero or otherwise low-entropy
+/// `ENCRYPTION_KEY` (e.g. a placeholder like `0000...` or `0101...`) is silently
+/// accepted otherwise and becomes the HKDF root for EVERY server shard and
+/// presignature. We reject keys with too few distinct byte values as a cheap
+/// floor against obvious weak/placeholder keys. This is a sanity gate, not a
+/// substitute for loading the key from a secret manager with real entropy.
+pub fn validate_encryption_key(key: &[u8]) -> Result<(), String> {
+    if key.len() != 32 {
+        return Err(format!(
+            "ENCRYPTION_KEY must be exactly 32 bytes (64 hex chars), got {}",
+            key.len()
+        ));
+    }
+    if key.iter().all(|&b| b == 0) {
+        return Err("ENCRYPTION_KEY must not be all zeros".to_string());
+    }
+    // Distinct-byte-count floor: a 32-byte CSPRNG key has ~30+ distinct values;
+    // placeholders and simple patterns have very few. Require at least 16.
+    let distinct = key.iter().collect::<std::collections::BTreeSet<_>>().len();
+    if distinct < 16 {
+        return Err(format!(
+            "ENCRYPTION_KEY appears low-entropy ({} distinct byte values, need >= 16); \
+             use a random 32-byte key (openssl rand -hex 32)",
+            distinct
+        ));
+    }
+    Ok(())
+}
+
 /// Encrypted data bundle with nonce
 #[derive(Clone, Zeroize)]
 pub struct EncryptedData {
@@ -195,6 +226,30 @@ impl Drop for EncryptedData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_validate_encryption_key() {
+        // Random-ish key with many distinct bytes: accepted.
+        let good: Vec<u8> = (0u8..32).map(|i| i.wrapping_mul(7).wrapping_add(3)).collect();
+        assert!(validate_encryption_key(&good).is_ok());
+
+        // The documented dev example (sequential 0..31) has 32 distinct bytes.
+        let dev_example: Vec<u8> = (0u8..32).collect();
+        assert!(validate_encryption_key(&dev_example).is_ok());
+
+        // Wrong length: rejected.
+        assert!(validate_encryption_key(&[0u8; 16]).is_err());
+
+        // All zeros: rejected.
+        assert!(validate_encryption_key(&[0u8; 32]).is_err());
+
+        // Low entropy (two distinct byte values, 0x0101...): rejected.
+        let mut low = [0u8; 32];
+        for (i, b) in low.iter_mut().enumerate() {
+            *b = (i % 2) as u8;
+        }
+        assert!(validate_encryption_key(&low).is_err());
+    }
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {

@@ -152,8 +152,12 @@ async fn main() {
     let encryption_key = hex::decode(&encryption_key)
         .expect("ENCRYPTION_KEY must be valid hex");
 
+    // Reject weak/low-entropy keys (all-zero, placeholders, simple patterns) —
+    // not just wrong length. Same check runs in AppState::new; kept here as
+    // defense-in-depth for the app-level encryption service.
+    services::crypto::validate_encryption_key(&encryption_key)
+        .expect("ENCRYPTION_KEY rejected");
     let mut key_array = [0u8; 32];
-    assert!(encryption_key.len() == 32, "ENCRYPTION_KEY must be exactly 32 bytes (64 hex chars)");
     key_array.copy_from_slice(&encryption_key);
 
     let encryption = services::crypto::EncryptionService::new(
