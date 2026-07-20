@@ -59,7 +59,10 @@ website/node_modules/
 # Logs
 *.log
 
-# OMC Agent state
+# OMC Agent state — per-run session/scratch artifacts should never be tracked.
+# project-memory.json is intentional project config, so it is kept.
+.omc/
+!.omc/project-memory.json
 
 # Stray Windows pub cache accidentally committed as a literal path
 # (from `flutter pub get` on Windows writing to D:\PUB\...)
