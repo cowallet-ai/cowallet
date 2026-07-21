@@ -47,43 +47,65 @@ impl ToolContext {
         }
 
         // ═══ 1. Shard Health Check ═══
+        //
+        // Completeness must be judged with the SAME signals the app's recovery
+        // status page uses — NOT by requiring three separate location rows. By
+        // design a healthy wallet has ONE shard_metadata row (location='server'):
+        //   • server shard → the `location='server'` row (created by DKG)
+        //   • backup shard → proven server-side by `backup_shard_hash` set on the
+        //                     server row (store_backup_hash), or an explicit
+        //                     `location='backup'` row if the client uploaded one
+        //   • device shard → held in the phone's secure enclave; there is normally
+        //                     NO server row for it and the server cannot inspect it
+        // The old code required device+server+backup rows to ALL exist, so a fully
+        // healthy wallet was always flagged "缺少: 设备、备份" (false high) even
+        // though the recovery page correctly showed 3/3.
         if let (Ok(db), Some(uid)) = (self.app_state.require_db(), &user_uuid) {
-            let shards: Vec<(String, String, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-                "SELECT location, status, last_used, last_verified FROM shard_metadata WHERE user_id = $1"
+            let shards: Vec<(String, String, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>, Option<Vec<u8>>)> = sqlx::query_as(
+                "SELECT location, status, last_used, last_verified, backup_shard_hash FROM shard_metadata WHERE user_id = $1"
             )
             .bind(uid)
             .fetch_all(db)
             .await
             .unwrap_or_default();
 
-            let has_device = shards.iter().any(|s| s.0 == "device");
             let has_server = shards.iter().any(|s| s.0 == "server");
-            let has_backup = shards.iter().any(|s| s.0 == "backup");
+            // Backup is proven to the server either by an explicit backup row or by
+            // the backup_shard_hash recorded on the server row after DKG.
+            let has_backup = shards.iter().any(|s| s.0 == "backup")
+                || shards.iter().any(|s| s.4.as_ref().map_or(false, |h| !h.is_empty()));
 
-            if has_device && has_server && has_backup {
+            if !has_server {
+                // No server share = the wallet cannot participate in signing. This
+                // is the only genuinely server-detectable "missing shard".
+                score -= 20;
+                findings.push(serde_json::json!({
+                    "severity": "high",
+                    "type": "shard_incomplete",
+                    "message": "服务器密钥分片缺失，钱包无法签名，请通过恢复流程重建",
+                }));
+                recommendations.push("尽快通过恢复流程重建服务器分片".into());
+            } else if !has_backup {
+                // Server (and hence device) exist — the wallet is operational — but
+                // the recovery backup was never completed. Real and actionable, but
+                // it's an incomplete backup, not a missing signing shard.
+                score -= 10;
+                findings.push(serde_json::json!({
+                    "severity": "medium",
+                    "type": "backup_incomplete",
+                    "message": "备份分片尚未完成，丢失设备后将无法恢复资产",
+                }));
+                recommendations.push("尽快完成备份分片的导出与保存".into());
+            } else {
                 findings.push(serde_json::json!({
                     "severity": "info",
                     "type": "shard_complete",
                     "message": "密钥分片完整 (设备/服务器/备份 3/3)",
                 }));
-            } else {
-                let missing: Vec<&str> = [
-                    if !has_device { Some("设备") } else { None },
-                    if !has_server { Some("服务器") } else { None },
-                    if !has_backup { Some("备份") } else { None },
-                ].into_iter().flatten().collect();
-
-                score -= 20;
-                findings.push(serde_json::json!({
-                    "severity": "high",
-                    "type": "shard_incomplete",
-                    "message": format!("密钥分片不完整，缺少: {}", missing.join("、")),
-                }));
-                recommendations.push("立即完成缺失分片的备份，防止资产丢失".into());
             }
 
             // Check for compromised/unhealthy shards
-            let unhealthy: Vec<&(String, String, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>)> =
+            let unhealthy: Vec<_> =
                 shards.iter().filter(|s| s.1 != "healthy").collect();
             if !unhealthy.is_empty() {
                 score -= 25;
