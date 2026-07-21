@@ -1,0 +1,71 @@
+# Continuous Integration — test the Rust workspace.
+#
+# Separate from deploy-ecs.yml (which only builds + deploys on push to main).
+# This runs the test suite on every push/PR to main and release so the
+# security-audit regression tests (and any future #[sqlx::test]) actually gate
+# merges. There are NO compile-time sqlx macros in the tree, so the build does
+# not need a database — only the #[sqlx::test] integration tests do.
+name: CI
+
+on:
+  push:
+    branches: [ main, release ]
+  pull_request:
+    branches: [ main, release ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (api-server)
+    runs-on: ubuntu-latest
+
+    # Postgres for #[sqlx::test]: sqlx creates an isolated database per test at
+    # runtime, so the connection user needs CREATEDB — the default `postgres`
+    # superuser has it. Image matches production (postgres:16-alpine).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Base DB sqlx::test connects to; per-test databases are created from it.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # No current test reads these (they're production-only, in AppState::new /
+      # auth middleware), but set harmless dummy values so any future handler
+      # test that touches the auth/crypto path doesn't panic on a missing var.
+      JWT_SECRET: ci-only-dummy-jwt-secret-at-least-32-chars
+      # 32 distinct bytes (0x00..0x1f): passes validate_encryption_key's length,
+      # non-zero, and >=16-distinct-byte entropy floor. CI-only, not a real key.
+      ENCRYPTION_KEY: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+
+      # Test-only gate. fmt/clippy are intentionally NOT enforced here yet: the
+      # tree currently has pre-existing formatting and unused-variable debt that
+      # would make CI red for reasons unrelated to the code under test. Add
+      # `cargo fmt --all -- --check` and `cargo clippy -- -D warnings` in a
+      # follow-up once that debt is cleaned up.
+      - name: Run tests (api-server)
+        run: cargo test -p api-server --all-targets
