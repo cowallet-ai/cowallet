@@ -279,8 +279,15 @@ impl ToolContext {
         // ═══ 4. Presign Pool Status ═══
         if let Some(_pm) = &self.app_state.presign_manager {
             if let (Ok(db), Some(uid)) = (self.app_state.require_db(), &user_uuid) {
+                // The presignatures table tracks availability via `status`
+                // ('available'/'reserved'/'consumed'/'expired') — there is no
+                // `used` column. The old `WHERE used = false` always errored and
+                // fell back to 0, so the audit permanently reported an empty pool.
+                // Count usable (available + not-yet-expired) presignatures, matching
+                // reserve_presignature's own predicate.
                 let presign_count: i64 = sqlx::query_scalar(
-                    "SELECT COUNT(*) FROM presignatures WHERE user_id = $1 AND used = false"
+                    "SELECT COUNT(*) FROM presignatures
+                     WHERE user_id = $1 AND status = 'available' AND expires_at > NOW()"
                 )
                 .bind(uid)
                 .fetch_one(db)
@@ -311,29 +318,58 @@ impl ToolContext {
         }
 
         // ═══ 5. Policy Engine Check ═══
+        //
+        // Two tiers of protection to check:
+        //   a) user_policies: per-user USD limits (single/daily) enforced by the
+        //      policy-engine for EVERY transaction. Missing row → engine falls back
+        //      to Default (single=$500, daily=$2000) — protection is always present.
+        //   b) policies: custom JSONB rule-based policies (optional, advanced).
+        //
+        // The old code only checked `policies` (JSONB rules) and reported "no
+        // protection" even when user_policies limits were in force — misleading.
         if let (Ok(db), Some(uid)) = (self.app_state.require_db(), &user_uuid) {
-            let policy_count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM policies WHERE user_id = $1 AND rules != '{}'"
+            // Read the actual enforced limits from user_policies (row may not exist
+            // for accounts created before migration 013; engine defaults apply then).
+            let limits: Option<(f64, f64)> = sqlx::query_as(
+                "SELECT single_limit_usd, daily_limit_usd FROM user_policies WHERE user_id = $1"
+            )
+            .bind(uid)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None);
+
+            let (single, daily) = limits.unwrap_or((500.0, 2000.0)); // matches engine Default
+
+            // Count any additional custom JSONB policies the user may have set up.
+            let custom_policy_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM policies WHERE user_id = $1 AND rules != '{}' AND enabled = true"
             )
             .bind(uid)
             .fetch_one(db)
             .await
             .unwrap_or(0);
 
-            if policy_count == 0 {
-                score -= 10;
-                findings.push(serde_json::json!({
-                    "severity": "medium",
-                    "type": "no_policies",
-                    "message": "未设置安全策略，交易无限额保护",
-                }));
-                recommendations.push("设置每日转账限额和单笔最大金额策略".into());
-            } else {
+            findings.push(serde_json::json!({
+                "severity": "info",
+                "type": "policies_active",
+                "message": format!(
+                    "限额保护已启用：单笔上限 ${:.0}，日累计上限 ${:.0}",
+                    single, daily
+                ),
+            }));
+
+            if custom_policy_count > 0 {
                 findings.push(serde_json::json!({
                     "severity": "info",
-                    "type": "policies_active",
-                    "message": format!("{} 条安全策略已生效", policy_count),
+                    "type": "custom_policies_active",
+                    "message": format!("{} 条自定义规则策略已生效", custom_policy_count),
                 }));
+            } else if single >= 500.0 && daily >= 2000.0 {
+                // Only the default limits — nudge toward tightening for high-value wallets.
+                score -= 5;
+                recommendations.push(
+                    "建议根据实际使用习惯调低单笔和日限额，降低意外或授权滥用风险".into()
+                );
             }
         }
 
