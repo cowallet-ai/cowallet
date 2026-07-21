@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import '../config/api_config.dart';
 import '../utils/secure_storage.dart';
@@ -9,6 +10,27 @@ import 'result.dart';
 
 class DioClient {
   static Dio? _instance;
+
+  /// This build's integer version, stamped on every request as X-App-Version so
+  /// the server-side version gate can reject outdated clients (v1.0.1 MPC
+  /// protocol is not backward compatible). Read once from PackageInfo, cached.
+  static int? _appBuild;
+
+  static Future<int> _buildNumber() async {
+    if (_appBuild != null) return _appBuild!;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appBuild = int.tryParse(info.buildNumber) ?? 0;
+    } catch (_) {
+      _appBuild = 0;
+    }
+    return _appBuild!;
+  }
+
+  /// Injected by the app layer to navigate to the blocking force-upgrade screen
+  /// when the server answers 426 Upgrade Required. Kept as a callback so this
+  /// low-level file doesn't import UI. Receives the parsed 426 JSON body.
+  static void Function(Map<String, dynamic> body)? onUpgradeRequired;
 
   /// Injected by the app layer (main.dart) to recover a session on 401 —
   /// refresh-token first, then challenge-response re-login. Kept as a callback
@@ -67,6 +89,10 @@ class DioClient {
             if (deviceId != null && deviceId.isNotEmpty) {
               options.headers["X-Device-ID"] = deviceId;
             }
+
+            // Version gate (F: forced upgrade). Server compares this to
+            // MIN_APP_BUILD and returns 426 for stale clients.
+            options.headers["X-App-Version"] = (await _buildNumber()).toString();
           } catch (e) {
             print("❌ [DioClient] Error reading token: $e");
           }
@@ -78,6 +104,17 @@ class DioClient {
         onError: (DioException e, handler) async {
           final opts = e.requestOptions;
           final path = opts.path;
+
+          // 426 Upgrade Required: server rejected this build. Trigger the
+          // blocking upgrade screen and stop — no retry can succeed until the
+          // user updates. Handled before the 401 recovery path.
+          if (e.response?.statusCode == 426) {
+            final body = e.response?.data;
+            onUpgradeRequired?.call(
+              body is Map<String, dynamic> ? body : <String, dynamic>{},
+            );
+            return handler.next(e);
+          }
 
           // Only attempt recovery on a genuine 401, once per request, and never
           // for the auth endpoints themselves (they'd recurse). The recoverer

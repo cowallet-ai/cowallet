@@ -33,7 +33,7 @@
   },
   "build": {
     "buildCommand": "cargo build",
-    "testCommand": "cd /Users/mac/cat/cowallet\ngit add .github/workflows/ci.yml\ngit commit -q -m \"ci: 新增 test-only workflow,让审计回归测试进入门禁\n\ndeploy-ecs.yml 只在 push main 时构建+部署,不跑测试; 其中的 postgres\n是生产 compose 服务而非测试用。故新建独立 ci.yml:\n\n- push/PR 到 main+release 触发\n- 带 postgres:16-alpine service(与生产一致),默认 postgres 超级用户\n  有 CREATEDB,#[sqlx::test] 每个测试自建隔离库\n- 跑 cargo test -p api-server --all-targets\n- 设置 JWT_SECRET/ENCRYPTION_KEY 哑值作保险(当前无测试读取,均为\n  生产路径 AppState::new/auth 中间件); ENCRYPTION_KEY 用 32 个不同\n  字节以通过 validate_encryption_key 的长度/非零/熵下限校验\n\n已核实: 无编译期 sqlx 宏(构建不需 DB); 无测试调用 AppState::new\n或依赖 NATS/在线网络; rate_limit 测试用内存实现。暂不启用 fmt/clippy\n门禁(现有历史格式与 unused 告警会误红),留待清理后跟进。\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\"\ngit push 2>&1 | tail -2",
+    "testCommand": "cd /Users/mac/cat/cowallet\ncargo test -p mpc-core -p policy-engine -p chain-evm -p storage-crypto 2>&1 | grep -E \"Running unittests|test result:\" | grep -v \"0 passed\"",
     "lintCommand": "cargo clippy",
     "devCommand": "cargo run",
     "scripts": {}
@@ -233,6 +233,12 @@
       "type": "file"
     },
     {
+      "path": ".env.example",
+      "accessCount": 6,
+      "lastAccessed": 1784605456822,
+      "type": "file"
+    },
+    {
       "path": "backend/api-server/src/main.rs",
       "accessCount": 5,
       "lastAccessed": 1784536907705,
@@ -266,12 +272,6 @@
       "path": "crates/mpc-core/src/crypto/paillier_proof.rs",
       "accessCount": 4,
       "lastAccessed": 1784537648213,
-      "type": "file"
-    },
-    {
-      "path": ".env.example",
-      "accessCount": 3,
-      "lastAccessed": 1784532512231,
       "type": "file"
     },
     {
@@ -360,8 +360,8 @@
     },
     {
       "path": "docs/DEPLOY.md",
-      "accessCount": 1,
-      "lastAccessed": 1784533966991,
+      "accessCount": 2,
+      "lastAccessed": 1784604757193,
       "type": "file"
     },
     {

@@ -135,6 +135,10 @@ jobs:
                   REDIS_URL: ${REDIS_URL}
                   NATS_URL: ${NATS_URL}
                   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+                  MIN_APP_BUILD: ${MIN_APP_BUILD:-0}
+                  LATEST_APP_BUILD: ${LATEST_APP_BUILD:-0}
+                  IOS_STORE_URL: ${IOS_STORE_URL:-}
+                  ANDROID_STORE_URL: ${ANDROID_STORE_URL:-}
                 depends_on:
                   postgres:
                     condition: service_healthy
@@ -154,6 +158,10 @@ jobs:
             REDIS_URL=${{ secrets.REDIS_URL }}
             NATS_URL=nats://nats:4222
             ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            MIN_APP_BUILD=${{ secrets.MIN_APP_BUILD || '0' }}
+            LATEST_APP_BUILD=${{ secrets.LATEST_APP_BUILD || '0' }}
+            IOS_STORE_URL=${{ secrets.IOS_STORE_URL }}
+            ANDROID_STORE_URL=${{ secrets.ANDROID_STORE_URL }}
             ENV_EOF
 
             # 运行数据库迁移（如容器存在则执行）

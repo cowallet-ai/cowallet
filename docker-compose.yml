@@ -92,6 +92,13 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # Forced-upgrade gate. min_build 0 = fail-open (block nobody). Only raise
+      # to the new build AFTER it is live in both app stores, or old clients get
+      # locked out with no version to download.
+      MIN_APP_BUILD: ${MIN_APP_BUILD:-0}
+      LATEST_APP_BUILD: ${LATEST_APP_BUILD:-0}
+      IOS_STORE_URL: ${IOS_STORE_URL:-}
+      ANDROID_STORE_URL: ${ANDROID_STORE_URL:-}
       RUST_LOG: info,api_server=debug
     depends_on:
       postgres:
