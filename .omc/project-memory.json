@@ -33,7 +33,7 @@
   },
   "build": {
     "buildCommand": "cargo build",
-    "testCommand": "cargo test -p mpc-core --test e2e_protocol_flow reshare 2>&1 | tail -12",
+    "testCommand": "cd /Users/mac/cat/cowallet\ngit add .github/workflows/ci.yml\ngit commit -q -m \"ci: 新增 test-only workflow,让审计回归测试进入门禁\n\ndeploy-ecs.yml 只在 push main 时构建+部署,不跑测试; 其中的 postgres\n是生产 compose 服务而非测试用。故新建独立 ci.yml:\n\n- push/PR 到 main+release 触发\n- 带 postgres:16-alpine service(与生产一致),默认 postgres 超级用户\n  有 CREATEDB,#[sqlx::test] 每个测试自建隔离库\n- 跑 cargo test -p api-server --all-targets\n- 设置 JWT_SECRET/ENCRYPTION_KEY 哑值作保险(当前无测试读取,均为\n  生产路径 AppState::new/auth 中间件); ENCRYPTION_KEY 用 32 个不同\n  字节以通过 validate_encryption_key 的长度/非零/熵下限校验\n\n已核实: 无编译期 sqlx 宏(构建不需 DB); 无测试调用 AppState::new\n或依赖 NATS/在线网络; rate_limit 测试用内存实现。暂不启用 fmt/clippy\n门禁(现有历史格式与 unused 告警会误红),留待清理后跟进。\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\"\ngit push 2>&1 | tail -2",
     "lintCommand": "cargo clippy",
     "devCommand": "cargo run",
     "scripts": {}
@@ -191,33 +191,81 @@
   },
   "hotPaths": [
     {
+      "path": "crates/mpc-core/src/dkls23/sign.rs",
+      "accessCount": 27,
+      "lastAccessed": 1784537224740,
+      "type": "file"
+    },
+    {
       "path": "crates/mpc-core/src/dkls23/reshare.rs",
       "accessCount": 19,
       "lastAccessed": 1784533516127,
       "type": "file"
     },
     {
-      "path": "crates/mpc-core/src/dkls23/sign.rs",
-      "accessCount": 15,
-      "lastAccessed": 1784531699391,
+      "path": "backend/api-server/src/services/crypto.rs",
+      "accessCount": 11,
+      "lastAccessed": 1784599342993,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/mpc.rs",
+      "accessCount": 10,
+      "lastAccessed": 1784536051361,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/presign_manager.rs",
+      "accessCount": 8,
+      "lastAccessed": 1784537773255,
       "type": "file"
     },
     {
       "path": "crates/ffi-mobile/src/state.rs",
+      "accessCount": 6,
+      "lastAccessed": 1784534733898,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/crypto/paillier.rs",
+      "accessCount": 6,
+      "lastAccessed": 1784536277189,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/main.rs",
       "accessCount": 5,
-      "lastAccessed": 1784532386145,
+      "lastAccessed": 1784536907705,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/auth.rs",
+      "accessCount": 5,
+      "lastAccessed": 1784537634416,
       "type": "file"
     },
     {
       "path": "backend/api-server/src/middleware/rate_limit.rs",
-      "accessCount": 4,
-      "lastAccessed": 1784532676738,
+      "accessCount": 5,
+      "lastAccessed": 1784599226975,
       "type": "file"
     },
     {
       "path": "backend/api-server/src/services/turnstile.rs",
-      "accessCount": 3,
-      "lastAccessed": 1784532453852,
+      "accessCount": 4,
+      "lastAccessed": 1784534695626,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/chat_store.rs",
+      "accessCount": 4,
+      "lastAccessed": 1784535873069,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/crypto/paillier_proof.rs",
+      "accessCount": 4,
+      "lastAccessed": 1784537648213,
       "type": "file"
     },
     {
@@ -233,27 +281,81 @@
       "type": "file"
     },
     {
+      "path": "backend/api-server/src/routes/mpc_ws.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784534695434,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/dkls23/dkg.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784534799516,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/bridgers.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784536797891,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/middleware/auth.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784537240349,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/push.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784537392688,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/crypto/mta.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784537709872,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/shards.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784596469309,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/account.rs",
+      "accessCount": 3,
+      "lastAccessed": 1784597407833,
+      "type": "file"
+    },
+    {
       "path": "website/src/styles/phone.css",
       "accessCount": 2,
       "lastAccessed": 1784530475517,
       "type": "file"
     },
     {
-      "path": "crates/mpc-core/src/dkls23/dkg.rs",
+      "path": "crates/policy-engine/src/rules.rs",
       "accessCount": 2,
-      "lastAccessed": 1784532071152,
+      "lastAccessed": 1784534815297,
       "type": "file"
     },
     {
-      "path": "backend/api-server/src/routes/mpc_ws.rs",
+      "path": "backend/api-server/src/routes/swap.rs",
       "accessCount": 2,
-      "lastAccessed": 1784532359411,
+      "lastAccessed": 1784536780082,
       "type": "file"
     },
     {
-      "path": "backend/api-server/src/routes/auth.rs",
-      "accessCount": 1,
-      "lastAccessed": 1784532432302,
+      "path": "backend/migrations/009_chat_history.sql",
+      "accessCount": 2,
+      "lastAccessed": 1784537251902,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/mpc_participant/shard_store.rs",
+      "accessCount": 2,
+      "lastAccessed": 1784596421462,
       "type": "file"
     },
     {
@@ -266,6 +368,126 @@
       "path": "docs/RELEASE-NOTES-MPC-SECURITY-FIX.md",
       "accessCount": 1,
       "lastAccessed": 1784534008550,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/wallets.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534706670,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/middleware/validation.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534715832,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/middleware/security_headers.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534715991,
+      "type": "file"
+    },
+    {
+      "path": "crates/storage-crypto/src/encrypted_store.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534716593,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/middleware/request_id.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534717020,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/tx.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534717061,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/middleware/audit.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534717071,
+      "type": "file"
+    },
+    {
+      "path": "crates/chain-evm/src/transaction.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534717402,
+      "type": "file"
+    },
+    {
+      "path": "crates/chain-evm/src/signer.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534717513,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/policy.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534718017,
+      "type": "file"
+    },
+    {
+      "path": "crates/mpc-core/src/transport/noise.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534718286,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/email.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534718741,
+      "type": "file"
+    },
+    {
+      "path": "crates/storage-crypto/src/keychain.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534721902,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/ai_executor/transaction.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534732468,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/routes/ai/action.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534732610,
+      "type": "file"
+    },
+    {
+      "path": "crates/ffi-mobile/src/api.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534734150,
+      "type": "file"
+    },
+    {
+      "path": "crates/policy-engine/src/limits.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534738148,
+      "type": "file"
+    },
+    {
+      "path": "backend/api-server/src/services/rpc_provider.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534738295,
+      "type": "file"
+    },
+    {
+      "path": "backend/migrations/016_chat_widget_data.sql",
+      "accessCount": 1,
+      "lastAccessed": 1784534747537,
+      "type": "file"
+    },
+    {
+      "path": "crates/chain-evm/src/userop.rs",
+      "accessCount": 1,
+      "lastAccessed": 1784534750217,
       "type": "file"
     }
   ],

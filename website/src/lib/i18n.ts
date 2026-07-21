@@ -80,6 +80,11 @@ export const i18n = {
   "cta.appstore": { zh: "App Store", en: "App Store" },
   "cta.playstore": { zh: "下载 Android", en: "Download Android" },
 
+  // Store buttons (shared)
+  "store.ios": { zh: "App Store", en: "App Store" },
+  "store.android": { zh: "Android APK", en: "Android APK" },
+  "store.googleplay": { zh: "Google Play 即将上线", en: "Google Play soon" },
+
   // Footer
   "footer.tagline": { zh: "会听懂人话的钱包", en: "A wallet that listens" },
   "footer.privacy": { zh: "隐私政策", en: "Privacy" },

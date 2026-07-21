@@ -1,12 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useLang } from "@/context/LangContext";
 import { LangToggle } from "@/components/ui/LangToggle";
-import { Button } from "@/components/ui/Button";
 
 export function Navbar() {
-  const { t } = useLang();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -35,11 +32,6 @@ export function Navbar() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           <LangToggle />
-          <a href="https://static.catwallet.ai/app/app-release.apk" download>
-            <Button variant="accent" size="default" pill className="hidden sm:inline-flex">
-              {t("nav.download")}
-            </Button>
-          </a>
         </div>
       </div>
     </nav>
