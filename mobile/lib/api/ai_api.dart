@@ -47,7 +47,6 @@ class AiApi {
     List<Map<String, dynamic>>? contacts,
     String? authMethod,
     String? lang,
-    String? model,
   }) async* {
     final response = await DioClient.postStream(
       "/ai/chat",
@@ -61,7 +60,6 @@ class AiApi {
         if (contacts != null && contacts.isNotEmpty) "contacts": contacts,
         if (authMethod != null) "auth_method": authMethod,
         if (lang != null) "lang": lang,
-        if (model != null) "model": model,
       },
     );
 

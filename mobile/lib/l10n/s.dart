@@ -169,8 +169,6 @@ class S {
 
   static String get voiceInput => _localizations?.voiceInput ?? _p('语音输入', 'Voice Input');
   static String get voiceInputSub => _localizations?.voiceInputSub ?? _p('使用语音与 AI 助手交互', 'Use voice to interact with AI assistant');
-  static String get aiModel => _localizations?.aiModel ?? _p('AI 模型', 'AI Model');
-  static String get aiModelSub => _localizations?.aiModelSub ?? _p('选择你喜欢的 AI 助手', 'Choose your preferred AI assistant');
 
   // AI data-sharing consent (App Store privacy compliance)
   static String get aiConsentTitle => _p('AI 助手数据使用说明', 'How the AI assistant uses your data');
