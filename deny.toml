@@ -22,6 +22,23 @@ ignore = [
     # 不进生产二进制。Marvin 针对私钥解密/签名时序,生产侧零私钥操作 → 不可达。
     # 上游暂无修复版。待 rsa 发布修复后移除此豁免。
     { id = "RUSTSEC-2023-0071", reason = "生产不可达:仅公钥验签,私钥操作仅测试代码" },
+
+    # ── rustls-webpki 证书校验漏洞 ──────────────────────────────────────────
+    # 两个易受影响版本均锁在传递依赖里,无法就地升级,须靠上游大版本跟进:
+    #   0.101.7 ← rustls 0.21 ← AWS SDK(aws-config/aws-sdk-sesv2 等)
+    #   0.102.8 ← async-nats 0.38(升 0.50 为 breaking,需 NATS 回归)
+    # 均由独立升级任务跟踪(见 issue #7);升级落地后逐条移除。
+    { id = "RUSTSEC-2026-0098", reason = "rustls-webpki 传递依赖锁定,待 AWS SDK/async-nats 升级,见 #7" },
+    { id = "RUSTSEC-2026-0099", reason = "rustls-webpki 传递依赖锁定,待 AWS SDK/async-nats 升级,见 #7" },
+    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 传递依赖锁定,待 AWS SDK/async-nats 升级,见 #7" },
+    { id = "RUSTSEC-2026-0049", reason = "rustls-webpki 传递依赖锁定,待 async-nats 升级,见 #7" },
+
+    # ── unmaintained(上游明确无安全升级版,低风险)──────────────────────────
+    # 均为传递依赖,官方标注 "No safe upgrade available";属维护状态而非可利用漏洞。
+    { id = "RUSTSEC-2025-0141", reason = "bincode 未维护,传递依赖,无安全升级版,见 #7" },
+    { id = "RUSTSEC-2024-0436", reason = "paste 未维护,传递依赖,无安全升级版,见 #7" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 未维护,传递依赖,无安全升级版,见 #7" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile 未维护,传递依赖,无安全升级版,见 #7" },
 ]
 
 [licenses]
