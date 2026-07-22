@@ -2,15 +2,15 @@
 //!
 //! Wraps k256 crate with DKLS23-specific traits and operations.
 
+use k256::Scalar as K256Scalar;
 use k256::{
     elliptic_curve::{
         group::Group,
-        sec1::{FromEncodedPoint, ToEncodedPoint, EncodedPoint},
+        sec1::{EncodedPoint, FromEncodedPoint, ToEncodedPoint},
         PrimeField,
     },
     ProjectivePoint, Secp256k1,
 };
-use k256::Scalar as K256Scalar;
 use rand_core::OsRng;
 use zeroize::Zeroize;
 

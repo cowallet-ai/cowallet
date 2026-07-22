@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::warn;
@@ -66,7 +66,11 @@ impl PriceCache {
         }
     }
 
-    async fn get_prices(&self, client: &reqwest::Client, symbols: &[String]) -> HashMap<String, CachedPrice> {
+    async fn get_prices(
+        &self,
+        client: &reqwest::Client,
+        symbols: &[String],
+    ) -> HashMap<String, CachedPrice> {
         let ttl = Duration::from_secs(30);
         let cache = self.inner.read().await;
 
@@ -106,7 +110,10 @@ impl PriceCache {
                 }
             }
             Err(e) => {
-                warn!("DeFiLlama price fetch failed, falling back to CoinGecko: {}", e);
+                warn!(
+                    "DeFiLlama price fetch failed, falling back to CoinGecko: {}",
+                    e
+                );
             }
         }
 
@@ -185,7 +192,11 @@ impl PriceCache {
         }
     }
 
-    async fn merge_fallback(&self, symbols: &[String], mut existing: HashMap<String, CachedPrice>) -> HashMap<String, CachedPrice> {
+    async fn merge_fallback(
+        &self,
+        symbols: &[String],
+        mut existing: HashMap<String, CachedPrice>,
+    ) -> HashMap<String, CachedPrice> {
         let cache = self.inner.read().await;
         for sym in symbols {
             let upper = sym.to_uppercase();
@@ -227,7 +238,12 @@ async fn get_prices(
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<PriceQuery>,
 ) -> Json<PriceResponse> {
-    let symbols: Vec<String> = q.tokens.split(',').map(|s| s.trim().to_string()).take(20).collect();
+    let symbols: Vec<String> = q
+        .tokens
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .take(20)
+        .collect();
 
     let cached = state.price_cache.get_prices(&state.http, &symbols).await;
 
@@ -320,7 +336,10 @@ async fn price_history(
         COINGECKO_API, id, days
     );
 
-    let resp = state.http.get(&url).send()
+    let resp = state
+        .http
+        .get(&url)
+        .send()
         .await
         .map_err(|e| {
             (

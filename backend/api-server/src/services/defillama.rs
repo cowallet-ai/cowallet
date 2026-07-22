@@ -98,7 +98,11 @@ pub async fn get_prices(
         return Ok(HashMap::new());
     }
 
-    let ids_param: String = coin_ids.iter().map(|(_, id)| *id).collect::<Vec<_>>().join(",");
+    let ids_param: String = coin_ids
+        .iter()
+        .map(|(_, id)| *id)
+        .collect::<Vec<_>>()
+        .join(",");
     let url = format!("{}/prices/current/{}", LLAMA_BASE, ids_param);
 
     let resp = http

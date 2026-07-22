@@ -53,7 +53,9 @@ async fn get_balance(
         return Err(ApiError::invalid_address(&query.address));
     }
 
-    let chain_id = query.chain_id.ok_or_else(|| ApiError::bad_request("chain_id is required"))?;
+    let chain_id = query
+        .chain_id
+        .ok_or_else(|| ApiError::bad_request("chain_id is required"))?;
 
     // When OKX is not configured, use direct RPC
     if state.okx_credentials.is_none() {
@@ -102,8 +104,7 @@ async fn get_balance_via_rpc(
     use alloy_primitives::Address;
     use std::str::FromStr;
 
-    let owner = Address::from_str(address)
-        .map_err(|_| ApiError::invalid_address(address))?;
+    let owner = Address::from_str(address).map_err(|_| ApiError::invalid_address(address))?;
 
     let rpc_url = state.rpc_for_chain(chain_id);
     let balance = chain_evm::tokens::query_native_balance(owner, rpc_url)
@@ -119,7 +120,11 @@ async fn get_balance_via_rpc(
         let frac_str = format!("{}", frac);
         let padded = format!("{:0>18}", frac_str);
         let trimmed = padded.trim_end_matches('0');
-        let display = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+        let display = if trimmed.len() > 6 {
+            &trimmed[..6]
+        } else {
+            trimmed
+        };
         format!("{}.{}", whole, display)
     };
 
@@ -171,7 +176,9 @@ async fn get_all_balances(
     }
 
     // Require OKX credentials for cross-chain queries
-    let creds = state.okx_credentials.as_ref()
+    let creds = state
+        .okx_credentials
+        .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("OKX Wallet API not configured"))?;
 
     // Query all supported mainnet chains

@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
-    extract::{Query, Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,8 +57,8 @@ async fn get_history(
 
     // Parse address
     let address_str = q.address.strip_prefix("0x").unwrap_or(&q.address);
-    let address_bytes = hex::decode(address_str)
-        .map_err(|_| validation_error("invalid address hex"))?;
+    let address_bytes =
+        hex::decode(address_str).map_err(|_| validation_error("invalid address hex"))?;
 
     if address_bytes.len() != 20 {
         return Err(validation_error("address must be 20 bytes"));
@@ -102,7 +102,9 @@ async fn get_history(
         .bind(offset)
     };
 
-    let rows = query.fetch_all(db).await
+    let rows = query
+        .fetch_all(db)
+        .await
         .map_err(|e| db_error(&e.to_string()))?;
 
     // Get total count for pagination
@@ -114,37 +116,51 @@ async fn get_history(
         .bind(chain_id)
     } else {
         sqlx::query_as::<_, (i64,)>(
-            "SELECT COUNT(*) FROM transactions WHERE from_addr = $1 OR to_addr = $1"
+            "SELECT COUNT(*) FROM transactions WHERE from_addr = $1 OR to_addr = $1",
         )
         .bind(&address_bytes)
     };
 
-    let total = total_query.fetch_one(db).await
+    let total = total_query
+        .fetch_one(db)
+        .await
         .map(|(count,)| count)
         .unwrap_or(0);
 
     let transactions = rows
         .into_iter()
-        .map(|(tx_hash, from_addr, to_addr, value, token_address, status, block_number, created_at, chain_id)| {
-            TransactionRecord {
-                tx_hash: format!("0x{}", hex::encode(&tx_hash)),
-                from: format!("0x{}", hex::encode(&from_addr)),
-                to: format!("0x{}", hex::encode(&to_addr)),
+        .map(
+            |(
+                tx_hash,
+                from_addr,
+                to_addr,
                 value,
-                token_address: token_address.map(|addr| {
-                    // Zero address means native ETH
-                    if addr.iter().all(|&b| b == 0) {
-                        "native".to_string()
-                    } else {
-                        format!("0x{}", hex::encode(&addr))
-                    }
-                }),
+                token_address,
                 status,
                 block_number,
-                timestamp: created_at.map(|t| t.to_rfc3339()),
+                created_at,
                 chain_id,
-            }
-        })
+            )| {
+                TransactionRecord {
+                    tx_hash: format!("0x{}", hex::encode(&tx_hash)),
+                    from: format!("0x{}", hex::encode(&from_addr)),
+                    to: format!("0x{}", hex::encode(&to_addr)),
+                    value,
+                    token_address: token_address.map(|addr| {
+                        // Zero address means native ETH
+                        if addr.iter().all(|&b| b == 0) {
+                            "native".to_string()
+                        } else {
+                            format!("0x{}", hex::encode(&addr))
+                        }
+                    }),
+                    status,
+                    block_number,
+                    timestamp: created_at.map(|t| t.to_rfc3339()),
+                    chain_id,
+                }
+            },
+        )
         .collect();
 
     Ok(Json(HistoryResponse {
@@ -180,8 +196,8 @@ async fn get_transaction(
 
     // Parse transaction hash
     let hash_str = hash.strip_prefix("0x").unwrap_or(&hash);
-    let hash_bytes = hex::decode(hash_str)
-        .map_err(|_| validation_error("invalid transaction hash"))?;
+    let hash_bytes =
+        hex::decode(hash_str).map_err(|_| validation_error("invalid transaction hash"))?;
 
     let row: (Vec<u8>, Vec<u8>, Vec<u8>, String, Option<Vec<u8>>, String, Option<i64>, Option<chrono::DateTime<chrono::Utc>>, i64, Option<i64>) =
         sqlx::query_as(
@@ -198,7 +214,18 @@ async fn get_transaction(
         .map_err(|e| db_error(&e.to_string()))?
         .ok_or_else(|| not_found("transaction not found"))?;
 
-    let (tx_hash, from_addr, to_addr, value, token_address, status, block_number, created_at, chain_id, gas_used) = row;
+    let (
+        tx_hash,
+        from_addr,
+        to_addr,
+        value,
+        token_address,
+        status,
+        block_number,
+        created_at,
+        chain_id,
+        gas_used,
+    ) = row;
 
     // The caller must own at least one side of the transaction (F-008). Return
     // NOT_FOUND rather than FORBIDDEN so tx existence isn't leaked by status code.
@@ -276,26 +303,29 @@ async fn get_onchain_history(
     let address_bytes = parse_address_bytes(&q.address)?;
     assert_address_owned(db, user_id, &address_bytes).await?;
 
-    let chain_id = q.chain_id.ok_or_else(|| validation_error("chain_id is required"))?;
+    let chain_id = q
+        .chain_id
+        .ok_or_else(|| validation_error("chain_id is required"))?;
 
-    let creds = state
-        .okx_credentials
-        .as_ref()
-        .ok_or_else(|| (
+    let creds = state.okx_credentials.as_ref().ok_or_else(|| {
+        (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
                 error: "OKX Wallet API not configured".into(),
             }),
-        ))?;
+        )
+    })?;
 
     let items = okx::get_transactions(&state.http, creds, &q.address, chain_id)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse {
-                error: format!("Transaction history query failed: {}", e),
-            }),
-        ))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: format!("Transaction history query failed: {}", e),
+                }),
+            )
+        })?;
 
     let total = items.len();
     let transactions: Vec<OnchainTxInfo> = items
@@ -386,24 +416,25 @@ async fn get_all_chain_history(
         return Err(validation_error("no valid chain IDs provided"));
     }
 
-    let creds = state
-        .okx_credentials
-        .as_ref()
-        .ok_or_else(|| (
+    let creds = state.okx_credentials.as_ref().ok_or_else(|| {
+        (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
                 error: "OKX Wallet API not configured".into(),
             }),
-        ))?;
+        )
+    })?;
 
     let items = okx::get_all_chain_transactions(&state.http, creds, &q.address, &chain_ids)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse {
-                error: format!("Multi-chain transaction query failed: {}", e),
-            }),
-        ))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: format!("Multi-chain transaction query failed: {}", e),
+                }),
+            )
+        })?;
 
     // Apply limit after merging
     let limit = q.limit.unwrap_or(50).min(200);
@@ -486,7 +517,10 @@ fn forbidden(msg: &str) -> (StatusCode, Json<ErrorResponse>) {
 
 /// Parse a user_id from JWT claims.
 fn parse_user_id(claims: &Claims) -> Result<uuid::Uuid, (StatusCode, Json<ErrorResponse>)> {
-    claims.sub.parse().map_err(|_| validation_error("invalid user id in token"))
+    claims
+        .sub
+        .parse()
+        .map_err(|_| validation_error("invalid user id in token"))
 }
 
 /// Verify that `address_bytes` (20-byte EVM address) belongs to the authenticated
@@ -497,7 +531,7 @@ async fn assert_address_owned(
     address_bytes: &[u8],
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let owned: Option<i64> = sqlx::query_scalar(
-        "SELECT 1::int8 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1"
+        "SELECT 1::int8 FROM wallets WHERE eth_address = $1 AND user_id = $2 LIMIT 1",
     )
     .bind(address_bytes)
     .bind(user_id)

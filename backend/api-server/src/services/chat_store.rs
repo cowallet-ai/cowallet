@@ -48,7 +48,7 @@ impl ChatStore {
 
         // Create new session
         let session = sqlx::query_as::<_, ChatSession>(
-            "INSERT INTO chat_sessions (user_id) VALUES ($1) RETURNING *"
+            "INSERT INTO chat_sessions (user_id) VALUES ($1) RETURNING *",
         )
         .bind(user_id)
         .fetch_one(db)
@@ -64,7 +64,7 @@ impl ChatStore {
         title: Option<&str>,
     ) -> Result<ChatSession, sqlx::Error> {
         let session = sqlx::query_as::<_, ChatSession>(
-            "INSERT INTO chat_sessions (user_id, title) VALUES ($1, $2) RETURNING *"
+            "INSERT INTO chat_sessions (user_id, title) VALUES ($1, $2) RETURNING *",
         )
         .bind(user_id)
         .bind(title)
@@ -136,7 +136,7 @@ impl ChatStore {
         limit: i64,
     ) -> Result<Vec<ChatMessageRow>, sqlx::Error> {
         let messages = sqlx::query_as::<_, ChatMessageRow>(
-            "SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2"
+            "SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2",
         )
         .bind(session_id)
         .bind(limit)
@@ -183,7 +183,7 @@ impl ChatStore {
         limit: i64,
     ) -> Result<Vec<ChatSession>, sqlx::Error> {
         sqlx::query_as::<_, ChatSession>(
-            "SELECT * FROM chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2"
+            "SELECT * FROM chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2",
         )
         .bind(user_id)
         .bind(limit)
@@ -197,13 +197,11 @@ impl ChatStore {
         session_id: Uuid,
         user_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query(
-            "DELETE FROM chat_sessions WHERE id = $1 AND user_id = $2"
-        )
-        .bind(session_id)
-        .bind(user_id)
-        .execute(db)
-        .await?;
+        let result = sqlx::query("DELETE FROM chat_sessions WHERE id = $1 AND user_id = $2")
+            .bind(session_id)
+            .bind(user_id)
+            .execute(db)
+            .await?;
 
         Ok(result.rows_affected() > 0)
     }

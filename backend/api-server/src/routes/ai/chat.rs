@@ -1,19 +1,20 @@
 use super::intent::{detect_threat, has_transfer_intent};
-use super::tools::{tool_kind, tool_widget_type, wallet_tools, wallet_tools_meta, ToolKind, SYSTEM_PROMPT};
-use crate::services::ai_executor::{ToolContext, ToolExecutionResult};
-use crate::services::ai_provider::{
-    ChatMessage, ChatRole, ToolDef,
-    ToolCallInfo as ProviderToolCallInfo, StreamEvent,
+use super::tools::{
+    tool_kind, tool_widget_type, wallet_tools, wallet_tools_meta, ToolKind, SYSTEM_PROMPT,
 };
 use crate::middleware::auth::Claims;
+use crate::services::ai_executor::{ToolContext, ToolExecutionResult};
+use crate::services::ai_provider::{
+    ChatMessage, ChatRole, StreamEvent, ToolCallInfo as ProviderToolCallInfo, ToolDef,
+};
 use crate::services::chat_store::ChatStore;
 use crate::state::AppState;
 use axum::{
-    Extension, Json,
     body::Body,
     extract::State,
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::Response,
+    Extension, Json,
 };
 use bytes::Bytes;
 use futures::StreamExt;
@@ -87,7 +88,9 @@ pub(super) async fn chat_stream(
         }
     };
 
-    let session_id = req.session_id.as_deref()
+    let session_id = req
+        .session_id
+        .as_deref()
         .and_then(|s| Uuid::parse_str(s).ok());
 
     // Resolve session
@@ -95,7 +98,8 @@ pub(super) async fn chat_stream(
         if let Some(sid) = session_id {
             sid
         } else {
-            ChatStore::get_or_create_session(db, user_uuid).await
+            ChatStore::get_or_create_session(db, user_uuid)
+                .await
                 .map(|s| s.id)
                 .unwrap_or_else(|_| Uuid::new_v4())
         }
@@ -105,7 +109,8 @@ pub(super) async fn chat_stream(
 
     // Persist user message
     if let Some(db) = &state.db {
-        let _ = ChatStore::save_message(db, db_session_id, "user", Some(&user_message), None, None).await;
+        let _ = ChatStore::save_message(db, db_session_id, "user", Some(&user_message), None, None)
+            .await;
     }
 
     // Threat detection — block before calling AI

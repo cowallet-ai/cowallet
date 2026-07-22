@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{delete, get, post, put},
+    Json, Router,
 };
 use policy_engine::{Decision, Policy, PolicyAction, Rule, TransactionHistory};
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,12 @@ struct ErrorResponse {
 }
 
 fn err(status: StatusCode, msg: &str) -> (StatusCode, Json<ErrorResponse>) {
-    (status, Json(ErrorResponse { error: msg.to_string() }))
+    (
+        status,
+        Json(ErrorResponse {
+            error: msg.to_string(),
+        }),
+    )
 }
 
 #[derive(Serialize)]
@@ -52,32 +57,49 @@ async fn list_policies(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<ListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
 
-    let rows: Vec<(uuid::Uuid, String, String, serde_json::Value, serde_json::Value, bool, i32, chrono::DateTime<chrono::Utc>)> =
-        sqlx::query_as(
-            "SELECT id, name, description, rules, action, enabled, priority, created_at
+    let rows: Vec<(
+        uuid::Uuid,
+        String,
+        String,
+        serde_json::Value,
+        serde_json::Value,
+        bool,
+        i32,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT id, name, description, rules, action, enabled, priority, created_at
              FROM policies WHERE user_id = $1 ORDER BY priority DESC",
-        )
-        .bind(user_id)
-        .fetch_all(db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
     let policies = rows
         .into_iter()
-        .map(|(id, name, description, rules, action, enabled, priority, created_at)| PolicyResponse {
-            id: id.to_string(),
-            name,
-            description,
-            rules,
-            action,
-            enabled,
-            priority,
-            created_at: created_at.to_rfc3339(),
-        })
+        .map(
+            |(id, name, description, rules, action, enabled, priority, created_at)| {
+                PolicyResponse {
+                    id: id.to_string(),
+                    name,
+                    description,
+                    rules,
+                    action,
+                    enabled,
+                    priority,
+                    created_at: created_at.to_rfc3339(),
+                }
+            },
+        )
         .collect();
 
     Ok(Json(ListResponse { policies }))
@@ -98,8 +120,13 @@ async fn create_policy(
     claims: axum::Extension<Claims>,
     Json(body): Json<CreateRequest>,
 ) -> Result<(StatusCode, Json<PolicyResponse>), (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
     let id = uuid::Uuid::new_v4();
 
@@ -143,21 +170,36 @@ async fn get_policy(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<PolicyResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
-    let policy_id: uuid::Uuid = id.parse().map_err(|_| err(StatusCode::BAD_REQUEST, "invalid policy id"))?;
+    let policy_id: uuid::Uuid = id
+        .parse()
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid policy id"))?;
 
-    let row: (uuid::Uuid, String, String, serde_json::Value, serde_json::Value, bool, i32, chrono::DateTime<chrono::Utc>) =
-        sqlx::query_as(
-            "SELECT id, name, description, rules, action, enabled, priority, created_at
+    let row: (
+        uuid::Uuid,
+        String,
+        String,
+        serde_json::Value,
+        serde_json::Value,
+        bool,
+        i32,
+        chrono::DateTime<chrono::Utc>,
+    ) = sqlx::query_as(
+        "SELECT id, name, description, rules, action, enabled, priority, created_at
              FROM policies WHERE id = $1 AND user_id = $2",
-        )
-        .bind(policy_id)
-        .bind(user_id)
-        .fetch_one(db)
-        .await
-        .map_err(|_| err(StatusCode::NOT_FOUND, "policy not found"))?;
+    )
+    .bind(policy_id)
+    .bind(user_id)
+    .fetch_one(db)
+    .await
+    .map_err(|_| err(StatusCode::NOT_FOUND, "policy not found"))?;
 
     Ok(Json(PolicyResponse {
         id: row.0.to_string(),
@@ -187,10 +229,17 @@ async fn update_policy(
     Path(id): Path<String>,
     Json(body): Json<UpdateRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
-    let policy_id: uuid::Uuid = id.parse().map_err(|_| err(StatusCode::BAD_REQUEST, "invalid policy id"))?;
+    let policy_id: uuid::Uuid = id
+        .parse()
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid policy id"))?;
 
     let mut set_clauses = Vec::new();
     let mut param_idx = 3u32; // $1 = policy_id, $2 = user_id
@@ -221,7 +270,9 @@ async fn update_policy(
     }
 
     if set_clauses.is_empty() {
-        return Ok(Json(serde_json::json!({ "updated": false, "reason": "no fields to update" })));
+        return Ok(Json(
+            serde_json::json!({ "updated": false, "reason": "no fields to update" }),
+        ));
     }
 
     let _ = param_idx;
@@ -231,16 +282,26 @@ async fn update_policy(
         set_clauses.join(", ")
     );
 
-    let mut query = sqlx::query(&sql)
-        .bind(policy_id)
-        .bind(user_id);
+    let mut query = sqlx::query(&sql).bind(policy_id).bind(user_id);
 
-    if let Some(ref name) = body.name { query = query.bind(name); }
-    if let Some(ref desc) = body.description { query = query.bind(desc); }
-    if let Some(ref rules) = body.rules { query = query.bind(rules); }
-    if let Some(ref action) = body.action { query = query.bind(action); }
-    if let Some(enabled) = body.enabled { query = query.bind(enabled); }
-    if let Some(priority) = body.priority { query = query.bind(priority); }
+    if let Some(ref name) = body.name {
+        query = query.bind(name);
+    }
+    if let Some(ref desc) = body.description {
+        query = query.bind(desc);
+    }
+    if let Some(ref rules) = body.rules {
+        query = query.bind(rules);
+    }
+    if let Some(ref action) = body.action {
+        query = query.bind(action);
+    }
+    if let Some(enabled) = body.enabled {
+        query = query.bind(enabled);
+    }
+    if let Some(priority) = body.priority {
+        query = query.bind(priority);
+    }
 
     let result = query
         .execute(db)
@@ -259,10 +320,17 @@ async fn delete_policy(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
-    let policy_id: uuid::Uuid = id.parse().map_err(|_| err(StatusCode::BAD_REQUEST, "invalid policy id"))?;
+    let policy_id: uuid::Uuid = id
+        .parse()
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid policy id"))?;
 
     let result = sqlx::query("DELETE FROM policies WHERE id = $1 AND user_id = $2")
         .bind(policy_id)
@@ -293,20 +361,31 @@ async fn evaluate_transaction(
     claims: axum::Extension<Claims>,
     Json(body): Json<EvaluateRequest>,
 ) -> Result<Json<Decision>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
 
-    let rows: Vec<(serde_json::Value, serde_json::Value, String, bool, i32, uuid::Uuid)> =
-        sqlx::query_as(
-            "SELECT rules, action, name, enabled, priority, id
+    let rows: Vec<(
+        serde_json::Value,
+        serde_json::Value,
+        String,
+        bool,
+        i32,
+        uuid::Uuid,
+    )> = sqlx::query_as(
+        "SELECT rules, action, name, enabled, priority, id
              FROM policies WHERE user_id = $1 AND enabled = true
              ORDER BY priority DESC",
-        )
-        .bind(user_id)
-        .fetch_all(db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
     let policies: Vec<Policy> = rows
         .into_iter()
@@ -341,7 +420,9 @@ async fn evaluate_transaction(
     )
     .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid value"))?;
 
-    let chain_id = body.chain_id.ok_or_else(|| err(StatusCode::BAD_REQUEST, "chain_id is required"))?;
+    let chain_id = body
+        .chain_id
+        .ok_or_else(|| err(StatusCode::BAD_REQUEST, "chain_id is required"))?;
 
     // Compute transaction history for daily-limit / rate-limit rules
     let history = compute_tx_history(&state, &body.from, chain_id).await;
@@ -372,8 +453,13 @@ async fn get_limits(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<LimitsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
 
     let row: Option<(f64, f64)> = sqlx::query_as(
@@ -403,8 +489,13 @@ async fn update_limits(
     claims: axum::Extension<Claims>,
     Json(body): Json<UpdateLimitsRequest>,
 ) -> Result<Json<LimitsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
 
     let single_limit = body.single_limit_usd.unwrap_or(500.0);

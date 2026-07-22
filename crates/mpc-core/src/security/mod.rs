@@ -5,4 +5,4 @@
 
 pub mod memory;
 
-pub use memory::{mlock, munlock, mlock_guard, SecureVec};
+pub use memory::{mlock, mlock_guard, munlock, SecureVec};

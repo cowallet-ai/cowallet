@@ -31,11 +31,7 @@ struct SiteVerifyResponse {
 ///   or rejected by Cloudflare. Callers should map this to HTTP 403.
 ///
 /// `remote_ip` is the caller's IP (optional; improves Cloudflare's scoring).
-pub async fn verify(
-    http: &Client,
-    token: &str,
-    remote_ip: Option<&str>,
-) -> Result<(), String> {
+pub async fn verify(http: &Client, token: &str, remote_ip: Option<&str>) -> Result<(), String> {
     // Compat mode: no secret configured → skip enforcement, BUT never fail-open
     // in production. If APP_ENV=production and the secret is missing/blank, an
     // accidentally-deleted env would silently disable the human check, so we
@@ -62,10 +58,7 @@ pub async fn verify(
         return Err("missing Turnstile token".to_string());
     }
 
-    let mut form = vec![
-        ("secret", secret.as_str()),
-        ("response", token),
-    ];
+    let mut form = vec![("secret", secret.as_str()), ("response", token)];
     if let Some(ip) = remote_ip {
         form.push(("remoteip", ip));
     }

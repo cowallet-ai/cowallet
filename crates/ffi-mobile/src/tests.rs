@@ -9,11 +9,18 @@ mod tests {
     #[serial]
     fn test_generate_wallet_creates_valid_address() {
         let wallet = generate_wallet().expect("Failed to generate wallet");
-        
+
         // Verify address format: 0x + 40 hex chars
-        assert!(wallet.address.starts_with("0x"), "Address should start with 0x");
-        assert_eq!(wallet.address.len(), 42, "Address should be 42 chars (0x + 40 hex)");
-        
+        assert!(
+            wallet.address.starts_with("0x"),
+            "Address should start with 0x"
+        );
+        assert_eq!(
+            wallet.address.len(),
+            42,
+            "Address should be 42 chars (0x + 40 hex)"
+        );
+
         // Verify public key length: 33 bytes (compressed) or 65 bytes (uncompressed)
         assert!(
             wallet.public_key.len() == 33 || wallet.public_key.len() == 65,
@@ -25,7 +32,10 @@ mod tests {
     #[serial]
     fn test_has_wallet_after_generation() {
         let _wallet = generate_wallet().expect("Failed to generate wallet");
-        assert!(has_wallet(), "has_wallet should return true after generation");
+        assert!(
+            has_wallet(),
+            "has_wallet should return true after generation"
+        );
     }
 
     #[test]
@@ -33,7 +43,7 @@ mod tests {
     fn test_get_key_status_returns_valid_status() {
         let _wallet = generate_wallet().expect("Failed to generate wallet");
         let status = get_key_status();
-        
+
         // After generate_wallet (local mode), device shard should be present
         assert!(status.has_device_shard, "Device shard should be present");
         assert!(!status.address.is_empty(), "Address should not be empty");
@@ -44,7 +54,7 @@ mod tests {
     fn test_clear_wallet_removes_shares() {
         let _wallet = generate_wallet().expect("Failed to generate wallet");
         assert!(has_wallet(), "Wallet should exist after generation");
-        
+
         clear_wallet();
         assert!(!has_wallet(), "Wallet should be cleared");
     }
@@ -53,7 +63,7 @@ mod tests {
     #[serial]
     fn test_sign_hash_requires_32_bytes() {
         let _wallet = generate_wallet().expect("Failed to generate wallet");
-        
+
         // Test with wrong length
         let short_hash = vec![0u8; 31];
         let result = sign_hash(short_hash);
@@ -78,8 +88,7 @@ mod tests {
         let wallet = generate_wallet().expect("Failed to generate wallet");
         let pin = "123456".to_string();
 
-        let blob = export_device_shard_encrypted(pin.clone())
-            .expect("PIN export should succeed");
+        let blob = export_device_shard_encrypted(pin.clone()).expect("PIN export should succeed");
         assert!(!blob.is_empty());
 
         // Clear in-memory state, then restore purely from the PIN blob.
@@ -96,8 +105,8 @@ mod tests {
     #[serial]
     fn test_pin_device_shard_wrong_pin_fails() {
         let wallet = generate_wallet().expect("Failed to generate wallet");
-        let blob = export_device_shard_encrypted("123456".to_string())
-            .expect("PIN export should succeed");
+        let blob =
+            export_device_shard_encrypted("123456".to_string()).expect("PIN export should succeed");
         clear_wallet();
 
         let result = import_device_shard_encrypted(blob, "000000".to_string(), wallet.public_key);

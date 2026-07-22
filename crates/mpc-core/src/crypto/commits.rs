@@ -62,7 +62,10 @@ impl Commitment {
         let r = Scalar::random();
         let g = Point::generator();
         let point = g.clone() * r.clone() + params.h.clone() * value.clone();
-        Self { point, randomness: r }
+        Self {
+            point,
+            randomness: r,
+        }
     }
 
     /// Create a commitment with explicit randomness

@@ -105,7 +105,8 @@ pub fn evaluate(ctx: &TxContext, limits: &UserLimits) -> PolicyResult {
         ));
     }
 
-    let requires_extra_confirmation = ctx.is_new_recipient || ctx.value_usd > limits.single_limit_usd * 0.5;
+    let requires_extra_confirmation =
+        ctx.is_new_recipient || ctx.value_usd > limits.single_limit_usd * 0.5;
 
     PolicyResult {
         allowed: true,
@@ -177,7 +178,10 @@ mod tests {
         let limits = UserLimits::default();
         let result = evaluate(&ctx, &limits);
         assert!(result.allowed);
-        assert!(result.warnings.iter().any(|w| w.contains("close to your single-transfer limit")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.contains("close to your single-transfer limit")));
     }
 
     #[test]

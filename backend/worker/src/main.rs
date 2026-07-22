@@ -107,20 +107,18 @@ async fn session_cleanup_task(db: PgPool) {
 
         // Purge expired ephemeral auth artifacts so the public, unauthenticated
         // /auth/challenge endpoint cannot grow these tables unbounded (F-001/F-010).
-        if let Err(e) = sqlx::query(
-            "DELETE FROM login_challenges WHERE expires_at < NOW() - INTERVAL '1 hour'",
-        )
-        .execute(&db)
-        .await
+        if let Err(e) =
+            sqlx::query("DELETE FROM login_challenges WHERE expires_at < NOW() - INTERVAL '1 hour'")
+                .execute(&db)
+                .await
         {
             tracing::error!("login_challenges cleanup failed: {}", e);
         }
 
-        if let Err(e) = sqlx::query(
-            "DELETE FROM ws_tickets WHERE expires_at < NOW() - INTERVAL '1 hour'",
-        )
-        .execute(&db)
-        .await
+        if let Err(e) =
+            sqlx::query("DELETE FROM ws_tickets WHERE expires_at < NOW() - INTERVAL '1 hour'")
+                .execute(&db)
+                .await
         {
             tracing::error!("ws_tickets cleanup failed: {}", e);
         }
@@ -210,18 +208,13 @@ async fn reshare_completion_task(db: PgPool) {
                     }
 
                     // Archive the session to avoid re-processing
-                    if let Err(e) = sqlx::query(
-                        "UPDATE mpc_sessions SET status = 'archived' WHERE id = $1",
-                    )
-                    .bind(session_id)
-                    .execute(&db)
-                    .await
+                    if let Err(e) =
+                        sqlx::query("UPDATE mpc_sessions SET status = 'archived' WHERE id = $1")
+                            .bind(session_id)
+                            .execute(&db)
+                            .await
                     {
-                        tracing::error!(
-                            "failed to archive reshare session {}: {}",
-                            session_id,
-                            e
-                        );
+                        tracing::error!("failed to archive reshare session {}: {}", session_id, e);
                     }
                 }
             }
@@ -255,7 +248,12 @@ async fn price_updater_task(http: reqwest::Client) {
             coingecko_api, ids_param
         );
 
-        match http.get(&url).header("x-cg-demo-api-key", &api_key).send().await {
+        match http
+            .get(&url)
+            .header("x-cg-demo-api-key", &api_key)
+            .send()
+            .await
+        {
             Ok(resp) => {
                 if resp.status().is_success() {
                     tracing::debug!("price feed updated successfully");

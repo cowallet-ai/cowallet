@@ -1,6 +1,6 @@
+use alloy_network::Ethereum;
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
-use alloy_network::Ethereum;
 use serde::{Deserialize, Serialize};
 
 /// Known ERC-20 token metadata.

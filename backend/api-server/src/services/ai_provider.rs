@@ -1,6 +1,6 @@
-use std::pin::Pin;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 pub type AiResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;

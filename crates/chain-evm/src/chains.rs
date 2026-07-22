@@ -354,7 +354,11 @@ mod tests {
 
         for chain_id in unsupported_chains {
             let chain = ChainConfig::by_chain_id(chain_id);
-            assert!(chain.is_none(), "chain_id {} should not be supported", chain_id);
+            assert!(
+                chain.is_none(),
+                "chain_id {} should not be supported",
+                chain_id
+            );
         }
     }
 
@@ -384,7 +388,11 @@ mod tests {
         let chains = ChainConfig::all_mainnet();
 
         for chain in chains {
-            assert!(!chain.rpc_urls.is_empty(), "chain {} should have RPC URLs", chain.name);
+            assert!(
+                !chain.rpc_urls.is_empty(),
+                "chain {} should have RPC URLs",
+                chain.name
+            );
             assert!(chain.rpc_urls[0].starts_with("http"));
         }
     }

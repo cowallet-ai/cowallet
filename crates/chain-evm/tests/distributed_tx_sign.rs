@@ -14,9 +14,7 @@
 use alloy_consensus::{SignableTransaction, TxEip1559};
 use alloy_primitives::{Address, Bytes, Signature, TxKind, B256, U256};
 use mpc_core::dkls23::{
-    dkg::DkgSession,
-    sign::SignSession,
-    KeyShare, ProtocolMessage, SessionConfig,
+    dkg::DkgSession, sign::SignSession, KeyShare, ProtocolMessage, SessionConfig,
 };
 
 fn make_config(session_id: &str, party: u16) -> SessionConfig {
@@ -37,9 +35,12 @@ fn run_dkg(session_id: &str) -> Vec<KeyShare> {
     let r1_0 = dkg0.generate_round1().unwrap();
     let r1_1 = dkg1.generate_round1().unwrap();
     let r1_2 = dkg2.generate_round1().unwrap();
-    dkg0.process_round1(vec![r1_1.clone(), r1_2.clone()]).unwrap();
-    dkg1.process_round1(vec![r1_0.clone(), r1_2.clone()]).unwrap();
-    dkg2.process_round1(vec![r1_0.clone(), r1_1.clone()]).unwrap();
+    dkg0.process_round1(vec![r1_1.clone(), r1_2.clone()])
+        .unwrap();
+    dkg1.process_round1(vec![r1_0.clone(), r1_2.clone()])
+        .unwrap();
+    dkg2.process_round1(vec![r1_0.clone(), r1_1.clone()])
+        .unwrap();
 
     let r2_0 = dkg0.generate_round2().unwrap();
     let r2_1 = dkg1.generate_round2().unwrap();
@@ -106,7 +107,9 @@ fn distributed_sign(
     };
 
     // Device decrypts Enc(s) into the final signature.
-    let sig = sign_device.process_round2(vec![server_response_msg]).unwrap();
+    let sig = sign_device
+        .process_round2(vec![server_response_msg])
+        .unwrap();
     sig.to_bytes()
 }
 
@@ -177,5 +180,8 @@ fn distributed_sign_eip1559_recovers_correct_address() {
     let signed = tx.into_signed(alloy_sig);
     let mut encoded = Vec::new();
     signed.eip2718_encode(&mut encoded);
-    assert_eq!(encoded[0], 0x02, "must encode as an EIP-1559 (type 0x02) tx");
+    assert_eq!(
+        encoded[0], 0x02,
+        "must encode as an EIP-1559 (type 0x02) tx"
+    );
 }

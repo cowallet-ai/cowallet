@@ -55,12 +55,8 @@ fn parse_wallet_address(wallet_address: Option<&str>) -> Option<Address> {
 /// Helper: Get USDC address for common chains
 fn usdc_address_for_chain(chain_id: u64) -> Option<Address> {
     match chain_id {
-        1 => Some(
-            Address::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap(),
-        ),
-        8453 => Some(
-            Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
-        ),
+        1 => Some(Address::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap()),
+        8453 => Some(Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap()),
         _ => None,
     }
 }
@@ -83,7 +79,11 @@ fn format_units(value: alloy_primitives::U256, decimals: u32) -> String {
     if fraction.is_zero() {
         format!("{}", integer)
     } else {
-        format!("{}.{:06}", integer, fraction.to_string().chars().take(6).collect::<String>())
+        format!(
+            "{}.{:06}",
+            integer,
+            fraction.to_string().chars().take(6).collect::<String>()
+        )
     }
 }
 
@@ -205,7 +205,12 @@ fn token_balance_to_json(b: &crate::services::okx::TokenBalance) -> serde_json::
 
 impl ToolContext {
     /// Execute a tool by name with parameters
-    pub async fn execute_tool(&self, tool_name: &str, tool_id: &str, params: Value) -> ToolExecutionResult {
+    pub async fn execute_tool(
+        &self,
+        tool_name: &str,
+        tool_id: &str,
+        params: Value,
+    ) -> ToolExecutionResult {
         tracing::debug!("Executing tool: {} with params: {:?}", tool_name, params);
 
         let result = match tool_name {
@@ -213,7 +218,9 @@ impl ToolContext {
             "get_supported_chains" => self.execute_get_supported_chains(tool_id).await,
             "get_token_info" => self.execute_get_token_info(tool_id, params).await,
             "send_transaction" => self.execute_send_transaction(tool_id, params).await,
-            "get_transaction_history" => self.execute_get_transaction_history(tool_id, params).await,
+            "get_transaction_history" => {
+                self.execute_get_transaction_history(tool_id, params).await
+            }
             "get_wallet_address" => self.execute_get_wallet_address(tool_id).await,
             "security_audit" => self.execute_security_audit(tool_id).await,
             "swap_token" => self.execute_swap_token(tool_id, params).await,
@@ -255,7 +262,10 @@ mod tests {
         // land mid-UTF-8-char. Must not panic on the funds-custody path.
         let text = format!("0x{}é rest", "0".repeat(39));
         let got = extract_0x_addresses(&text);
-        assert!(got.is_empty(), "malformed candidate should be skipped, not panic");
+        assert!(
+            got.is_empty(),
+            "malformed candidate should be skipped, not panic"
+        );
     }
 
     #[test]

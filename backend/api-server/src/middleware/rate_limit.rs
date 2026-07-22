@@ -5,13 +5,13 @@
 //! - Read endpoints: 100 requests/minute
 //! - Auth endpoints: 5 requests/minute (stricter)
 
+use axum::extract::Request;
 use axum::{
     body::Body,
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use axum::extract::Request;
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::Serialize;
@@ -167,7 +167,10 @@ impl RateLimiter for RedisRateLimiter {
                 // SECURITY (F-011): FAIL CLOSED on Redis connection failure.
                 // For a crypto wallet, allowing unlimited requests when the rate
                 // limiter backend is down enables OTP/auth brute force, so we deny.
-                tracing::error!("Rate limiter Redis connection failed, denying request: {}", e);
+                tracing::error!(
+                    "Rate limiter Redis connection failed, denying request: {}",
+                    e
+                );
                 return RateLimitStatus {
                     allowed: false,
                     remaining: 0,
@@ -247,7 +250,10 @@ impl RateLimiter for RedisRateLimiter {
             }
         };
 
-        let () = conn.zrembyscore(&redis_key, 0, window_start).await.unwrap_or(());
+        let () = conn
+            .zrembyscore(&redis_key, 0, window_start)
+            .await
+            .unwrap_or(());
         let count: usize = conn.zcard(&redis_key).await.unwrap_or(0);
 
         if count as u32 <= limit.max_requests {
@@ -281,7 +287,9 @@ impl RateLimiter for RedisRateLimiter {
 /// In-memory rate limiter (for development/standalone use)
 #[derive(Clone)]
 pub struct InMemoryRateLimiter {
-    limits: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<std::time::Instant>>>>,
+    limits: std::sync::Arc<
+        std::sync::Mutex<std::collections::HashMap<String, Vec<std::time::Instant>>>,
+    >,
 }
 
 impl InMemoryRateLimiter {
@@ -298,7 +306,11 @@ impl InMemoryRateLimiter {
         let now = std::time::Instant::now();
         let window_start = now - std::time::Duration::from_secs(limit.window_secs);
 
-        let remaining: Vec<_> = timestamps.iter().copied().filter(|t| t > &window_start).collect();
+        let remaining: Vec<_> = timestamps
+            .iter()
+            .copied()
+            .filter(|t| t > &window_start)
+            .collect();
         let count = remaining.len() as u32;
         if count < limit.max_requests {
             RateLimitStatus {
@@ -452,7 +464,12 @@ async fn apply_rate_limit(mut request: Request<Body>, next: Next, limit: RateLim
     let status = state.rate_limiter.check_and_record(&key, limit).await;
 
     if !status.allowed {
-        tracing::warn!("Rate limit exceeded for {}: {} requests/{}s", key, limit.max_requests, limit.window_secs);
+        tracing::warn!(
+            "Rate limit exceeded for {}: {} requests/{}s",
+            key,
+            limit.max_requests,
+            limit.window_secs
+        );
         return RateLimitRejection::RateLimited(status.retry_after).into_response();
     }
 
@@ -711,7 +728,12 @@ mod tests {
         for i in 0..5 {
             let status = limiter.check_and_record("accuracy_test", limit).await;
             assert!(status.allowed);
-            assert_eq!(status.remaining, 5 - i - 1, "Remaining count mismatch at iteration {}", i);
+            assert_eq!(
+                status.remaining,
+                5 - i - 1,
+                "Remaining count mismatch at iteration {}",
+                i
+            );
         }
 
         // Over limit should have 0 remaining

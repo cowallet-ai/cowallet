@@ -73,12 +73,13 @@ fn rule_matches(rule: &Rule, tx: &TransactionContext) -> bool {
             }
         }
 
-        Rule::RateLimit { max_tx, window_secs } => {
-            match &tx.history {
-                Some(h) if h.window_secs == *window_secs => h.window_tx_count >= *max_tx,
-                _ => false,
-            }
-        }
+        Rule::RateLimit {
+            max_tx,
+            window_secs,
+        } => match &tx.history {
+            Some(h) if h.window_secs == *window_secs => h.window_tx_count >= *max_tx,
+            _ => false,
+        },
     }
 }
 

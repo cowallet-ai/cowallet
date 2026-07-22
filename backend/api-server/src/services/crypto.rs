@@ -4,9 +4,9 @@ use aes_gcm::{
 };
 use hkdf::Hkdf;
 use rand::RngCore;
-use sha2::{Sha256, Digest};
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 #[derive(Error, Debug)]
 pub enum CryptoError {
@@ -152,7 +152,11 @@ impl EncryptionService {
     /// `aad` is supplied, so a shard row copied to another user's record (or
     /// swapped between wallets) will not decrypt. AAD is authenticated, not
     /// stored in the ciphertext.
-    pub fn encrypt_bound(&self, plaintext: &[u8], aad: &[u8]) -> Result<EncryptedData, CryptoError> {
+    pub fn encrypt_bound(
+        &self,
+        plaintext: &[u8],
+        aad: &[u8],
+    ) -> Result<EncryptedData, CryptoError> {
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
@@ -162,14 +166,27 @@ impl EncryptionService {
         let cipher = Aes256Gcm::new(key);
 
         let ciphertext = cipher
-            .encrypt(nonce, aes_gcm::aead::Payload { msg: plaintext, aad })
+            .encrypt(
+                nonce,
+                aes_gcm::aead::Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
             .map_err(|e| CryptoError::Encryption(e.to_string()))?;
 
-        Ok(EncryptedData { nonce: nonce_bytes, ciphertext })
+        Ok(EncryptedData {
+            nonce: nonce_bytes,
+            ciphertext,
+        })
     }
 
     /// Decrypt data encrypted with [`encrypt_bound`], requiring the same `aad`.
-    pub fn decrypt_bound(&self, encrypted: &EncryptedData, aad: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    pub fn decrypt_bound(
+        &self,
+        encrypted: &EncryptedData,
+        aad: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
         let nonce = Nonce::from_slice(&encrypted.nonce);
 
         let derived_key = self.derive_key_with_salt(aad);
@@ -177,12 +194,22 @@ impl EncryptionService {
         let cipher = Aes256Gcm::new(key);
 
         cipher
-            .decrypt(nonce, aes_gcm::aead::Payload { msg: encrypted.ciphertext.as_ref(), aad })
+            .decrypt(
+                nonce,
+                aes_gcm::aead::Payload {
+                    msg: encrypted.ciphertext.as_ref(),
+                    aad,
+                },
+            )
             .map_err(|e| CryptoError::Decryption(e.to_string()))
     }
 
     /// Re-encrypt data with a new root key (for key rotation)
-    pub fn rotate_key(&self, encrypted: &EncryptedData, new_service: &EncryptionService) -> Result<EncryptedData, CryptoError> {
+    pub fn rotate_key(
+        &self,
+        encrypted: &EncryptedData,
+        new_service: &EncryptionService,
+    ) -> Result<EncryptedData, CryptoError> {
         // Decrypt with old key
         let mut plaintext = self.decrypt(encrypted)?;
 
@@ -196,7 +223,11 @@ impl EncryptionService {
     }
 
     /// Batch re-encrypt multiple items during key rotation
-    pub fn rotate_keys_batch(&self, encrypted_items: &[EncryptedData], new_service: &EncryptionService) -> Result<Vec<EncryptedData>, CryptoError> {
+    pub fn rotate_keys_batch(
+        &self,
+        encrypted_items: &[EncryptedData],
+        new_service: &EncryptionService,
+    ) -> Result<Vec<EncryptedData>, CryptoError> {
         encrypted_items
             .iter()
             .map(|item| self.rotate_key(item, new_service))
@@ -232,7 +263,9 @@ mod tests {
     #[test]
     fn test_validate_encryption_key() {
         // Random-ish key with many distinct bytes: accepted.
-        let good: Vec<u8> = (0u8..32).map(|i| i.wrapping_mul(7).wrapping_add(3)).collect();
+        let good: Vec<u8> = (0u8..32)
+            .map(|i| i.wrapping_mul(7).wrapping_add(3))
+            .collect();
         assert!(validate_encryption_key(&good).is_ok());
 
         // The documented dev example (sequential 0..31) has 32 distinct bytes.
@@ -409,7 +442,10 @@ mod tests {
 
         // Try to decrypt with service2 (different context) - should fail
         let result = service2.decrypt(&encrypted1);
-        assert!(result.is_err(), "Different contexts should produce different keys");
+        assert!(
+            result.is_err(),
+            "Different contexts should produce different keys"
+        );
 
         // Decrypt with service1 should work
         let decrypted1 = service1.decrypt(&encrypted1).unwrap();
@@ -446,11 +482,16 @@ mod tests {
         let encrypted_old = old_service.encrypt(plaintext).unwrap();
 
         // Rotate to new key
-        let encrypted_new = old_service.rotate_key(&encrypted_old, &new_service).unwrap();
+        let encrypted_new = old_service
+            .rotate_key(&encrypted_old, &new_service)
+            .unwrap();
 
         // Old service cannot decrypt new ciphertext
         let old_decrypt_result = old_service.decrypt(&encrypted_new);
-        assert!(old_decrypt_result.is_err(), "Old key should not decrypt rotated data");
+        assert!(
+            old_decrypt_result.is_err(),
+            "Old key should not decrypt rotated data"
+        );
 
         // New service can decrypt
         let decrypted = new_service.decrypt(&encrypted_new).unwrap();
@@ -478,7 +519,9 @@ mod tests {
             .collect();
 
         // Rotate all to new key
-        let encrypted_new = old_service.rotate_keys_batch(&encrypted_old, &new_service).unwrap();
+        let encrypted_new = old_service
+            .rotate_keys_batch(&encrypted_old, &new_service)
+            .unwrap();
         assert_eq!(encrypted_new.len(), test_data.len());
 
         // Decrypt with new key and verify
@@ -512,7 +555,10 @@ mod tests {
 
         // Batch rotation should fail (one item is corrupted)
         let result = old_service.rotate_keys_batch(&batch, &new_service);
-        assert!(result.is_err(), "Batch rotation should fail if any item fails");
+        assert!(
+            result.is_err(),
+            "Batch rotation should fail if any item fails"
+        );
     }
 
     #[test]
@@ -535,7 +581,10 @@ mod tests {
         let key1 = service1.derive_key();
         let key2 = service2.derive_key();
 
-        assert_ne!(key1, key2, "Different contexts should derive different keys");
+        assert_ne!(
+            key1, key2,
+            "Different contexts should derive different keys"
+        );
     }
 
     #[test]
@@ -559,7 +608,9 @@ mod tests {
         let encrypted_old = old_service.encrypt(empty).unwrap();
 
         // Should successfully rotate even empty data
-        let encrypted_new = old_service.rotate_key(&encrypted_old, &new_service).unwrap();
+        let encrypted_new = old_service
+            .rotate_key(&encrypted_old, &new_service)
+            .unwrap();
         let decrypted = new_service.decrypt(&encrypted_new).unwrap();
 
         assert_eq!(empty.as_slice(), decrypted.as_slice());
@@ -583,7 +634,10 @@ mod tests {
 
         // Wrong identity (swapped shard row) fails authentication.
         let wrong = service.decrypt_bound(&enc, aad_b);
-        assert!(wrong.is_err(), "shard must not decrypt under a foreign identity");
+        assert!(
+            wrong.is_err(),
+            "shard must not decrypt under a foreign identity"
+        );
 
         // Unbound decrypt path also fails on a bound ciphertext.
         assert!(service.decrypt(&enc).is_err());

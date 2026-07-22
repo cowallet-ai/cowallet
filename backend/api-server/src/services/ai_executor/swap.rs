@@ -5,7 +5,11 @@ use serde_json::Value;
 
 impl ToolContext {
     // --- swap_token ---
-    pub(super) async fn execute_swap_token(&self, tool_id: &str, params: Value) -> ToolExecutionResult {
+    pub(super) async fn execute_swap_token(
+        &self,
+        tool_id: &str,
+        params: Value,
+    ) -> ToolExecutionResult {
         let from_token: String = match parse_param(&params, "from_token") {
             Some(t) => t,
             None => {
@@ -86,7 +90,10 @@ impl ToolContext {
                     tool_name: "swap_token".into(),
                     success: false,
                     result: Value::Null,
-                    error: Some(format!("不支持的代币: {} (chain {})", to_upper, to_chain_id)),
+                    error: Some(format!(
+                        "不支持的代币: {} (chain {})",
+                        to_upper, to_chain_id
+                    )),
                 };
             }
         };
@@ -140,12 +147,19 @@ impl ToolContext {
                     )
                 }
                 Err(e) => {
-                    tracing::warn!("[Bridgers] quote failed, falling back to price estimate: {}", e);
+                    tracing::warn!(
+                        "[Bridgers] quote failed, falling back to price estimate: {}",
+                        e
+                    );
                     // Fallback to price-based estimation
-                    let from_price = self.app_state.price_cache
+                    let from_price = self
+                        .app_state
+                        .price_cache
                         .get_usd_price(&self.app_state.http, &from_upper)
                         .await;
-                    let to_price = self.app_state.price_cache
+                    let to_price = self
+                        .app_state
+                        .price_cache
                         .get_usd_price(&self.app_state.http, &to_upper)
                         .await;
 
@@ -153,9 +167,20 @@ impl ToolContext {
                         (Some(fp), Some(tp)) if tp > 0.0 => {
                             let amt: f64 = amount.parse().unwrap_or(0.0);
                             let output = amt * fp / tp;
-                            let output_str = if tp >= 1.0 { format!("{:.2}", output) } else { format!("{:.6}", output) };
+                            let output_str = if tp >= 1.0 {
+                                format!("{:.2}", output)
+                            } else {
+                                format!("{:.6}", output)
+                            };
                             let rate = format!("{:.6}", fp / tp);
-                            (output_str, rate, None, "200000".to_string(), vec!["price_estimate".to_string()], None)
+                            (
+                                output_str,
+                                rate,
+                                None,
+                                "200000".to_string(),
+                                vec!["price_estimate".to_string()],
+                                None,
+                            )
                         }
                         _ => {
                             return ToolExecutionResult {

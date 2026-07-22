@@ -120,11 +120,16 @@ impl RelayState {
         for party in &parties {
             let (tx, rx) = mpsc::unbounded_channel();
             self.message_queues.insert((session_id, *party), tx);
-            self.message_queue_receivers.insert((session_id, *party), rx);
+            self.message_queue_receivers
+                .insert((session_id, *party), rx);
         }
 
         self.sessions.insert(session_id, session);
-        tracing::info!("Created session {} with {} parties", session_id, parties.len());
+        tracing::info!(
+            "Created session {} with {} parties",
+            session_id,
+            parties.len()
+        );
         session_id
     }
 
@@ -183,7 +188,8 @@ impl RelayState {
                 tracing::info!("Cleaning up expired session {}", session_id);
                 // Remove message queues for this session
                 self.message_queues.retain(|&(sid, _), _| sid != session_id);
-                self.message_queue_receivers.retain(|&(sid, _), _| sid != session_id);
+                self.message_queue_receivers
+                    .retain(|&(sid, _), _| sid != session_id);
                 removed += 1;
                 false
             } else {
@@ -260,7 +266,10 @@ pub async fn run_relay(nats_url: &str) -> Result<(), Box<dyn std::error::Error>>
             Some(client)
         }
         Err(e) => {
-            tracing::warn!("Failed to connect to NATS: {}, running in memory-only mode", e);
+            tracing::warn!(
+                "Failed to connect to NATS: {}, running in memory-only mode",
+                e
+            );
             None
         }
     };

@@ -16,7 +16,9 @@ impl ToolContext {
     ) -> policy_engine::PolicyResult {
         // Get token price for USD estimation
         let symbol = if token.is_empty() { "ETH" } else { token };
-        let price_usd = self.app_state.price_cache
+        let price_usd = self
+            .app_state
+            .price_cache
             .get_usd_price(&self.app_state.http, &symbol.to_uppercase())
             .await
             .unwrap_or(0.0);
@@ -113,7 +115,9 @@ impl ToolContext {
                 "USDC" | "USDT" => 6,
                 _ => 18,
             };
-            let price = self.app_state.price_cache
+            let price = self
+                .app_state
+                .price_cache
                 .get_usd_price(&self.app_state.http, &symbol)
                 .await
                 .unwrap_or(0.0);
