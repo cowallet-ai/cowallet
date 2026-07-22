@@ -3,6 +3,7 @@ name = "worker"
 description = "Background jobs — key resharing scheduler, price feed updates"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 mpc-core = { path = "../../crates/mpc-core" }

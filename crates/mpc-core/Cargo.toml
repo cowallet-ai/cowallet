@@ -3,6 +3,7 @@ name = "mpc-core"
 description = "DKLS23 threshold signature scheme — DKG, 2-of-3 TSS, resharing"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 k256 = { workspace = true }
