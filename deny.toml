@@ -13,9 +13,16 @@ version = 2
 # RustSec 漏洞库。有漏洞/被 yank 的依赖直接卡门禁(取代 rust-audit.yml 里的
 # cargo audit,统一到 deny 一处)。
 yanked = "deny"
-# 已知且已评估、暂无法升级的 advisory 在此登记豁免(带 RUSTSEC 编号 + 理由),
-# 目前为空 —— 出现时逐条 review 后加入,不允许空泛忽略。
-ignore = []
+# 已知且已评估的 advisory 在此逐条登记豁免(带 RUSTSEC 编号 + 理由)。
+# 不允许空泛忽略;每条都须有可达性/风险评估依据(见 issue #7)。
+ignore = [
+    # RUSTSEC-2023-0071 —— rsa crate Marvin Attack 时序侧信道(私钥操作)。
+    # 评估:生产不可达。api-server 的 rsa 仅用于公钥验签(verify_device_signature,
+    # routes/auth.rs:660),唯一的 RsaPrivateKey 在 #[cfg(test)] 门控的 rsa_tests 内,
+    # 不进生产二进制。Marvin 针对私钥解密/签名时序,生产侧零私钥操作 → 不可达。
+    # 上游暂无修复版。待 rsa 发布修复后移除此豁免。
+    { id = "RUSTSEC-2023-0071", reason = "生产不可达:仅公钥验签,私钥操作仅测试代码" },
+]
 
 [licenses]
 version = 2

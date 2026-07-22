@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 构建 + 测试(**全 workspace**) | cargo test --workspace | `ci.yml` | required |
 | 代码格式 | cargo fmt --check | `ci.yml` | required |
-| 依赖 license / 来源 / 重复 | cargo-deny | `cargo-deny.yml` | required |
+| 依赖 license / 来源 / 重复 | cargo-deny(每 PR 跑) | `cargo-deny.yml` | required |
 | 依赖漏洞(RustSec) | cargo-deny advisories | `cargo-deny.yml` | advisory |
 | 静态分析(Rust) | cargo clippy | `rust-audit.yml` | advisory |
 | 移动端分析 + 测试 | flutter analyze/test | `flutter-ci.yml` | required(mobile 变更时) |
@@ -93,10 +93,11 @@ git config core.hooksPath .githooks
 ## 启用 branch protection(需 maintainer 手动开)
 
 `Settings → Branches → Add rule (main)`:
-1. Require status checks,勾选这些 required:
-   - `Test (workspace)`、`rustfmt`(均来自 `ci.yml`)
-   - `cargo-deny (licenses/bans/sources)`(来自 `cargo-deny.yml`)
+1. Require status checks,勾选这些 required(均每 PR 必跑,无 path 过滤锁死风险):
+   - `Test (workspace)`、`rustfmt`(均来自 `ci.yml`,无 paths 过滤)
+   - `cargo-deny (licenses/bans/sources)`(PR 上已去 paths 过滤,每 PR 跑)
    - `gitleaks (secret scan)`、`PR 标题(conventional commit)`
+   - ⚠️ 勿把有 paths 过滤的检查设 required(如 flutter `mobile/**`)——不碰该路径的 PR 会永久卡 pending。
 2. Require review from Code Owners(启用 CODEOWNERS 路由)
 3. 保持 advisory(**勿**设 required):`cargo-deny (advisories)`、`cargo clippy`、
    `PR 体量告警` —— 各自有存量债或本就是提示性。debt 清完后再逐个升 required。

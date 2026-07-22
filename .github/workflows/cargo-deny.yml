@@ -6,8 +6,10 @@ on:
   push:
     branches: [main]
     paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock", "deny.toml"]
+  # PR 上不设 paths 过滤 —— 每个 PR 都跑,好让 compliance job 能安全设为 required
+  # branch protection check(path 过滤的必需检查会锁死不碰这些路径的 PR)。
+  # 无依赖改动时 deny 秒过,开销可忽略。
   pull_request:
-    paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock", "deny.toml"]
   schedule:
     # 每周一 08:17 UTC —— 捡新发布的 CVE(错开整点,避开 runner 高峰)。
     - cron: "17 8 * * 1"
