@@ -67,6 +67,9 @@ website/node_modules/
 # Stray Windows pub cache accidentally committed as a literal path
 # (from `flutter pub get` on Windows writing to D:\PUB\...)
 mobile/D:/
+
+# Claude Code: keep committable playbooks (.claude/commands), ignore transient worktrees.
+.claude/worktrees/
 .pub-cache/
 .dart_tool/
 

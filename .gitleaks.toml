@@ -1,0 +1,43 @@
+# gitleaks 配置 — 扩展内置默认规则集,再放行提交进库的示例占位值。
+#
+# 本地运行: gitleaks detect --config .gitleaks.toml --redact
+# CI PR 扫描: gitleaks detect --source . --config .gitleaks.toml --log-opts "HEAD~..HEAD"
+[extend]
+useDefault = true
+
+[allowlist]
+description = "已提交的占位符、示例 env、CocoaPods/Firebase 公开标识符(非真实密钥)。"
+
+# 示例 env 文件本就装假值;文档不含密钥。
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\.prod\.example$''',
+  '''(^|/)README\.md$''',
+  # CocoaPods lock 含 SHA/GIT 校验值,非密钥。
+  '''(^|/)Podfile\.lock$''',
+  # Flutter pub cache (偶被误提交时);Android/iOS firebase 公开 client id。
+  '''D:/PUB/hosted/''',
+  '''(^|/)google-services\.json$''',
+  '''(^|/)GoogleService-Info\.plist$''',
+  # 历史 debug 文档
+  '''(^|/)FLUTTER_AUTH_DEBUG_GUIDE\.md$''',
+  '''(^|/)FLUTTER_AUTH_DIAGNOSIS\.md$''',
+  '''(^|/)docs/PUSH_NOTIFICATIONS\.md$''',
+  '''(^|/)docs/QUICK_START_PUSH\.md$''',
+]
+
+# 明显的占位/dummy 值。
+regexes = [
+  '''postgres://(postgres|user):(postgres|pass)@''',
+  '''postgresql://postgres:postgres@''',
+  '''change-me-[a-z0-9-]+''',
+  '''change_me_[a-z0-9_]+''',
+  # .env.example DeepSeek 占位
+  '''sk-your-[a-z-]+-here''',
+  # ci.yml 中 ENCRYPTION_KEY/JWT_SECRET 占位值
+  '''ci-only-dummy-jwt-secret-[a-z0-9-]+''',
+  '''000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f''',
+  # tokenContractAddress 在 okx.rs 测试中被 generic-api-key 误报
+  '''tokenContractAddress''',
+  '''=\s*$''',
+]

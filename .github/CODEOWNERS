@@ -1,0 +1,35 @@
+# cowallet CODEOWNERS
+#
+# 资金 / MPC / 安全敏感路径:PR 必须由 maintainer review。
+# 启用方法: Settings → Branches → Protect main → Require review from Code Owners。
+#
+# 格式: <路径模式>  <@owner>
+# 未被覆盖的文件不触发强制 review(但 CI 门禁仍运行)。
+
+# --- MPC 核心协议(密钥生成/签名/重分享) ---
+crates/mpc-core/                      @Jingle
+crates/storage-crypto/                @Jingle
+
+# --- 区块链签名 / 交易构建 ---
+crates/chain-evm/                     @Jingle
+
+# --- 策略引擎(风控门禁) ---
+crates/policy-engine/                 @Jingle
+
+# --- 后端资金/安全路由 ---
+backend/api-server/src/routes/tx.rs   @Jingle
+backend/api-server/src/routes/wallets.rs @Jingle
+backend/api-server/src/routes/auth.rs  @Jingle
+backend/api-server/src/routes/mpc.rs   @Jingle
+backend/api-server/src/routes/mpc_ws.rs @Jingle
+
+# --- 密码学服务 / 预签名 ---
+backend/api-server/src/services/crypto.rs        @Jingle
+backend/api-server/src/services/presign_manager.rs @Jingle
+
+# --- AI 执行器(含安全检测) ---
+backend/api-server/src/services/ai_executor/     @Jingle
+
+# --- CI / 部署 ---
+.github/workflows/                    @Jingle
+.gitleaks.toml                        @Jingle

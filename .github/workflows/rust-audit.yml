@@ -1,0 +1,59 @@
+# Rust 安全审计 + Lint.
+#
+# cargo audit — 扫 RustSec 漏洞库(required gate)。
+# cargo clippy — 静态分析,advisory(continue-on-error),因历史 lint debt。
+# 仅在 Rust 源码变更时触发。
+name: Rust Audit
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock"]
+  pull_request:
+    paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock"]
+  schedule:
+    # 每周一 08:13 UTC — 捡刚发布的新 CVE。
+    - cron: "13 8 * * 1"
+
+jobs:
+  audit:
+    name: cargo audit (RustSec)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run audit
+        run: cargo audit
+
+  clippy:
+    name: cargo clippy (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust + clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Advisory: 不因历史 lint debt 阻塞 PR;结果可见于 Actions 日志。
+      # 待 lint debt 清完后移除 continue-on-error 并升级为 required。
+      - name: Run clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets -- -D warnings
