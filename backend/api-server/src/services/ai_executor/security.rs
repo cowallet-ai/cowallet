@@ -44,19 +44,31 @@ pub(super) async fn shard_signals(db: &PgPool, user_id: Uuid) -> ShardSignals {
 
     let has_server = shards.iter().any(|s| s.0 == "server");
     let has_backup = shards.iter().any(|s| s.0 == "backup")
-        || shards.iter().any(|s| s.4.as_ref().map_or(false, |h| !h.is_empty()));
+        || shards
+            .iter()
+            .any(|s| s.4.as_ref().map_or(false, |h| !h.is_empty()));
 
-    let unhealthy = shards.iter()
+    let unhealthy = shards
+        .iter()
         .filter(|s| s.1 != "healthy")
         .map(|s| (s.0.clone(), s.1.clone()))
         .collect();
 
-    let stale = shards.iter()
-        .filter(|s| s.3.map_or(true, |v| (chrono::Utc::now() - v).num_days() > 30))
+    let stale = shards
+        .iter()
+        .filter(|s| {
+            s.3.map_or(true, |v| (chrono::Utc::now() - v).num_days() > 30)
+        })
         .map(|s| s.0.clone())
         .collect();
 
-    ShardSignals { has_server, has_backup, unhealthy, stale, any_rows: !shards.is_empty() }
+    ShardSignals {
+        has_server,
+        has_backup,
+        unhealthy,
+        stale,
+        any_rows: !shards.is_empty(),
+    }
 }
 
 /// Count usable (available, not-yet-expired) presignatures for `user_id`.
@@ -67,7 +79,7 @@ pub(super) async fn shard_signals(db: &PgPool, user_id: Uuid) -> ShardSignals {
 pub(super) async fn available_presignature_count(db: &PgPool, user_id: Uuid) -> i64 {
     sqlx::query_scalar(
         "SELECT COUNT(*) FROM presignatures
-         WHERE user_id = $1 AND status = 'available' AND expires_at > NOW()"
+         WHERE user_id = $1 AND status = 'available' AND expires_at > NOW()",
     )
     .bind(user_id)
     .fetch_one(db)
@@ -92,7 +104,7 @@ pub(super) struct PolicySignals {
 /// protection" — the engine falls back to Default (single=$500, daily=$2000).
 pub(super) async fn policy_signals(db: &PgPool, user_id: Uuid) -> PolicySignals {
     let limits: Option<(f64, f64)> = sqlx::query_as(
-        "SELECT single_limit_usd, daily_limit_usd FROM user_policies WHERE user_id = $1"
+        "SELECT single_limit_usd, daily_limit_usd FROM user_policies WHERE user_id = $1",
     )
     .bind(user_id)
     .fetch_optional(db)
@@ -103,14 +115,19 @@ pub(super) async fn policy_signals(db: &PgPool, user_id: Uuid) -> PolicySignals 
     let (single_limit_usd, daily_limit_usd) = limits.unwrap_or((500.0, 2000.0));
 
     let custom_policy_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM policies WHERE user_id = $1 AND rules != '{}' AND enabled = true"
+        "SELECT COUNT(*) FROM policies WHERE user_id = $1 AND rules != '{}' AND enabled = true",
     )
     .bind(user_id)
     .fetch_one(db)
     .await
     .unwrap_or(0);
 
-    PolicySignals { single_limit_usd, daily_limit_usd, custom_policy_count, has_explicit_limits }
+    PolicySignals {
+        single_limit_usd,
+        daily_limit_usd,
+        custom_policy_count,
+        has_explicit_limits,
+    }
 }
 
 impl ToolContext {
@@ -118,20 +135,24 @@ impl ToolContext {
     pub(super) async fn execute_security_audit(&self, tool_id: &str) -> ToolExecutionResult {
         let address = match parse_wallet_address(self.wallet_address.as_deref()) {
             Some(a) => a,
-            None => return ToolExecutionResult {
-                tool_id: tool_id.to_string(),
-                tool_name: "security_audit".into(),
-                success: false,
-                result: Value::Null,
-                error: Some("钱包地址未提供".into()),
-            },
+            None => {
+                return ToolExecutionResult {
+                    tool_id: tool_id.to_string(),
+                    tool_name: "security_audit".into(),
+                    success: false,
+                    result: Value::Null,
+                    error: Some("钱包地址未提供".into()),
+                }
+            }
         };
 
         let mut findings: Vec<Value> = Vec::new();
         let mut score: u32 = 100;
         let mut recommendations: Vec<String> = Vec::new();
 
-        let user_uuid = self.user_id.as_ref()
+        let user_uuid = self
+            .user_id
+            .as_ref()
             .and_then(|uid| uuid::Uuid::parse_str(uid).ok());
 
         let db_available = self.app_state.require_db().is_ok();
@@ -140,7 +161,9 @@ impl ToolContext {
         if !db_available || !has_user {
             tracing::warn!(
                 "security_audit: skipping DB checks — db_available={}, has_user={}, user_id={:?}",
-                db_available, has_user, self.user_id
+                db_available,
+                has_user,
+                self.user_id
             );
             score -= 30;
             findings.push(serde_json::json!({
@@ -335,7 +358,10 @@ impl ToolContext {
                 }
             }
             None => {
-                tracing::warn!("security_audit: on-chain approval check failed for {:?}", address);
+                tracing::warn!(
+                    "security_audit: on-chain approval check failed for {:?}",
+                    address
+                );
                 findings.push(serde_json::json!({
                     "severity": "medium",
                     "type": "approval_check_failed",
@@ -394,9 +420,8 @@ impl ToolContext {
                 }));
             } else if pol.single_limit_usd >= 500.0 && pol.daily_limit_usd >= 2000.0 {
                 score -= 5;
-                recommendations.push(
-                    "建议根据实际使用习惯调低单笔和日限额，降低意外或授权滥用风险".into()
-                );
+                recommendations
+                    .push("建议根据实际使用习惯调低单笔和日限额，降低意外或授权滥用风险".into());
             }
         }
 
@@ -429,7 +454,8 @@ impl ToolContext {
                     "type": "biometric_auth",
                     "message": "当前使用 PIN 验证，建议开启生物识别以提高安全性",
                 }));
-                recommendations.push("在设置中开启 Face ID / 指纹验证，比 PIN 更安全且不可窥视".into());
+                recommendations
+                    .push("在设置中开启 Face ID / 指纹验证，比 PIN 更安全且不可窥视".into());
             }
             _ => {
                 findings.push(serde_json::json!({
@@ -447,7 +473,13 @@ impl ToolContext {
         recommendations.push("不要在不信任的网站连接钱包或签署交易".into());
 
         score = score.clamp(0, 100);
-        let risk_level = if score >= 90 { "low" } else if score >= 70 { "medium" } else { "high" };
+        let risk_level = if score >= 90 {
+            "low"
+        } else if score >= 70 {
+            "medium"
+        } else {
+            "high"
+        };
 
         let result = serde_json::json!({
             "address": format!("0x{:x}", address),
@@ -484,9 +516,12 @@ impl ToolContext {
         // by public RPCs. Resolve the chain head, then look back APPROVAL_SCAN_BLOCKS.
         let head_resp = self
             .app_state
-            .rpc_call(chain_id, &serde_json::json!({
-                "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1
-            }))
+            .rpc_call(
+                chain_id,
+                &serde_json::json!({
+                    "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1
+                }),
+            )
             .await
             .ok()?;
         let head = head_resp
@@ -527,7 +562,10 @@ impl ToolContext {
                     .and_then(|t| t.get(2))
                     .and_then(|s| s.as_str())
                     .unwrap_or("");
-                let contract = log.get("address").and_then(|a| a.as_str()).unwrap_or("unknown");
+                let contract = log
+                    .get("address")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("unknown");
                 unlimited_approvals.push(serde_json::json!({
                     "contract": contract,
                     "spender": spender_topic,
@@ -568,14 +606,12 @@ mod tests {
 
     async fn seed_user(pool: &PgPool) -> Uuid {
         let id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO users (id, device_id) VALUES ($1, $2)"
-        )
-        .bind(id)
-        .bind(format!("test-device-{}", id))
-        .execute(pool)
-        .await
-        .expect("seed user");
+        sqlx::query("INSERT INTO users (id, device_id) VALUES ($1, $2)")
+            .bind(id)
+            .bind(format!("test-device-{}", id))
+            .execute(pool)
+            .await
+            .expect("seed user");
         id
     }
 
@@ -583,7 +619,7 @@ mod tests {
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO wallets (id, user_id, public_key, eth_address)
-             VALUES ($1, $2, '\\x01'::bytea, '\\x02'::bytea)"
+             VALUES ($1, $2, '\\x01'::bytea, '\\x02'::bytea)",
         )
         .bind(id)
         .bind(user_id)
@@ -605,7 +641,7 @@ mod tests {
         sqlx::query(
             "INSERT INTO shard_metadata
              (user_id, location, party_index, status, last_verified, backup_shard_hash)
-             VALUES ($1, 'server', 1, 'healthy', NOW(), $2)"
+             VALUES ($1, 'server', 1, 'healthy', NOW(), $2)",
         )
         .bind(uid)
         .bind(vec![0xabu8; 32]) // 32-byte SHA-256 placeholder
@@ -615,10 +651,16 @@ mod tests {
 
         let sig = shard_signals(&pool, uid).await;
 
-        assert!(sig.has_server,  "has_server must be true: server row exists");
-        assert!(sig.has_backup,  "has_backup must be true: backup_shard_hash is set");
+        assert!(sig.has_server, "has_server must be true: server row exists");
+        assert!(
+            sig.has_backup,
+            "has_backup must be true: backup_shard_hash is set"
+        );
         assert!(sig.unhealthy.is_empty(), "no unhealthy shards");
-        assert!(sig.stale.is_empty(),     "recently-verified shard must not be stale");
+        assert!(
+            sig.stale.is_empty(),
+            "recently-verified shard must not be stale"
+        );
         assert!(sig.any_rows);
     }
 
@@ -638,7 +680,7 @@ mod tests {
         let uid = seed_user(&pool).await;
         sqlx::query(
             "INSERT INTO shard_metadata (user_id, location, party_index, status, last_verified)
-             VALUES ($1, 'server', 1, 'healthy', NOW())"
+             VALUES ($1, 'server', 1, 'healthy', NOW())",
         )
         .bind(uid)
         .execute(&pool)
@@ -647,7 +689,10 @@ mod tests {
 
         let sig = shard_signals(&pool, uid).await;
         assert!(sig.has_server);
-        assert!(!sig.has_backup, "no backup_shard_hash → has_backup must be false");
+        assert!(
+            !sig.has_backup,
+            "no backup_shard_hash → has_backup must be false"
+        );
     }
 
     // ── 2. available_presignature_count ──────────────────────────────────────
@@ -662,26 +707,41 @@ mod tests {
         // One available presig (should be counted).
         sqlx::query(
             "INSERT INTO presignatures (wallet_id, user_id, presig_data, status, expires_at)
-             VALUES ($1, $2, '\\x00'::bytea, 'available', NOW() + INTERVAL '1 hour')"
+             VALUES ($1, $2, '\\x00'::bytea, 'available', NOW() + INTERVAL '1 hour')",
         )
-        .bind(wid).bind(uid).execute(&pool).await.expect("seed available presig");
+        .bind(wid)
+        .bind(uid)
+        .execute(&pool)
+        .await
+        .expect("seed available presig");
 
         // One consumed presig (must NOT be counted).
         sqlx::query(
             "INSERT INTO presignatures (wallet_id, user_id, presig_data, status, expires_at)
-             VALUES ($1, $2, '\\x00'::bytea, 'consumed', NOW() + INTERVAL '1 hour')"
+             VALUES ($1, $2, '\\x00'::bytea, 'consumed', NOW() + INTERVAL '1 hour')",
         )
-        .bind(wid).bind(uid).execute(&pool).await.expect("seed consumed presig");
+        .bind(wid)
+        .bind(uid)
+        .execute(&pool)
+        .await
+        .expect("seed consumed presig");
 
         // One expired-by-timestamp available presig (must NOT be counted).
         sqlx::query(
             "INSERT INTO presignatures (wallet_id, user_id, presig_data, status, expires_at)
-             VALUES ($1, $2, '\\x00'::bytea, 'available', NOW() - INTERVAL '1 minute')"
+             VALUES ($1, $2, '\\x00'::bytea, 'available', NOW() - INTERVAL '1 minute')",
         )
-        .bind(wid).bind(uid).execute(&pool).await.expect("seed expired presig");
+        .bind(wid)
+        .bind(uid)
+        .execute(&pool)
+        .await
+        .expect("seed expired presig");
 
         let count = available_presignature_count(&pool, uid).await;
-        assert_eq!(count, 1, "only the non-expired available presig should be counted");
+        assert_eq!(
+            count, 1,
+            "only the non-expired available presig should be counted"
+        );
     }
 
     /// User with no presigs → count 0 (must not error from missing `used` column).
@@ -702,7 +762,7 @@ mod tests {
         let uid = seed_user(&pool).await;
         sqlx::query(
             "INSERT INTO user_policies (user_id, single_limit_usd, daily_limit_usd)
-             VALUES ($1, 100.0, 500.0)"
+             VALUES ($1, 100.0, 500.0)",
         )
         .bind(uid)
         .execute(&pool)
@@ -712,7 +772,7 @@ mod tests {
         let pol = policy_signals(&pool, uid).await;
         assert!(pol.has_explicit_limits);
         assert_eq!(pol.single_limit_usd, 100.0);
-        assert_eq!(pol.daily_limit_usd,  500.0);
+        assert_eq!(pol.daily_limit_usd, 500.0);
         assert_eq!(pol.custom_policy_count, 0);
     }
 
@@ -724,7 +784,7 @@ mod tests {
         let pol = policy_signals(&pool, uid).await;
         assert!(!pol.has_explicit_limits);
         // These must match UserLimits::default() in crates/policy-engine/src/limits.rs
-        assert_eq!(pol.single_limit_usd, 500.0,  "default single limit");
-        assert_eq!(pol.daily_limit_usd,  2000.0, "default daily limit");
+        assert_eq!(pol.single_limit_usd, 500.0, "default single limit");
+        assert_eq!(pol.daily_limit_usd, 2000.0, "default daily limit");
     }
 }

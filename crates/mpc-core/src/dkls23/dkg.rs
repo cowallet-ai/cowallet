@@ -4,7 +4,7 @@ use crate::errors::{MpcError, Result};
 use k256::{
     elliptic_curve::{
         sec1::{FromEncodedPoint, ToEncodedPoint},
-        PrimeField, Field,
+        Field, PrimeField,
     },
     AffinePoint, ProjectivePoint, Scalar,
 };
@@ -178,7 +178,10 @@ impl DkgSession {
             }
 
             // Verify Schnorr proof of knowledge of a_0
-            if !round1.schnorr_proof.verify(&round1.commitments[0], b"DKG-Round1") {
+            if !round1
+                .schnorr_proof
+                .verify(&round1.commitments[0], b"DKG-Round1")
+            {
                 return Err(MpcError::DkgFailed(format!(
                     "party {} failed Schnorr proof of knowledge",
                     round1.party_index
@@ -217,7 +220,9 @@ impl DkgSession {
         let my_idx = self.config.party_index as usize;
 
         // Use the stored polynomial from Round 1 (ensures consistency with commitments)
-        let coeffs = self.my_polynomial.as_ref()
+        let coeffs = self
+            .my_polynomial
+            .as_ref()
             .ok_or_else(|| MpcError::DkgFailed("polynomial not stored from round 1".into()))?
             .clone();
 
@@ -351,7 +356,11 @@ impl DkgSession {
                 if c0_bytes.len() >= 33 {
                     key_bytes.copy_from_slice(&c0_bytes[..33]);
                 }
-                if let Ok(encoded) = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(&key_bytes[..]) {
+                if let Ok(encoded) =
+                    k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+                        &key_bytes[..],
+                    )
+                {
                     let ct_point = AffinePoint::from_encoded_point(&encoded);
                     if ct_point.is_some().into() {
                         pubkey_point += ProjectivePoint::from(ct_point.unwrap());
@@ -436,7 +445,9 @@ impl DkgSession {
                                 bytes.copy_from_slice(&share_bytes[..32]);
                             }
                             let s = Option::<Scalar>::from(Scalar::from_repr(bytes.into()))
-                                .ok_or_else(|| MpcError::DkgFailed("invalid backup share value".into()))?;
+                                .ok_or_else(|| {
+                                    MpcError::DkgFailed("invalid backup share value".into())
+                                })?;
                             backup_scalar += s;
                         }
                     }
@@ -454,7 +465,8 @@ impl DkgSession {
                         }
                     } else {
                         return Err(MpcError::DkgFailed(
-                            "no evaluations found for backup party and polynomial unavailable".into(),
+                            "no evaluations found for backup party and polynomial unavailable"
+                                .into(),
                         ));
                     }
                 }
@@ -483,7 +495,11 @@ impl DkgSession {
     ///
     /// Checks: share * G == C_0 + x*C_1 + x^2*C_2 + ... + x^{t-1}*C_{t-1}
     /// where x = recipient_index + 1 (1-indexed evaluation points for Shamir)
-    pub(crate) fn verify_feldman_share(share: &Scalar, recipient_index: u16, commitments: &[Vec<u8>]) -> Result<()> {
+    pub(crate) fn verify_feldman_share(
+        share: &Scalar,
+        recipient_index: u16,
+        commitments: &[Vec<u8>],
+    ) -> Result<()> {
         let x = Scalar::from((recipient_index + 1) as u64);
 
         // LHS: share * G
@@ -501,8 +517,10 @@ impl DkgSession {
             let mut key_bytes = [0u8; 33];
             key_bytes.copy_from_slice(&c_bytes[..33]);
 
-            let encoded = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(&key_bytes[..])
-                .map_err(|_| MpcError::DkgFailed("invalid commitment encoding".into()))?;
+            let encoded = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+                &key_bytes[..],
+            )
+            .map_err(|_| MpcError::DkgFailed("invalid commitment encoding".into()))?;
             let ct_point = AffinePoint::from_encoded_point(&encoded);
             if bool::from(ct_point.is_none()) {
                 return Err(MpcError::DkgFailed("invalid commitment point".into()));
@@ -514,7 +532,9 @@ impl DkgSession {
         }
 
         if share_point != expected {
-            return Err(MpcError::DkgFailed("Feldman VSS verification failed: share inconsistent with commitments".into()));
+            return Err(MpcError::DkgFailed(
+                "Feldman VSS verification failed: share inconsistent with commitments".into(),
+            ));
         }
 
         Ok(())
@@ -631,20 +651,51 @@ mod tests {
         assert_eq!(shares.len(), 3, "should generate 3 shares");
 
         // All shares have same public key
-        assert_eq!(shares[0].public_key, shares[1].public_key, "shares 0 and 1 should have same public key");
-        assert_eq!(shares[1].public_key, shares[2].public_key, "shares 1 and 2 should have same public key");
+        assert_eq!(
+            shares[0].public_key, shares[1].public_key,
+            "shares 0 and 1 should have same public key"
+        );
+        assert_eq!(
+            shares[1].public_key, shares[2].public_key,
+            "shares 1 and 2 should have same public key"
+        );
 
         // Different secret shares
-        assert_ne!(shares[0].secret_share.as_bytes(), shares[1].secret_share.as_bytes(), "shares 0 and 1 should have different secrets");
-        assert_ne!(shares[1].secret_share.as_bytes(), shares[2].secret_share.as_bytes(), "shares 1 and 2 should have different secrets");
-        assert_ne!(shares[0].secret_share.as_bytes(), shares[2].secret_share.as_bytes(), "shares 0 and 2 should have different secrets");
+        assert_ne!(
+            shares[0].secret_share.as_bytes(),
+            shares[1].secret_share.as_bytes(),
+            "shares 0 and 1 should have different secrets"
+        );
+        assert_ne!(
+            shares[1].secret_share.as_bytes(),
+            shares[2].secret_share.as_bytes(),
+            "shares 1 and 2 should have different secrets"
+        );
+        assert_ne!(
+            shares[0].secret_share.as_bytes(),
+            shares[2].secret_share.as_bytes(),
+            "shares 0 and 2 should have different secrets"
+        );
 
         // Verify each share has correct parameters
         for (i, share) in shares.iter().enumerate() {
-            assert_eq!(share.party, i as u16, "share {} should have party index {}", i, i);
+            assert_eq!(
+                share.party, i as u16,
+                "share {} should have party index {}",
+                i, i
+            );
             assert_eq!(share.threshold, 2, "share {} should have threshold 2", i);
-            assert_eq!(share.total_parties, 3, "share {} should have total_parties 3", i);
-            assert_eq!(share.secret_share.len(), 32, "share {} should have 32-byte secret", i);
+            assert_eq!(
+                share.total_parties, 3,
+                "share {} should have total_parties 3",
+                i
+            );
+            assert_eq!(
+                share.secret_share.len(),
+                32,
+                "share {} should have 32-byte secret",
+                i
+            );
         }
     }
 
@@ -658,8 +709,14 @@ mod tests {
         let addr1 = shares[1].eth_address();
         let addr2 = shares[2].eth_address();
 
-        assert_eq!(addr0, addr1, "shares 0 and 1 should produce same eth address");
-        assert_eq!(addr1, addr2, "shares 1 and 2 should produce same eth address");
+        assert_eq!(
+            addr0, addr1,
+            "shares 0 and 1 should produce same eth address"
+        );
+        assert_eq!(
+            addr1, addr2,
+            "shares 1 and 2 should produce same eth address"
+        );
 
         // Address should be 20 bytes
         assert_eq!(addr0.len(), 20, "eth address should be 20 bytes");

@@ -1,10 +1,10 @@
 use axum::{
     extract::Request,
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     middleware::Next,
     response::Response,
 };
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -69,8 +69,7 @@ pub struct TokenPair {
 }
 
 fn jwt_secret() -> Vec<u8> {
-    let secret = std::env::var("JWT_SECRET")
-        .expect("JWT_SECRET environment variable must be set");
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET environment variable must be set");
     // HS256 security depends on secret strength; a short secret is brute-forceable.
     // CLAUDE.md mandates >= 32 chars.
     assert!(
@@ -82,7 +81,10 @@ fn jwt_secret() -> Vec<u8> {
 }
 
 /// Issue a pair of access token (24h) and refresh token (7d)
-pub fn issue_token_pair(user_id: &str, device_id: &str) -> Result<TokenPair, jsonwebtoken::errors::Error> {
+pub fn issue_token_pair(
+    user_id: &str,
+    device_id: &str,
+) -> Result<TokenPair, jsonwebtoken::errors::Error> {
     let access_claims = Claims::new_typed(user_id, device_id, 86400, TokenType::Access); // 24h
     let refresh_claims = Claims::new_refresh(user_id, device_id);
 
@@ -119,7 +121,7 @@ pub fn verify_token_unchecked(token: &str) -> Result<Claims, jsonwebtoken::error
 /// Check if a token is blacklisted in the database
 pub async fn is_token_blacklisted(db: &PgPool, jti: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM jwt_blacklist WHERE token_id = $1)"
+        "SELECT EXISTS(SELECT 1 FROM jwt_blacklist WHERE token_id = $1)",
     )
     .bind(Uuid::parse_str(jti).unwrap_or(Uuid::nil()))
     .fetch_one(db)
@@ -145,7 +147,7 @@ pub async fn blacklist_token(
     sqlx::query(
         "INSERT INTO jwt_blacklist (token_id, user_id, expires_at, reason)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (token_id) DO NOTHING"
+         ON CONFLICT (token_id) DO NOTHING",
     )
     .bind(jti_uuid)
     .bind(user_uuid)
@@ -168,12 +170,14 @@ pub async fn refresh_access_token(
     presented_device_id: &str,
 ) -> Result<TokenPair, StatusCode> {
     // Verify refresh token signature
-    let claims = verify_token_unchecked(refresh_token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = verify_token_unchecked(refresh_token).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // Only genuine refresh tokens may be exchanged here (F-014).
     if claims.token_type != TokenType::Refresh {
-        tracing::warn!("Non-refresh token presented at refresh endpoint for user {}", claims.sub);
+        tracing::warn!(
+            "Non-refresh token presented at refresh endpoint for user {}",
+            claims.sub
+        );
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -190,8 +194,11 @@ pub async fn refresh_access_token(
 
     // Verify device binding against the independently-presented device id (F-011).
     if claims.device_id != presented_device_id {
-        tracing::warn!("Token refresh attempted from different device: token bound to {}, presented {}",
-            claims.device_id, presented_device_id);
+        tracing::warn!(
+            "Token refresh attempted from different device: token bound to {}, presented {}",
+            claims.device_id,
+            presented_device_id
+        );
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -202,7 +209,8 @@ pub async fn refresh_access_token(
         &claims.sub,
         claims.exp,
         Some("Token refresh".to_string()),
-    ).await;
+    )
+    .await;
 
     // Issue new token pair
     issue_token_pair(&claims.sub, presented_device_id)
@@ -215,7 +223,8 @@ pub async fn refresh_access_token(
 /// 3. Validates device binding
 pub async fn require_auth(mut req: Request, next: Next) -> Result<Response, StatusCode> {
     // Extract AppState first for DB access
-    let state = req.extensions()
+    let state = req
+        .extensions()
         .get::<crate::state::AppState>()
         .cloned()
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -230,13 +239,15 @@ pub async fn require_auth(mut req: Request, next: Next) -> Result<Response, Stat
         .strip_prefix("Bearer ")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let claims = verify_token_unchecked(token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = verify_token_unchecked(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // Only access tokens may authorize API calls. A refresh token presented as
     // a bearer token is rejected here so it cannot be replayed for 7 days (F-014).
     if claims.token_type != TokenType::Access {
-        tracing::warn!("Non-access token presented as bearer for user {}", claims.sub);
+        tracing::warn!(
+            "Non-access token presented as bearer for user {}",
+            claims.sub
+        );
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -260,15 +271,21 @@ pub async fn require_auth(mut req: Request, next: Next) -> Result<Response, Stat
 
     // Device binding is mandatory (F-010): a request that omits X-Device-ID must
     // be rejected, not silently exempted from the check.
-    let device_header = req.headers().get("X-Device-ID")
+    let device_header = req
+        .headers()
+        .get("X-Device-ID")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| {
             tracing::warn!("Missing X-Device-ID header for user {}", claims.sub);
             StatusCode::FORBIDDEN
         })?;
     if device_header != claims.device_id {
-        tracing::warn!("Device mismatch for user {}: token={}, header={}",
-            claims.sub, claims.device_id, device_header);
+        tracing::warn!(
+            "Device mismatch for user {}: token={}, header={}",
+            claims.sub,
+            claims.device_id,
+            device_header
+        );
         return Err(StatusCode::FORBIDDEN);
     }
 

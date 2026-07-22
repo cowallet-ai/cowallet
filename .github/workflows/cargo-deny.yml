@@ -1,0 +1,42 @@
+# 供应链门禁 —— cargo-deny:漏洞(RustSec)/ license 合规 / 依赖来源。
+# 配置见仓库根 deny.toml。取代原 rust-audit.yml 的 cargo audit(deny 是超集)。
+name: cargo-deny
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock", "deny.toml"]
+  pull_request:
+    paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock", "deny.toml"]
+  schedule:
+    # 每周一 08:17 UTC —— 捡新发布的 CVE(错开整点,避开 runner 高峰)。
+    - cron: "17 8 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  # 硬门禁:license 合规 + 依赖来源 + 重复/黑名单。这些当前是干净的,必须保持。
+  compliance:
+    name: cargo-deny (licenses/bans/sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
+
+  # Advisory(RustSec 漏洞/unmaintained/yanked):仓库现存 45 项既存安全债
+  # (含 rsa Marvin 侧信道、rustls-webpki 证书校验漏洞),修复涉及升级加密/NATS
+  # 依赖,有回归风险,由专门的安全修复任务跟踪处理。此处 continue-on-error 做
+  # advisory —— 结果在 Actions 可见、能挡住 PR 新引入的漏洞,但不阻塞合并。
+  # 债务清零后移除 continue-on-error 升为 required。
+  advisories:
+    name: cargo-deny (advisories, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories

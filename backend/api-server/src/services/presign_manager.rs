@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use k256::elliptic_curve::Field;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
+use k256::elliptic_curve::Field;
 use k256::{AffinePoint, ProjectivePoint, Scalar};
 use rand::rngs::OsRng;
 use sqlx::PgPool;
@@ -78,7 +78,9 @@ impl PresignManager {
             // Encrypt with AES-256-GCM, bound to the wallet via AAD so a
             // presignature row copied/swapped to another wallet will not decrypt
             // (parity with shard encryption).
-            let encrypted = self.encryption.encrypt_bound(&plaintext, wallet_id.as_bytes())
+            let encrypted = self
+                .encryption
+                .encrypt_bound(&plaintext, wallet_id.as_bytes())
                 .map_err(|e| format!("encryption failed: {}", e))?;
 
             // Combine nonce + ciphertext for DB storage
@@ -89,7 +91,7 @@ impl PresignManager {
             // Store in presignatures table
             sqlx::query(
                 "INSERT INTO presignatures (wallet_id, user_id, presig_data, status, expires_at)
-                 VALUES ($1, $2, $3, 'available', NOW() + INTERVAL '24 hours')"
+                 VALUES ($1, $2, $3, 'available', NOW() + INTERVAL '24 hours')",
             )
             .bind(wallet_id)
             .bind(user_id)
@@ -103,7 +105,9 @@ impl PresignManager {
 
         tracing::info!(
             "Generated {} presignatures for wallet {} (user {})",
-            generated, wallet_id, user_id
+            generated,
+            wallet_id,
+            user_id
         );
 
         Ok(generated)
@@ -129,7 +133,7 @@ impl PresignManager {
                  LIMIT 1
                  FOR UPDATE SKIP LOCKED
              )
-             RETURNING id, presig_data"
+             RETURNING id, presig_data",
         )
         .bind(wallet_id)
         .bind(session_id)
@@ -156,7 +160,7 @@ impl PresignManager {
     pub async fn consume_presignature(&self, presig_id: Uuid) -> Result<(), String> {
         sqlx::query(
             "UPDATE presignatures SET status = 'consumed', consumed_at = NOW()
-             WHERE id = $1 AND status = 'reserved'"
+             WHERE id = $1 AND status = 'reserved'",
         )
         .bind(presig_id)
         .execute(&self.db)
@@ -171,7 +175,7 @@ impl PresignManager {
     pub async fn cleanup_expired(&self) -> Result<u64, String> {
         let result = sqlx::query(
             "UPDATE presignatures SET status = 'expired'
-             WHERE status = 'available' AND expires_at <= NOW()"
+             WHERE status = 'available' AND expires_at <= NOW()",
         )
         .execute(&self.db)
         .await
@@ -199,7 +203,7 @@ impl PresignManager {
             "UPDATE presignatures SET status = 'expired'
              WHERE status = 'reserved'
              AND reserved_at < NOW() - INTERVAL '10 minutes'
-             AND consumed_at IS NULL"
+             AND consumed_at IS NULL",
         )
         .execute(&self.db)
         .await
@@ -207,7 +211,10 @@ impl PresignManager {
 
         let count = result.rows_affected();
         if count > 0 {
-            tracing::info!("Expired {} stale reserved presignatures (never reused)", count);
+            tracing::info!(
+                "Expired {} stale reserved presignatures (never reused)",
+                count
+            );
         }
         Ok(count)
     }
@@ -216,7 +223,7 @@ impl PresignManager {
     pub async fn get_available_count(&self, wallet_id: Uuid) -> Result<i64, String> {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM presignatures
-             WHERE wallet_id = $1 AND status = 'available' AND expires_at > NOW()"
+             WHERE wallet_id = $1 AND status = 'available' AND expires_at > NOW()",
         )
         .bind(wallet_id)
         .fetch_one(&self.db)
@@ -240,9 +247,13 @@ impl PresignManager {
             let deficit = min_count - available as u32;
             tracing::debug!(
                 "Wallet {} has {} presignatures, need {}, generating {}",
-                wallet_id, available, min_count, deficit
+                wallet_id,
+                available,
+                min_count,
+                deficit
             );
-            self.generate_presignatures(user_id, wallet_id, deficit).await?;
+            self.generate_presignatures(user_id, wallet_id, deficit)
+                .await?;
         }
 
         Ok(())
@@ -292,18 +303,18 @@ impl PresignManager {
     /// Top up presignatures for all active wallets that are below the minimum.
     async fn topup_active_wallets(&self, min_count: u32) -> Result<(), String> {
         // Query all active wallets
-        let wallets: Vec<(Uuid, Uuid)> = sqlx::query_as(
-            "SELECT id, user_id FROM wallets WHERE status = 'active'"
-        )
-        .fetch_all(&self.db)
-        .await
-        .map_err(|e| format!("DB fetch wallets failed: {}", e))?;
+        let wallets: Vec<(Uuid, Uuid)> =
+            sqlx::query_as("SELECT id, user_id FROM wallets WHERE status = 'active'")
+                .fetch_all(&self.db)
+                .await
+                .map_err(|e| format!("DB fetch wallets failed: {}", e))?;
 
         for (wallet_id, user_id) in wallets {
             if let Err(e) = self.ensure_minimum(wallet_id, user_id, min_count).await {
                 tracing::warn!(
                     "Failed to ensure minimum presignatures for wallet {}: {}",
-                    wallet_id, e
+                    wallet_id,
+                    e
                 );
             }
         }
@@ -317,8 +328,11 @@ impl PresignManager {
     }
 
     /// Decrypt stored presig_data bytes into (k_bytes, R_bytes).
-    fn decrypt_presig_data(&self, stored: &[u8], wallet_id: Uuid) -> Result<(Vec<u8>, Vec<u8>), String> {
-
+    fn decrypt_presig_data(
+        &self,
+        stored: &[u8],
+        wallet_id: Uuid,
+    ) -> Result<(Vec<u8>, Vec<u8>), String> {
         if stored.len() < 12 {
             return Err("presig_data too short (missing nonce)".into());
         }
@@ -328,7 +342,9 @@ impl PresignManager {
         let ciphertext = stored[12..].to_vec();
 
         let encrypted = EncryptedData { nonce, ciphertext };
-        let plaintext = self.encryption.decrypt_bound(&encrypted, wallet_id.as_bytes())
+        let plaintext = self
+            .encryption
+            .decrypt_bound(&encrypted, wallet_id.as_bytes())
             .map_err(|e| format!("presig decryption failed: {}", e))?;
 
         if plaintext.len() != PRESIG_DATA_LEN {
@@ -355,13 +371,17 @@ mod nonce_safety_tests {
     fn stale_cleanup_never_releases_to_available() {
         let src = include_str!("presign_manager.rs");
         // Find the cleanup_stale_reservations function body.
-        let start = src.find("pub async fn cleanup_stale_reservations")
+        let start = src
+            .find("pub async fn cleanup_stale_reservations")
             .expect("function must exist");
         let body = &src[start..start + 600.min(src.len() - start)];
         assert!(
             !body.contains("'available'"),
             "cleanup_stale_reservations must NOT release nonces back to 'available' (ECDSA nonce-reuse risk)"
         );
-        assert!(body.contains("'expired'"), "stale reservations must be marked 'expired'");
+        assert!(
+            body.contains("'expired'"),
+            "stale reservations must be marked 'expired'"
+        );
     }
 }

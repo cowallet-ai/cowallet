@@ -1,6 +1,6 @@
 use alloy_consensus::SignableTransaction;
 use alloy_consensus::TxEip1559;
-use alloy_primitives::{Address, B256, Bytes, TxKind, U256};
+use alloy_primitives::{Address, Bytes, TxKind, B256, U256};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -100,9 +100,9 @@ pub struct DecodedRawTx {
 /// authoritative fields. Returns `None` if the input is not a well-formed
 /// EIP-2718 transaction envelope.
 pub fn decode_raw_tx(raw_tx: &str) -> Option<DecodedRawTx> {
-    use alloy_consensus::TxEnvelope;
     use alloy_consensus::private::alloy_eips::eip2718::Decodable2718;
     use alloy_consensus::Transaction as _;
+    use alloy_consensus::TxEnvelope;
 
     let bytes = hex::decode(raw_tx.strip_prefix("0x").unwrap_or(raw_tx)).ok()?;
     let envelope = TxEnvelope::decode_2718(&mut bytes.as_slice()).ok()?;
@@ -275,7 +275,7 @@ pub async fn broadcast_tx(
 mod tests {
     use super::*;
     use crate::signer::MpcSigner;
-    use mpc_core::dkls23::{SessionConfig, dkg::DkgSession};
+    use mpc_core::dkls23::{dkg::DkgSession, SessionConfig};
 
     fn test_signer() -> MpcSigner {
         let config = SessionConfig {
@@ -472,10 +472,9 @@ mod tests {
             value: U256::ZERO,
             data: vec![
                 0xa9, 0x05, 0x9c, 0xbb, // transfer(address,uint256)
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x12, 0x34, 0x56, 0x78,
-                0x90, 0x12, 0x34, 0x56, 0x78, 0x90, 0x12, 0x34,
-                0x56, 0x78, 0x90, 0x12, 0x34, 0x56, 0x78, 0x90,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34,
+                0x56, 0x78, 0x90, 0x12, 0x34, 0x56, 0x78, 0x90, 0x12, 0x34, 0x56, 0x78, 0x90, 0x12,
+                0x34, 0x56, 0x78, 0x90,
             ],
             chain_id: 1,
             gas_limit: Some(65000),
@@ -512,7 +511,11 @@ mod tests {
             assert!(result.is_ok(), "signing should work for chain {}", chain_id);
 
             let (encoded, tx_hash) = result.unwrap();
-            assert_eq!(encoded[0], 0x02, "should be EIP-1559 type for chain {}", chain_id);
+            assert_eq!(
+                encoded[0], 0x02,
+                "should be EIP-1559 type for chain {}",
+                chain_id
+            );
             assert_ne!(tx_hash, B256::ZERO);
         }
     }
@@ -527,7 +530,9 @@ mod tests {
     ///      encoding regression on either side is caught.
     #[test]
     fn signing_hash_matches_alloy_and_known_answer() {
-        let to: Address = "0x1111111111111111111111111111111111111111".parse().unwrap();
+        let to: Address = "0x1111111111111111111111111111111111111111"
+            .parse()
+            .unwrap();
         let fields = Eip1559Fields {
             chain_id: 8453,
             nonce: 7,

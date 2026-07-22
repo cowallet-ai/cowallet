@@ -56,7 +56,12 @@ impl OkxCredentials {
         let secret_key = non_empty_env("OKX_SECRET_KEY")?;
         let passphrase = non_empty_env("OKX_PASSPHRASE")?;
         let project_id = non_empty_env("OKX_PROJECT_ID");
-        Some(Self { api_key, secret_key, passphrase, project_id })
+        Some(Self {
+            api_key,
+            secret_key,
+            passphrase,
+            project_id,
+        })
     }
 }
 
@@ -260,7 +265,11 @@ fn format_units(raw: &str, decimals: u32) -> String {
     } else {
         let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
         let trimmed = frac_str.trim_end_matches('0');
-        let display = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+        let display = if trimmed.len() > 6 {
+            &trimmed[..6]
+        } else {
+            trimmed
+        };
         format!("{}.{}", whole, display)
     }
 }
@@ -269,7 +278,9 @@ fn format_units(raw: &str, decimals: u32) -> String {
 
 /// Current UTC time as an ISO-8601 millisecond timestamp (OKX `OK-ACCESS-TIMESTAMP`).
 fn iso_timestamp() -> String {
-    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+    chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 
 /// Build the signed headers for a GET request. `request_path` must include the
@@ -355,14 +366,20 @@ fn map_token_asset(asset: OkxTokenAsset, default_chain_id: u64) -> Option<TokenB
         return None;
     }
 
-    let price = asset.token_price.as_deref().and_then(|p| p.parse::<f64>().ok());
+    let price = asset
+        .token_price
+        .as_deref()
+        .and_then(|p| p.parse::<f64>().ok());
     let balance_num = balance.parse::<f64>().unwrap_or(0.0);
     let usd_value = price.map(|p| balance_num * p).unwrap_or(0.0);
 
-    let symbol = asset
-        .symbol
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| if is_native { native_symbol(chain_id).into() } else { "???".into() });
+    let symbol = asset.symbol.filter(|s| !s.is_empty()).unwrap_or_else(|| {
+        if is_native {
+            native_symbol(chain_id).into()
+        } else {
+            "???".into()
+        }
+    });
 
     let logo_url = token_logo_url(chain_id, &contract, is_native);
 
@@ -373,7 +390,10 @@ fn map_token_asset(asset: OkxTokenAsset, default_chain_id: u64) -> Option<TokenB
         name: symbol.clone(),
         symbol,
         // OKX has no reliable raw integer; surface rawBalance when present.
-        balance: asset.raw_balance.filter(|s| !s.is_empty()).unwrap_or_else(|| balance.clone()),
+        balance: asset
+            .raw_balance
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| balance.clone()),
         balance_formatted: balance,
         balance_24h: None,
         usd: format!("{:.2}", usd_value),
@@ -403,7 +423,11 @@ async fn fetch_balances_raw(
         "/api/v6/dex/balance/all-token-balances-by-address?address={}&chains={}&excludeRiskToken=0",
         address, chains_param
     );
-    tracing::info!("[OKX] get_balances address={} chains={}", address, chains_param);
+    tracing::info!(
+        "[OKX] get_balances address={} chains={}",
+        address,
+        chains_param
+    );
 
     let http = http.clone();
     let creds = creds.clone();
@@ -484,7 +508,11 @@ pub async fn get_all_chain_balances(
 ) -> Result<AllChainsBalance, String> {
     use std::collections::HashMap;
 
-    let supported: Vec<u64> = chain_ids.iter().copied().filter(|&id| is_supported(id)).collect();
+    let supported: Vec<u64> = chain_ids
+        .iter()
+        .copied()
+        .filter(|&id| is_supported(id))
+        .collect();
     if supported.is_empty() {
         return Ok(AllChainsBalance {
             address: address.to_string(),
@@ -516,7 +544,10 @@ pub async fn get_all_chain_balances(
 
     for (chain_id, mut tokens) in chain_map {
         tokens.sort_by_key(|t| !t.native_token);
-        let chain_total: f64 = tokens.iter().filter_map(|t| t.usd.parse::<f64>().ok()).sum();
+        let chain_total: f64 = tokens
+            .iter()
+            .filter_map(|t| t.usd.parse::<f64>().ok())
+            .sum();
         grand_total_usd += chain_total;
 
         chains.push(ChainBalance {
@@ -654,7 +685,9 @@ fn map_transaction(tx: OkxTransaction, default_chain_id: u64) -> TransactionItem
         _ => "failed".to_string(),
     };
 
-    let symbol = tx.symbol.unwrap_or_else(|| native_symbol(chain_id).to_string());
+    let symbol = tx
+        .symbol
+        .unwrap_or_else(|| native_symbol(chain_id).to_string());
     let decimals = decimals_for_symbol(&symbol);
     let value = tx
         .amount
@@ -689,7 +722,11 @@ async fn fetch_transactions_raw(
         "/api/v6/dex/post-transaction/transactions-by-address?address={}&chains={}&limit={}",
         address, chains_param, limit
     );
-    tracing::info!("[OKX] get_transactions address={} chains={}", address, chains_param);
+    tracing::info!(
+        "[OKX] get_transactions address={} chains={}",
+        address,
+        chains_param
+    );
 
     let http = http.clone();
     let creds = creds.clone();
@@ -721,11 +758,10 @@ async fn fetch_transactions_raw(
                     .text()
                     .await
                     .map_err(|e| format!("OKX tx read error: {}", e))?;
-                let body: OkxEnvelope<TxData> = serde_json::from_str(&text)
-                    .map_err(|e| {
-                        tracing::error!("[OKX] tx parse error: {} — raw body: {}", e, text);
-                        format!("OKX tx parse error: {}", e)
-                    })?;
+                let body: OkxEnvelope<TxData> = serde_json::from_str(&text).map_err(|e| {
+                    tracing::error!("[OKX] tx parse error: {} — raw body: {}", e, text);
+                    format!("OKX tx parse error: {}", e)
+                })?;
 
                 if body.code != "0" {
                     return Err(format!(
@@ -760,7 +796,10 @@ pub async fn get_transactions(
     let idx = chain_index(chain_id).ok_or_else(|| format!("Unsupported chain_id: {}", chain_id))?;
     // Single-chain queries support up to 100 records.
     let txs = fetch_transactions_raw(http, creds, address, &idx, 100).await?;
-    Ok(txs.into_iter().map(|t| map_transaction(t, chain_id)).collect())
+    Ok(txs
+        .into_iter()
+        .map(|t| map_transaction(t, chain_id))
+        .collect())
 }
 
 /// Cross-chain transaction history in a single OKX request.
@@ -770,7 +809,11 @@ pub async fn get_all_chain_transactions(
     address: &str,
     chain_ids: &[u64],
 ) -> Result<Vec<TransactionItem>, String> {
-    let supported: Vec<u64> = chain_ids.iter().copied().filter(|&id| is_supported(id)).collect();
+    let supported: Vec<u64> = chain_ids
+        .iter()
+        .copied()
+        .filter(|&id| is_supported(id))
+        .collect();
     if supported.is_empty() {
         return Ok(Vec::new());
     }
@@ -791,8 +834,10 @@ pub async fn get_all_chain_transactions(
     };
 
     let default_chain = supported.first().copied().unwrap_or(1);
-    let mut all: Vec<TransactionItem> =
-        txs.into_iter().map(|t| map_transaction(t, default_chain)).collect();
+    let mut all: Vec<TransactionItem> = txs
+        .into_iter()
+        .map(|t| map_transaction(t, default_chain))
+        .collect();
 
     all.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     Ok(all)
@@ -823,9 +868,15 @@ mod tests {
         assert_eq!(decimal_to_raw_string("0", 18), "0");
         assert_eq!(decimal_to_raw_string("", 18), "0");
         // integer input is a whole-token amount, scaled by decimals
-        assert_eq!(decimal_to_raw_string("12345", 18), "12345000000000000000000");
+        assert_eq!(
+            decimal_to_raw_string("12345", 18),
+            "12345000000000000000000"
+        );
         // excess fractional digits truncated, not rounded
-        assert_eq!(decimal_to_raw_string("1.0000000000000000009", 18), "1000000000000000000");
+        assert_eq!(
+            decimal_to_raw_string("1.0000000000000000009", 18),
+            "1000000000000000000"
+        );
     }
 
     #[test]
@@ -859,7 +910,12 @@ mod tests {
         }"#;
         let env: OkxEnvelope<BalanceData> = serde_json::from_str(raw).unwrap();
         assert_eq!(env.code, "0");
-        let assets: Vec<_> = env.data.unwrap().into_iter().flat_map(|d| d.token_assets).collect();
+        let assets: Vec<_> = env
+            .data
+            .unwrap()
+            .into_iter()
+            .flat_map(|d| d.token_assets)
+            .collect();
         assert_eq!(assets.len(), 2);
 
         let eth = map_token_asset(
@@ -948,7 +1004,12 @@ mod tests {
             }]
         }"#;
         let env: OkxEnvelope<TxData> = serde_json::from_str(raw).unwrap();
-        let txs: Vec<_> = env.data.unwrap().into_iter().flat_map(|d| d.transactions).collect();
+        let txs: Vec<_> = env
+            .data
+            .unwrap()
+            .into_iter()
+            .flat_map(|d| d.transactions)
+            .collect();
         assert_eq!(txs.len(), 1);
 
         let item = map_transaction(txs.into_iter().next().unwrap(), 1);

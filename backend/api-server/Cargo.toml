@@ -3,6 +3,7 @@ name = "api-server"
 description = "Axum HTTP API — auth, MPC coordination, transactions, policy, AI proxy"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 mpc-core = { path = "../../crates/mpc-core" }

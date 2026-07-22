@@ -85,7 +85,10 @@ impl MtAAlice {
         let n = &self.keypair.public.n;
 
         // Decrypt: plaintext = (a*b - beta) mod N
-        let plaintext = self.keypair.secret.decrypt(&self.keypair.public, &msg.c_beta);
+        let plaintext = self
+            .keypair
+            .secret
+            .decrypt(&self.keypair.public, &msg.c_beta);
 
         // If plaintext > N/2, it represents a negative value (N - |val|)
         // Convert to signed interpretation then reduce mod q
@@ -183,11 +186,8 @@ mod tests {
         let first_msg = alice.generate_first_message();
 
         // Step 2: Bob processes and returns his share
-        let (second_msg, bob_output) = MtABob::process_first_message(
-            &keypair.public,
-            &b_bytes,
-            &first_msg,
-        );
+        let (second_msg, bob_output) =
+            MtABob::process_first_message(&keypair.public, &b_bytes, &first_msg);
 
         // Step 3: Alice processes Bob's response
         let alice_output = alice.process_second_message(&second_msg);
@@ -217,11 +217,8 @@ mod tests {
         let alice = MtAAlice::new(a_bytes, keypair.clone());
 
         let first_msg = alice.generate_first_message();
-        let (second_msg, bob_output) = MtABob::process_first_message(
-            &keypair.public,
-            &b_bytes,
-            &first_msg,
-        );
+        let (second_msg, bob_output) =
+            MtABob::process_first_message(&keypair.public, &b_bytes, &first_msg);
         let alice_output = alice.process_second_message(&second_msg);
 
         let alpha = scalar_to_biguint(&alice_output.alpha);

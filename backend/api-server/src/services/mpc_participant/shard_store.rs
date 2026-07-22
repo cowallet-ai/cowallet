@@ -51,24 +51,24 @@ impl ShardStore {
         aad: &[u8],
     ) -> Result<Vec<u8>, String> {
         if key_id.ends_with("-aad") {
-            self.encryption.decrypt_bound(encrypted, aad)
+            self.encryption
+                .decrypt_bound(encrypted, aad)
                 .map_err(|e| format!("decryption failed: {}", e))
         } else {
-            self.encryption.decrypt(encrypted)
+            self.encryption
+                .decrypt(encrypted)
                 .map_err(|e| format!("decryption failed (legacy): {}", e))
         }
     }
 
     /// Store the server's KeyShare after DKG completes.
     /// The secret_share is encrypted at rest with AES-256-GCM.
-    pub async fn store_key_share(
-        &self,
-        user_id: Uuid,
-        share: &KeyShare,
-    ) -> Result<(), String> {
+    pub async fn store_key_share(&self, user_id: Uuid, share: &KeyShare) -> Result<(), String> {
         let plaintext = self.serialize_share(share)?;
         let aad = Self::aad_user(user_id);
-        let encrypted = self.encryption.encrypt_bound(&plaintext, &aad)
+        let encrypted = self
+            .encryption
+            .encrypt_bound(&plaintext, &aad)
             .map_err(|e| format!("encryption failed: {}", e))?;
 
         sqlx::query(
@@ -80,7 +80,7 @@ impl ShardStore {
                  nonce = EXCLUDED.nonce,
                  encryption_key_id = EXCLUDED.encryption_key_id,
                  status = 'healthy',
-                 last_verified = NOW()"
+                 last_verified = NOW()",
         )
         .bind(user_id)
         .bind(SERVER_PARTY_INDEX as i16)
@@ -100,7 +100,7 @@ impl ShardStore {
     pub async fn load_key_share(&self, user_id: Uuid) -> Result<Option<KeyShare>, String> {
         let row: Option<(Vec<u8>, Vec<u8>, String)> = sqlx::query_as(
             "SELECT encrypted_shard, nonce, encryption_key_id FROM shard_metadata
-             WHERE user_id = $1 AND location = 'server'"
+             WHERE user_id = $1 AND location = 'server'",
         )
         .bind(user_id)
         .fetch_optional(&self.db)
@@ -145,7 +145,9 @@ impl ShardStore {
     ) -> Result<(), String> {
         let plaintext = self.serialize_share(share)?;
         let aad = Self::aad_wallet(user_id, wallet_id);
-        let encrypted = self.encryption.encrypt_bound(&plaintext, &aad)
+        let encrypted = self
+            .encryption
+            .encrypt_bound(&plaintext, &aad)
             .map_err(|e| format!("encryption failed: {}", e))?;
 
         sqlx::query(
@@ -169,7 +171,11 @@ impl ShardStore {
         .await
         .map_err(|e| format!("DB store failed: {}", e))?;
 
-        tracing::info!("Stored server KeyShare for user {} wallet {}", user_id, wallet_id);
+        tracing::info!(
+            "Stored server KeyShare for user {} wallet {}",
+            user_id,
+            wallet_id
+        );
         Ok(())
     }
 
@@ -184,7 +190,9 @@ impl ShardStore {
     ) -> Result<(), String> {
         let plaintext = self.serialize_share(share)?;
         let aad = Self::aad_wallet(user_id, wallet_id);
-        let encrypted = self.encryption.encrypt_bound(&plaintext, &aad)
+        let encrypted = self
+            .encryption
+            .encrypt_bound(&plaintext, &aad)
             .map_err(|e| format!("encryption failed: {}", e))?;
 
         sqlx::query(
@@ -220,7 +228,7 @@ impl ShardStore {
     ) -> Result<Option<KeyShare>, String> {
         let row: Option<(Vec<u8>, Vec<u8>, String)> = sqlx::query_as(
             "SELECT encrypted_shard, nonce, encryption_key_id FROM shard_metadata
-             WHERE user_id = $1 AND wallet_id = $2 AND location = 'server'"
+             WHERE user_id = $1 AND wallet_id = $2 AND location = 'server'",
         )
         .bind(user_id)
         .bind(wallet_id)
@@ -248,7 +256,7 @@ impl ShardStore {
         // Update last_used
         let _ = sqlx::query(
             "UPDATE shard_metadata SET last_used = NOW()
-             WHERE user_id = $1 AND wallet_id = $2 AND location = 'server'"
+             WHERE user_id = $1 AND wallet_id = $2 AND location = 'server'",
         )
         .bind(user_id)
         .bind(wallet_id)
@@ -264,7 +272,7 @@ impl ShardStore {
             "SELECT DISTINCT w.id FROM wallets w
              INNER JOIN shard_metadata sm ON sm.wallet_id = w.id
              WHERE w.user_id = $1 AND sm.location = 'server' AND w.status = 'active'
-             ORDER BY w.id"
+             ORDER BY w.id",
         )
         .bind(user_id)
         .fetch_all(&self.db)

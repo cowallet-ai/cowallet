@@ -80,16 +80,16 @@ impl PaillierRangeProof {
 
         // w = alpha * G (EC commitment)
         let alpha_bytes = biguint_to_32bytes(&(&alpha % &q));
-        let alpha_scalar = Option::<Scalar>::from(Scalar::from_repr(alpha_bytes.into()))
-            .unwrap_or(Scalar::ONE);
+        let alpha_scalar =
+            Option::<Scalar>::from(Scalar::from_repr(alpha_bytes.into())).unwrap_or(Scalar::ONE);
         let w_point = AffinePoint::GENERATOR * alpha_scalar;
         let w_affine: AffinePoint = w_point.into();
         let w_bytes = w_affine.to_encoded_point(true).as_bytes().to_vec();
 
         // z = v * G (EC commitment to the value for binding)
         let value_bytes = biguint_to_32bytes(&(value % &q));
-        let value_scalar = Option::<Scalar>::from(Scalar::from_repr(value_bytes.into()))
-            .unwrap_or(Scalar::ONE);
+        let value_scalar =
+            Option::<Scalar>::from(Scalar::from_repr(value_bytes.into())).unwrap_or(Scalar::ONE);
         let z_point = AffinePoint::GENERATOR * value_scalar;
         let z_affine: AffinePoint = z_point.into();
         let z_bytes = z_affine.to_encoded_point(true).as_bytes().to_vec();
@@ -299,13 +299,11 @@ const MODULUS_PROOF_ITERATIONS: usize = 64;
 /// `PaillierModulusProof::verify` (F-005). 2 is omitted because the odd check
 /// already rejects even N.
 const SMALL_PRIMES: [u64; 100] = [
-    3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
-    79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157,
-    163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239,
-    241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331,
-    337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421,
-    431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509,
-    521, 523, 541, 547,
+    3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+    101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193,
+    197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307,
+    311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421,
+    431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541, 547,
 ];
 
 impl PaillierModulusProof {
@@ -429,7 +427,10 @@ fn mod_inverse(a: &BigUint, m: &BigUint) -> BigUint {
     }
 
     // old_r is gcd(a, m) — must be 1
-    assert!(old_r == BigInt::one(), "mod_inverse: gcd != 1, inverse does not exist");
+    assert!(
+        old_r == BigInt::one(),
+        "mod_inverse: gcd != 1, inverse does not exist"
+    );
 
     // Ensure result is positive
     let result = if old_s.is_negative() {
@@ -464,13 +465,7 @@ mod tests {
         };
         let ct = keypair.public.encrypt_with_randomness(&value, &r);
 
-        let proof = PaillierRangeProof::prove(
-            &keypair.public,
-            &ct,
-            &value,
-            &r,
-            b"test-range",
-        );
+        let proof = PaillierRangeProof::prove(&keypair.public, &ct, &value, &r, b"test-range");
 
         assert!(proof.verify(&keypair.public, &ct, b"test-range"));
     }
@@ -490,13 +485,7 @@ mod tests {
         };
         let ct = keypair.public.encrypt_with_randomness(&value, &r);
 
-        let mut proof = PaillierRangeProof::prove(
-            &keypair.public,
-            &ct,
-            &value,
-            &r,
-            b"test-range",
-        );
+        let mut proof = PaillierRangeProof::prove(&keypair.public, &ct, &value, &r, b"test-range");
 
         // Honest proof verifies.
         assert!(proof.verify(&keypair.public, &ct, b"test-range"));
@@ -522,13 +511,7 @@ mod tests {
         };
         let ct = keypair.public.encrypt_with_randomness(&value, &r);
 
-        let proof = PaillierRangeProof::prove(
-            &keypair.public,
-            &ct,
-            &value,
-            &r,
-            b"domain-A",
-        );
+        let proof = PaillierRangeProof::prove(&keypair.public, &ct, &value, &r, b"domain-A");
 
         assert!(!proof.verify(&keypair.public, &ct, b"domain-B"));
     }
@@ -545,38 +528,28 @@ mod tests {
         };
         let ct = keypair.public.encrypt_with_randomness(&value, &r);
 
-        let proof = PaillierRangeProof::prove(
-            &keypair.public,
-            &ct,
-            &value,
-            &r,
-            b"test",
-        );
+        let proof = PaillierRangeProof::prove(&keypair.public, &ct, &value, &r, b"test");
 
         // Tamper with ciphertext
-        let tampered = PaillierCiphertext { c: &ct.c + BigUint::one() };
+        let tampered = PaillierCiphertext {
+            c: &ct.c + BigUint::one(),
+        };
         assert!(!proof.verify(&keypair.public, &tampered, b"test"));
     }
 
     #[test]
     fn test_paillier_modulus_proof_valid() {
         let keypair = PaillierKeypair::generate();
-        let proof = PaillierModulusProof::prove(
-            &keypair.public.n,
-            &keypair.secret.p,
-            &keypair.secret.q,
-        );
+        let proof =
+            PaillierModulusProof::prove(&keypair.public.n, &keypair.secret.p, &keypair.secret.q);
         assert!(proof.verify());
     }
 
     #[test]
     fn test_paillier_modulus_proof_tampered_n() {
         let keypair = PaillierKeypair::generate();
-        let mut proof = PaillierModulusProof::prove(
-            &keypair.public.n,
-            &keypair.secret.p,
-            &keypair.secret.q,
-        );
+        let mut proof =
+            PaillierModulusProof::prove(&keypair.public.n, &keypair.secret.p, &keypair.secret.q);
         // Tamper with N (add 2 to keep it odd)
         let tampered_n = BigUint::from_bytes_be(&proof.n) + BigUint::from(2u64);
         proof.n = tampered_n.to_bytes_be();
@@ -607,6 +580,9 @@ mod tests {
             n: bad_n.to_bytes_be(),
             responses: vec![vec![1u8]; MODULUS_PROOF_ITERATIONS],
         };
-        assert!(!bad_proof.verify(), "N with small factor 3 must be rejected");
+        assert!(
+            !bad_proof.verify(),
+            "N with small factor 3 must be rejected"
+        );
     }
 }

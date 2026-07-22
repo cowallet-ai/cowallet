@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Per-chain RPC provider with automatic fallback on failure.
@@ -28,16 +28,23 @@ impl Clone for ChainRpcs {
 }
 
 impl RpcProvider {
-    pub fn new(http: reqwest::Client, chain_urls: HashMap<u64, Vec<String>>, default_urls: Vec<String>) -> Self {
+    pub fn new(
+        http: reqwest::Client,
+        chain_urls: HashMap<u64, Vec<String>>,
+        default_urls: Vec<String>,
+    ) -> Self {
         let chains: HashMap<u64, ChainRpcs> = chain_urls
             .into_iter()
             .map(|(id, urls)| {
                 let len = urls.len();
-                (id, ChainRpcs {
-                    urls,
-                    current: AtomicUsize::new(0),
-                    failures: RwLock::new(vec![0; len]),
-                })
+                (
+                    id,
+                    ChainRpcs {
+                        urls,
+                        current: AtomicUsize::new(0),
+                        failures: RwLock::new(vec![0; len]),
+                    },
+                )
             })
             .collect();
 
@@ -104,7 +111,9 @@ impl RpcProvider {
                                     last_error = format!(
                                         "RPC {} error: {}",
                                         url,
-                                        err.get("message").and_then(|m| m.as_str()).unwrap_or("unknown")
+                                        err.get("message")
+                                            .and_then(|m| m.as_str())
+                                            .unwrap_or("unknown")
                                     );
                                     continue;
                                 }
@@ -127,7 +136,10 @@ impl RpcProvider {
             }
         }
 
-        Err(format!("all RPCs failed for chain {}: {}", chain_id, last_error))
+        Err(format!(
+            "all RPCs failed for chain {}: {}",
+            chain_id, last_error
+        ))
     }
 
     async fn mark_failure(&self, chain_id: u64, idx: usize) {

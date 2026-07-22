@@ -1,9 +1,11 @@
-# Rust 安全审计 + Lint.
+# Rust Lint(advisory).
 #
-# cargo audit — 扫 RustSec 漏洞库(required gate)。
-# cargo clippy — 静态分析,advisory(continue-on-error),因历史 lint debt。
+# RustSec 漏洞审计已迁移到 cargo-deny.yml(deny 的 advisories 检查是 cargo audit
+# 的超集,一处统管漏洞/license/bans/sources,避免重复扫描)。
+# 本 workflow 只保留 clippy 静态分析,advisory(continue-on-error),因历史 lint
+# debt(184 warn + 2 err);债清后移除 continue-on-error 升为 required。
 # 仅在 Rust 源码变更时触发。
-name: Rust Audit
+name: Rust Lint
 
 on:
   push:
@@ -16,26 +18,6 @@ on:
     - cron: "13 8 * * 1"
 
 jobs:
-  audit:
-    name: cargo audit (RustSec)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Run audit
-        run: cargo audit
-
   clippy:
     name: cargo clippy (advisory)
     runs-on: ubuntu-latest

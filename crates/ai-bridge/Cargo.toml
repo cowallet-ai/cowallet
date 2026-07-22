@@ -3,6 +3,7 @@ name = "ai-bridge"
 description = "AI integration — local intent classification, Claude Tool definitions"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 serde = { workspace = true }

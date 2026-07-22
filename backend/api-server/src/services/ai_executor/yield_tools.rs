@@ -6,7 +6,11 @@ use serde_json::Value;
 
 impl ToolContext {
     // --- search_yield_opportunities ---
-    pub(super) async fn execute_search_yield(&self, tool_id: &str, params: Value) -> ToolExecutionResult {
+    pub(super) async fn execute_search_yield(
+        &self,
+        tool_id: &str,
+        params: Value,
+    ) -> ToolExecutionResult {
         // Build SearchQuery from params (reusing yield route types via manual mapping)
         let chain_id: Option<u64> = parse_param(&params, "chain_id");
         let min_apy: Option<f64> = parse_param(&params, "min_apy");
@@ -17,7 +21,9 @@ impl ToolContext {
         // Try to get from cache first (similar logic to yield search route)
         let all_opps = if self.app_state.yield_cache.is_stale().await {
             // Cache is stale, try to refresh
-            match fetch_defi_llama_data(&self.app_state.http, &self.app_state.defi_circuit_breaker).await {
+            match fetch_defi_llama_data(&self.app_state.http, &self.app_state.defi_circuit_breaker)
+                .await
+            {
                 Ok(data) if !data.is_empty() => {
                     // Update cache
                     self.app_state.yield_cache.update(data.clone()).await;
@@ -124,20 +130,25 @@ impl ToolContext {
     }
 
     // --- list_yield_protocols ---
-    pub(super) async fn execute_list_protocols(&self, tool_id: &str, params: Value) -> ToolExecutionResult {
+    pub(super) async fn execute_list_protocols(
+        &self,
+        tool_id: &str,
+        params: Value,
+    ) -> ToolExecutionResult {
         let chain_id: Option<u64> = parse_param(&params, "chain_id");
         let protocol_type: Option<String> = parse_param(&params, "protocol_type");
 
         // Reuse yield module's get_protocols function - get_protocols returns Vec<ProtocolInfo>
-        let protocols: Vec<ProtocolInfo> = match self.app_state.yield_cache.data.read().await.first() {
-            // If we have cached data, use it as a reference for what protocols exist
-            Some(_) => Vec::new(), // We'll use static fallback instead
-            None => {
-                // Fallback - get static protocol info from yield module
-                // yield module's get_protocols is private, so we define a short list here
-                Vec::new()
-            }
-        };
+        let protocols: Vec<ProtocolInfo> =
+            match self.app_state.yield_cache.data.read().await.first() {
+                // If we have cached data, use it as a reference for what protocols exist
+                Some(_) => Vec::new(), // We'll use static fallback instead
+                None => {
+                    // Fallback - get static protocol info from yield module
+                    // yield module's get_protocols is private, so we define a short list here
+                    Vec::new()
+                }
+            };
 
         // Since we can't access the private get_protocols, let's use a static list here
         let static_protocols = vec![

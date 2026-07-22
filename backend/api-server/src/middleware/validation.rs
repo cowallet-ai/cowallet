@@ -110,11 +110,13 @@ pub fn validate_eth_address(address: &str) -> Result<(), ValidationError> {
 }
 
 /// Validate numeric value is within range
-pub fn validate_numeric_range<T: PartialOrd>(value: T, min: T, max: T) -> Result<(), ValidationError> {
+pub fn validate_numeric_range<T: PartialOrd>(
+    value: T,
+    min: T,
+    max: T,
+) -> Result<(), ValidationError> {
     if value < min || value > max {
-        return Err(ValidationError::new(
-            "Value out of allowed range",
-        ));
+        return Err(ValidationError::new("Value out of allowed range"));
     }
     Ok(())
 }
@@ -150,7 +152,7 @@ pub fn detect_xss(input: &str) -> Result<(), ValidationError> {
 /// Sanitize HTML/XSS content for safe output
 pub fn sanitize_html(input: &str) -> String {
     input
-        .replace('&', "&amp;")  // Must be first to avoid double-escaping
+        .replace('&', "&amp;") // Must be first to avoid double-escaping
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
@@ -166,11 +168,10 @@ pub fn validate_path(input: &str) -> Result<(), ValidationError> {
         || normalized.contains("/../")
         || normalized.starts_with("../")
         || normalized.contains("%2e%2e")  // URL-encoded ..
-        || normalized.contains("%2F")  // URL-encoded /
+        || normalized.contains("%2F")
+    // URL-encoded /
     {
-        return Err(ValidationError::new(
-            "Path traversal attempt detected",
-        ));
+        return Err(ValidationError::new("Path traversal attempt detected"));
     }
 
     Ok(())
@@ -245,16 +246,13 @@ mod tests {
     #[test]
     fn test_validate_eth_address() {
         // Valid format
-        assert!(
-            validate_eth_address("0xd8da6bf26964af9d7eed9e03e53415d37aa96045").is_ok()
-        );
+        assert!(validate_eth_address("0xd8da6bf26964af9d7eed9e03e53415d37aa96045").is_ok());
 
         // Invalid - too short
         assert!(validate_eth_address("0x1234").is_err());
 
         // Invalid - no 0x prefix
-        assert!(validate_eth_address("d8da6bf26964af9d7eed9e03e53415d37aa96045")
-            .is_err());
+        assert!(validate_eth_address("d8da6bf26964af9d7eed9e03e53415d37aa96045").is_err());
     }
 
     #[test]
@@ -281,13 +279,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_html() {
-        assert_eq!(
-            sanitize_html("<script>"),
-            "&lt;script&gt;"
-        );
-        assert_eq!(
-            sanitize_html("hello & world"),
-            "hello &amp; world"
-        );
+        assert_eq!(sanitize_html("<script>"), "&lt;script&gt;");
+        assert_eq!(sanitize_html("hello & world"), "hello &amp; world");
     }
 }

@@ -7,7 +7,7 @@
 
 use axum::{
     body::Body,
-    http::{HeaderName, Request, header},
+    http::{header, HeaderName, Request},
     middleware::Next,
     response::Response,
 };
@@ -44,7 +44,9 @@ pub async fn request_id_middleware(mut request: Request<Body>, next: Next) -> Re
         .unwrap_or_else(generate_request_id);
 
     // Store in request extensions for handler access
-    request.extensions_mut().insert(RequestId(request_id.clone()));
+    request
+        .extensions_mut()
+        .insert(RequestId(request_id.clone()));
 
     // Create a tracing span with the request ID
     let span = tracing::info_span!("request", request_id = %request_id);
@@ -58,7 +60,8 @@ pub async fn request_id_middleware(mut request: Request<Body>, next: Next) -> Re
     // Inject request ID into response headers
     response.headers_mut().insert(
         HeaderName::from_static("x-request-id"),
-        header::HeaderValue::from_str(&request_id).unwrap_or(header::HeaderValue::from_static("unknown")),
+        header::HeaderValue::from_str(&request_id)
+            .unwrap_or(header::HeaderValue::from_static("unknown")),
     );
 
     response

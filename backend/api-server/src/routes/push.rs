@@ -1,9 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::post,
-    Json, Router,
-};
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -26,7 +21,12 @@ struct ErrorResponse {
 }
 
 fn err(status: StatusCode, msg: &str) -> (StatusCode, Json<ErrorResponse>) {
-    (status, Json(ErrorResponse { error: msg.to_string() }))
+    (
+        status,
+        Json(ErrorResponse {
+            error: msg.to_string(),
+        }),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,12 +41,20 @@ async fn register_token(
     claims: axum::Extension<Claims>,
     Json(req): Json<RegisterTokenRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::BAD_REQUEST, "invalid user id in token"))?;
 
     if req.platform != "ios" && req.platform != "android" {
-        return Err(err(StatusCode::BAD_REQUEST, "platform must be 'ios' or 'android'"));
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "platform must be 'ios' or 'android'",
+        ));
     }
 
     // Only update an existing token row if it already belongs to THIS user.
@@ -60,7 +68,7 @@ async fn register_token(
          ON CONFLICT (token)
          DO UPDATE SET platform = EXCLUDED.platform,
                        device_id = EXCLUDED.device_id, updated_at = NOW()
-         WHERE push_tokens.user_id = EXCLUDED.user_id"
+         WHERE push_tokens.user_id = EXCLUDED.user_id",
     )
     .bind(user_id)
     .bind(&req.token)
@@ -88,8 +96,13 @@ async fn send_push(
     claims: axum::Extension<Claims>,
     Json(req): Json<SendPushRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state.require_db().map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
-    let caller_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state
+        .require_db()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "database not available"))?;
+    let caller_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| err(StatusCode::UNAUTHORIZED, "invalid user id in token"))?;
     // A user may only send push notifications to their own devices, so the
     // target is always the authenticated caller.
@@ -99,17 +112,19 @@ async fn send_push(
         .await
         .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "FCM not configured"))?;
 
-    let tokens: Vec<(String, String)> = sqlx::query_as(
-        "SELECT token, device_id FROM push_tokens WHERE user_id = $1"
-    )
-    .bind(user_id)
-    .fetch_all(db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    let tokens: Vec<(String, String)> =
+        sqlx::query_as("SELECT token, device_id FROM push_tokens WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(db)
+            .await
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
     let mut sent_count = 0usize;
     for (token, _device_id) in &tokens {
-        if send_fcm_push(&state.http, &fcm, token, &req.title, &req.body, &req.data).await.is_ok() {
+        if send_fcm_push(&state.http, &fcm, token, &req.title, &req.body, &req.data)
+            .await
+            .is_ok()
+        {
             sent_count += 1;
         }
     }
@@ -152,8 +167,7 @@ fn default_token_uri() -> String {
 /// token. The token is reused until shortly before it expires.
 static FCM_CREDENTIALS: LazyLock<Mutex<Option<FcmCredentials>>> =
     LazyLock::new(|| Mutex::new(None));
-static FCM_TOKEN: LazyLock<Mutex<Option<(String, Instant)>>> =
-    LazyLock::new(|| Mutex::new(None));
+static FCM_TOKEN: LazyLock<Mutex<Option<(String, Instant)>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Load (and cache) the service account credentials from disk.
 async fn fcm_credentials() -> Result<FcmCredentials, String> {
@@ -169,8 +183,8 @@ async fn fcm_credentials() -> Result<FcmCredentials, String> {
     let raw = tokio::fs::read_to_string(&path)
         .await
         .map_err(|e| format!("failed to read service account file {path}: {e}"))?;
-    let key: ServiceAccountKey = serde_json::from_str(&raw)
-        .map_err(|e| format!("invalid service account json: {e}"))?;
+    let key: ServiceAccountKey =
+        serde_json::from_str(&raw).map_err(|e| format!("invalid service account json: {e}"))?;
 
     let creds = FcmCredentials {
         project_id: key.project_id,
@@ -338,12 +352,11 @@ pub async fn send_mpc_signing_notification(
         Err(_) => return,
     };
 
-    let tokens: Result<Vec<(String,)>, _> = sqlx::query_as(
-        "SELECT token FROM push_tokens WHERE user_id = $1"
-    )
-    .bind(user_id)
-    .fetch_all(db)
-    .await;
+    let tokens: Result<Vec<(String,)>, _> =
+        sqlx::query_as("SELECT token FROM push_tokens WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(db)
+            .await;
 
     let tokens = match tokens {
         Ok(t) => t,

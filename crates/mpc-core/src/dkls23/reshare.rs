@@ -70,8 +70,12 @@ enum ReshareState {
         /// Our own evaluation for the target party, to be added during process_round1.
         self_eval_for_target: Scalar,
     },
-    Complete { new_share: KeyShare },
-    Failed { error: String },
+    Complete {
+        new_share: KeyShare,
+    },
+    Failed {
+        error: String,
+    },
 }
 
 impl Zeroize for ReshareSession {
@@ -136,7 +140,11 @@ impl ReshareSession {
     pub fn generate_round1(&mut self) -> Result<Vec<ProtocolMessage>> {
         match self.state {
             ReshareState::AwaitingRound1 => {}
-            _ => return Err(MpcError::ResharingFailed("invalid state for round 1".into())),
+            _ => {
+                return Err(MpcError::ResharingFailed(
+                    "invalid state for round 1".into(),
+                ))
+            }
         }
 
         let t = self.old_share.threshold as usize;
@@ -242,13 +250,24 @@ impl ReshareSession {
     /// in recovery mode it is the party being reconstructed.
     pub fn process_round1(&mut self, messages: Vec<ProtocolMessage>) -> Result<()> {
         let (self_eval, my_idx, my_commitments) = match &self.state {
-            ReshareState::AwaitingRound2 { self_eval_for_target, round1_messages } => {
+            ReshareState::AwaitingRound2 {
+                self_eval_for_target,
+                round1_messages,
+            } => {
                 let mine = round1_messages.first().ok_or_else(|| {
                     MpcError::ResharingFailed("missing own round1 commitments".into())
                 })?;
-                (*self_eval_for_target, mine.party_index, mine.commitments.clone())
+                (
+                    *self_eval_for_target,
+                    mine.party_index,
+                    mine.commitments.clone(),
+                )
             }
-            _ => return Err(MpcError::ResharingFailed("invalid state for round 1 processing".into())),
+            _ => {
+                return Err(MpcError::ResharingFailed(
+                    "invalid state for round 1 processing".into(),
+                ))
+            }
         };
 
         let target = self.target_party;
@@ -269,8 +288,10 @@ impl ReshareSession {
         // OWN polynomial — a malicious party can pick a constant term ≠ λ_i·s_i,
         // pass Feldman, yet shift the reconstructed secret S'≠S. That drift is
         // invisible until every future signature fails (funds locked).
-        let mut shares_by_party: std::collections::BTreeMap<u16, Scalar> = std::collections::BTreeMap::new();
-        let mut constant_terms: std::collections::BTreeMap<u16, Vec<u8>> = std::collections::BTreeMap::new();
+        let mut shares_by_party: std::collections::BTreeMap<u16, Scalar> =
+            std::collections::BTreeMap::new();
+        let mut constant_terms: std::collections::BTreeMap<u16, Vec<u8>> =
+            std::collections::BTreeMap::new();
 
         // Seed with our own contribution.
         shares_by_party.insert(my_idx, self_eval);
@@ -284,8 +305,9 @@ impl ReshareSession {
                 continue;
             }
 
-            let round2: ReshareRound2Message = bincode::deserialize(&msg.payload)
-                .map_err(|e| MpcError::ResharingFailed(format!("invalid resharing message: {}", e)))?;
+            let round2: ReshareRound2Message = bincode::deserialize(&msg.payload).map_err(|e| {
+                MpcError::ResharingFailed(format!("invalid resharing message: {}", e))
+            })?;
 
             for (recipient, share_bytes) in &round2.evaluations {
                 if *recipient == target {
@@ -391,14 +413,15 @@ impl ReshareSession {
             }
             let mut key_bytes = [0u8; 33];
             key_bytes.copy_from_slice(&c0_bytes[..33]);
-            let encoded =
-                k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(&key_bytes[..])
-                    .map_err(|_| {
-                        MpcError::ResharingFailed(format!(
-                            "invalid constant-term commitment encoding from party {}",
-                            party
-                        ))
-                    })?;
+            let encoded = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+                &key_bytes[..],
+            )
+            .map_err(|_| {
+                MpcError::ResharingFailed(format!(
+                    "invalid constant-term commitment encoding from party {}",
+                    party
+                ))
+            })?;
             let point = AffinePoint::from_encoded_point(&encoded);
             if bool::from(point.is_none()) {
                 return Err(MpcError::ResharingFailed(format!(
@@ -409,11 +432,7 @@ impl ReshareSession {
             sum += ProjectivePoint::from(point.unwrap());
         }
 
-        let reshared_pubkey = sum
-            .to_affine()
-            .to_encoded_point(false)
-            .as_bytes()
-            .to_vec();
+        let reshared_pubkey = sum.to_affine().to_encoded_point(false).as_bytes().to_vec();
 
         if reshared_pubkey != expected_public_key {
             return Err(MpcError::ResharingFailed(
@@ -430,7 +449,12 @@ impl ReshareSession {
     ///
     /// The caller MUST securely erase the old share after this succeeds.
     pub fn finalize(&mut self) -> Result<KeyShare> {
-        match std::mem::replace(&mut self.state, ReshareState::Failed { error: "finalized".into() }) {
+        match std::mem::replace(
+            &mut self.state,
+            ReshareState::Failed {
+                error: "finalized".into(),
+            },
+        ) {
             ReshareState::Complete { new_share } => Ok(new_share),
             ReshareState::Failed { error } => Err(MpcError::ResharingFailed(error)),
             _ => Err(MpcError::ResharingFailed("resharing not complete".into())),
@@ -442,9 +466,11 @@ impl ReshareSession {
     pub fn derive_backup_share(&self) -> Result<Vec<u8>> {
         self.backup_eval
             .map(|s| s.to_bytes().to_vec())
-            .ok_or_else(|| MpcError::ResharingFailed(
-                "backup evaluation not available — call after generate_round1()".into(),
-            ))
+            .ok_or_else(|| {
+                MpcError::ResharingFailed(
+                    "backup evaluation not available — call after generate_round1()".into(),
+                )
+            })
     }
 
     /// Compute Lagrange coefficient for party `i` within `participants`.
@@ -462,10 +488,11 @@ impl ReshareSession {
             let x_j = Scalar::from((j + 1) as u64);
             let num = x_j;
             let den = x_j - x_i;
-            let den_inv = Option::<Scalar>::from(den.invert())
-                .ok_or_else(|| MpcError::ResharingFailed(
+            let den_inv = Option::<Scalar>::from(den.invert()).ok_or_else(|| {
+                MpcError::ResharingFailed(
                     "Lagrange denominator is zero (duplicate participant?)".into(),
-                ))?;
+                )
+            })?;
             lambda *= num * den_inv;
         }
 
@@ -582,18 +609,24 @@ mod tests {
         let backup_r1 = reshare_backup.generate_round1().unwrap();
 
         // Each processes the other's messages addressed to Party 0
-        let server_msgs_for_target: Vec<_> = server_r1.into_iter()
+        let server_msgs_for_target: Vec<_> = server_r1
+            .into_iter()
             .filter(|m| m.to == target_party)
             .collect();
-        let backup_msgs_for_target: Vec<_> = backup_r1.into_iter()
+        let backup_msgs_for_target: Vec<_> = backup_r1
+            .into_iter()
             .filter(|m| m.to == target_party)
             .collect();
 
         // Backup processes server's messages (backup already has its own eval internally)
-        reshare_backup.process_round1(server_msgs_for_target.clone()).unwrap();
+        reshare_backup
+            .process_round1(server_msgs_for_target.clone())
+            .unwrap();
 
         // Server processes backup's messages (server already has its own eval internally)
-        reshare_server.process_round1(backup_msgs_for_target.clone()).unwrap();
+        reshare_server
+            .process_round1(backup_msgs_for_target.clone())
+            .unwrap();
 
         let new_device_share_from_backup = reshare_backup.finalize().unwrap();
         let new_device_share_from_server = reshare_server.finalize().unwrap();
@@ -653,7 +686,9 @@ mod tests {
         let wrong_backup_commitment = ProjectivePoint::GENERATOR * (lambda_2 * wrong_s2);
         let wrong_sum = server_commitment + wrong_backup_commitment;
         assert_ne!(
-            AffinePoint::from(wrong_sum).to_encoded_point(false).as_bytes(),
+            AffinePoint::from(wrong_sum)
+                .to_encoded_point(false)
+                .as_bytes(),
             pk_affine.to_encoded_point(false).as_bytes(),
             "wrong backup shard must NOT match public key"
         );

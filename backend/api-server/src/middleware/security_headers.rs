@@ -132,7 +132,7 @@ where
             headers.insert(
                 HeaderName::from_static("permissions-policy"),
                 HeaderValue::from_static(
-                    "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+                    "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
                 ),
             );
 
@@ -162,7 +162,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::Request, Router, routing::get};
+    use axum::{body::Body, http::Request, routing::get, Router};
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -171,10 +171,7 @@ mod tests {
             .route("/test", get(|| async { "ok" }))
             .layer(SecurityHeadersLayer::new());
 
-        let request = Request::builder()
-            .uri("/test")
-            .body(Body::empty())
-            .unwrap();
+        let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
 
         let response = app.oneshot(request).await.unwrap();
         let headers = response.headers();
@@ -187,13 +184,7 @@ mod tests {
         assert!(headers.contains_key("x-xss-protection"));
         assert!(headers.contains_key("content-security-policy"));
 
-        assert_eq!(
-            headers.get("x-frame-options").unwrap(),
-            "DENY"
-        );
-        assert_eq!(
-            headers.get("x-content-type-options").unwrap(),
-            "nosniff"
-        );
+        assert_eq!(headers.get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
     }
 }

@@ -1,15 +1,18 @@
 use axum::{
-    Json, Router,
     extract::{Query, State},
     http::StatusCode,
     routing::{get, post},
+    Json, Router,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::middleware::audit::{AuditLog, AuditResult};
-use crate::middleware::auth::{Claims, issue_token_pair, blacklist_token, refresh_access_token, TokenPair, verify_token_unchecked};
+use crate::middleware::auth::{
+    blacklist_token, issue_token_pair, refresh_access_token, verify_token_unchecked, Claims,
+    TokenPair,
+};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -87,13 +90,15 @@ async fn send_email_otp(
             .bind(&body.email)
             .execute(db)
             .await;
-        sqlx::query("INSERT INTO email_verifications (email, otp_hash, expires_at) VALUES ($1, $2, $3)")
-            .bind(&body.email)
-            .bind(otp_hash.as_slice())
-            .bind(expires_at)
-            .execute(db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        sqlx::query(
+            "INSERT INTO email_verifications (email, otp_hash, expires_at) VALUES ($1, $2, $3)",
+        )
+        .bind(&body.email)
+        .bind(otp_hash.as_slice())
+        .bind(expires_at)
+        .execute(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         return Ok(Json(SendEmailOtpResponse {
             sent: true,
             is_registered: false,
@@ -120,7 +125,7 @@ async fn send_email_otp(
          INNER JOIN shard_metadata s ON s.user_id = u.id AND s.location = 'server'
          INNER JOIN wallets w ON w.user_id = u.id AND w.status = 'active'
          WHERE u.email = $1
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(&body.email)
     .fetch_optional(db)
@@ -141,7 +146,7 @@ async fn send_email_otp(
     // Rate limit: max 3 OTP sends per email per hour
     let recent_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM email_verifications
-         WHERE email = $1 AND created_at > NOW() - INTERVAL '1 hour'"
+         WHERE email = $1 AND created_at > NOW() - INTERVAL '1 hour'",
     )
     .bind(&body.email)
     .fetch_one(db)
@@ -158,16 +163,14 @@ async fn send_email_otp(
     let expires_at = Utc::now() + chrono::Duration::minutes(10);
 
     // Invalidate previous pending verifications for this email
-    let _ = sqlx::query(
-        "DELETE FROM email_verifications WHERE email = $1 AND NOT verified"
-    )
-    .bind(&body.email)
-    .execute(db)
-    .await;
+    let _ = sqlx::query("DELETE FROM email_verifications WHERE email = $1 AND NOT verified")
+        .bind(&body.email)
+        .execute(db)
+        .await;
 
     // Store verification record
     sqlx::query(
-        "INSERT INTO email_verifications (email, otp_hash, expires_at) VALUES ($1, $2, $3)"
+        "INSERT INTO email_verifications (email, otp_hash, expires_at) VALUES ($1, $2, $3)",
     )
     .bind(&body.email)
     .bind(otp_hash.as_slice())
@@ -181,12 +184,18 @@ async fn send_email_otp(
 
     // Send OTP via email (AWS SES)
     if let Some(email_service) = &state.email {
-        email_service.send_otp(&body.email, &otp).await.map_err(|e| {
-            tracing::error!("Failed to send email OTP: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        email_service
+            .send_otp(&body.email, &otp)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to send email OTP: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
     } else {
-        tracing::warn!("⚠️  [NO SES] Email OTP not sent for {} (set SES_FROM_ADDRESS to enable)", body.email);
+        tracing::warn!(
+            "⚠️  [NO SES] Email OTP not sent for {} (set SES_FROM_ADDRESS to enable)",
+            body.email
+        );
         #[cfg(debug_assertions)]
         tracing::debug!("DEV ONLY — OTP: {}", otp);
     }
@@ -255,7 +264,7 @@ async fn register(
     let verification: Option<(uuid::Uuid, i32)> = sqlx::query_as(
         "UPDATE email_verifications SET attempts = COALESCE(attempts, 0) + 1
          WHERE email = $1 AND otp_hash = $2 AND NOT verified AND expires_at > NOW()
-         RETURNING id, attempts"
+         RETURNING id, attempts",
     )
     .bind(&body.email)
     .bind(otp_hash.as_slice())
@@ -273,7 +282,7 @@ async fn register(
         let _: Option<(i32,)> = sqlx::query_as(
             "UPDATE email_verifications SET attempts = COALESCE(attempts, 0) + 1
              WHERE email = $1 AND NOT verified AND expires_at > NOW()
-             RETURNING attempts"
+             RETURNING attempts",
         )
         .bind(&body.email)
         .fetch_optional(db)
@@ -283,7 +292,7 @@ async fn register(
         // Check if locked out (5+ failed attempts)
         let locked: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM email_verifications
-             WHERE email = $1 AND NOT verified AND expires_at > NOW() AND attempts >= 5)"
+             WHERE email = $1 AND NOT verified AND expires_at > NOW() AND attempts >= 5)",
         )
         .bind(&body.email)
         .fetch_one(db)
@@ -313,7 +322,10 @@ async fn register(
     // malformed keys or an unknown algorithm so logins can actually verify later.
     let device_pubkey_bytes: Option<Vec<u8>> = match &body.device_pubkey {
         Some(pk_hex) => {
-            let alg = body.device_pubkey_alg.as_deref().ok_or(StatusCode::BAD_REQUEST)?;
+            let alg = body
+                .device_pubkey_alg
+                .as_deref()
+                .ok_or(StatusCode::BAD_REQUEST)?;
             let bytes = hex::decode(pk_hex.trim_start_matches("0x"))
                 .map_err(|_| StatusCode::BAD_REQUEST)?;
             match alg {
@@ -340,18 +352,16 @@ async fn register(
     // OTP instead of being stranded with a spent code.
 
     // Check if user exists and whether they have a completed wallet
-    let existing: Option<(uuid::Uuid,)> = sqlx::query_as(
-        "SELECT id FROM users WHERE email = $1"
-    )
-    .bind(&body.email)
-    .fetch_optional(db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let existing: Option<(uuid::Uuid,)> = sqlx::query_as("SELECT id FROM users WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user_id = if let Some((existing_id,)) = existing {
         // User exists — check if they have a completed wallet (shard + active wallet)
         let has_shard: bool = sqlx::query_as::<_, (uuid::Uuid,)>(
-            "SELECT id FROM shard_metadata WHERE user_id = $1 AND location = 'server' LIMIT 1"
+            "SELECT id FROM shard_metadata WHERE user_id = $1 AND location = 'server' LIMIT 1",
         )
         .bind(existing_id)
         .fetch_optional(db)
@@ -360,7 +370,7 @@ async fn register(
         .is_some();
 
         let has_active_wallet: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM wallets WHERE user_id = $1 AND status = 'active')"
+            "SELECT EXISTS(SELECT 1 FROM wallets WHERE user_id = $1 AND status = 'active')",
         )
         .bind(existing_id)
         .fetch_one(db)
@@ -392,13 +402,15 @@ async fn register(
             // Normal force re-register requires proof the client holds the backup
             // shard (SHA-256(backup_shard)). The review account skips this check.
             if !is_review {
-                let backup_hash_hex = body.backup_shard_hash.as_deref()
+                let backup_hash_hex = body
+                    .backup_shard_hash
+                    .as_deref()
                     .ok_or(StatusCode::PRECONDITION_REQUIRED)?;
 
                 // Verify the backup shard hash matches what we have on record
                 let stored_backup_hash: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
                     "SELECT backup_shard_hash FROM shard_metadata
-                     WHERE user_id = $1 AND location = 'server' LIMIT 1"
+                     WHERE user_id = $1 AND location = 'server' LIMIT 1",
                 )
                 .bind(existing_id)
                 .fetch_optional(db)
@@ -407,8 +419,8 @@ async fn register(
 
                 match stored_backup_hash {
                     Some((Some(stored_hash),)) => {
-                        let provided_hash = hex::decode(backup_hash_hex)
-                            .map_err(|_| StatusCode::BAD_REQUEST)?;
+                        let provided_hash =
+                            hex::decode(backup_hash_hex).map_err(|_| StatusCode::BAD_REQUEST)?;
                         if provided_hash != stored_hash {
                             return Err(StatusCode::FORBIDDEN);
                         }
@@ -438,7 +450,7 @@ async fn register(
 
             // Archive old wallets
             sqlx::query(
-                "UPDATE wallets SET status = 'archived' WHERE user_id = $1 AND status = 'active'"
+                "UPDATE wallets SET status = 'archived' WHERE user_id = $1 AND status = 'active'",
             )
             .bind(existing_id)
             .execute(db)
@@ -458,15 +470,15 @@ async fn register(
         // existing key with NULL).
         sqlx::query(
             "UPDATE users SET device_id = $1, public_key = COALESCE($2, public_key), \
-             device_pubkey_alg = COALESCE($3, device_pubkey_alg) WHERE id = $4"
+             device_pubkey_alg = COALESCE($3, device_pubkey_alg) WHERE id = $4",
         )
-            .bind(&body.device_id)
-            .bind(device_pubkey_bytes.as_deref())
-            .bind(body.device_pubkey_alg.as_deref())
-            .bind(existing_id)
-            .execute(db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .bind(&body.device_id)
+        .bind(device_pubkey_bytes.as_deref())
+        .bind(body.device_pubkey_alg.as_deref())
+        .bind(existing_id)
+        .execute(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         existing_id
     } else {
@@ -690,13 +702,12 @@ async fn login(
     }
 
     // Load the device's registered public key + algorithm and verify the signature.
-    let row: Option<(uuid::Uuid, Option<Vec<u8>>, Option<String>)> = sqlx::query_as(
-        "SELECT id, public_key, device_pubkey_alg FROM users WHERE device_id = $1",
-    )
-    .bind(&body.device_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row: Option<(uuid::Uuid, Option<Vec<u8>>, Option<String>)> =
+        sqlx::query_as("SELECT id, public_key, device_pubkey_alg FROM users WHERE device_id = $1")
+            .bind(&body.device_id)
+            .fetch_optional(db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let (user_id, pubkey, alg) = match row {
         Some((id, Some(pk), Some(alg))) if !pk.is_empty() => (id, pk, alg),
@@ -768,9 +779,7 @@ async fn refresh(
     headers: axum::http::HeaderMap,
     Json(body): Json<RefreshRequest>,
 ) -> Result<Json<AuthResponse>, StatusCode> {
-    let db = state
-        .db
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let db = state.db.ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
     // Device id MUST come from an independent source (request header), not from
     // the refresh token itself, otherwise the binding check is a no-op (F-011).
@@ -779,8 +788,8 @@ async fn refresh(
         .and_then(|v| v.to_str().ok())
         .ok_or(StatusCode::FORBIDDEN)?;
 
-    let claims = verify_token_unchecked(&body.refresh_token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims =
+        verify_token_unchecked(&body.refresh_token).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     let token_pair = refresh_access_token(&db, &body.refresh_token, presented_device_id).await?;
 
@@ -813,9 +822,7 @@ async fn logout(
     claims: axum::Extension<Claims>,
     Json(body): Json<LogoutRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    let db = state
-        .db
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let db = state.db.ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
     let user_id = claims.0.sub.parse().unwrap_or(uuid::Uuid::nil());
 
@@ -910,7 +917,7 @@ async fn ws_ticket(
     let expires_at = Utc::now() + chrono::Duration::seconds(expires_in as i64);
 
     sqlx::query(
-        "INSERT INTO ws_tickets (ticket, user_id, device_id, expires_at) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO ws_tickets (ticket, user_id, device_id, expires_at) VALUES ($1, $2, $3, $4)",
     )
     .bind(&ticket)
     .bind(user_id)
@@ -931,11 +938,7 @@ async fn audit_log(
     claims: axum::Extension<Claims>,
     Query(query): Query<AuditLogQuery>,
 ) -> Result<Json<Vec<AuditLog>>, StatusCode> {
-    let user_id: uuid::Uuid = claims
-        .0
-        .sub
-        .parse()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let user_id: uuid::Uuid = claims.0.sub.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
@@ -994,7 +997,7 @@ async fn initiate_recovery(
         "SELECT u.id FROM users u
          INNER JOIN shard_metadata s ON s.user_id = u.id AND s.location = 'server'
          WHERE u.email = $1
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(&body.email)
     .fetch_optional(db)
@@ -1014,7 +1017,7 @@ async fn initiate_recovery(
     let has_recent_lock: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM recovery_sessions
          WHERE user_id = $1 AND status = 'locked'
-         AND created_at > NOW() - INTERVAL '30 minutes')"
+         AND created_at > NOW() - INTERVAL '30 minutes')",
     )
     .bind(user_id)
     .fetch_one(db)
@@ -1033,7 +1036,7 @@ async fn initiate_recovery(
     // created per user per hour so re-initiation can't be used to dodge lockout.
     let recent_sessions: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM recovery_sessions
-         WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'"
+         WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'",
     )
     .bind(user_id)
     .fetch_one(db)
@@ -1046,7 +1049,7 @@ async fn initiate_recovery(
 
     // Invalidate all previous pending recovery sessions for this user
     let _ = sqlx::query(
-        "UPDATE recovery_sessions SET status = 'expired' WHERE user_id = $1 AND status = 'pending'"
+        "UPDATE recovery_sessions SET status = 'expired' WHERE user_id = $1 AND status = 'pending'",
     )
     .bind(user_id)
     .execute(db)
@@ -1059,7 +1062,7 @@ async fn initiate_recovery(
     // Store recovery session with attempt counter
     sqlx::query(
         "INSERT INTO recovery_sessions (id, user_id, otp_hash, expires_at, status, attempts)
-         VALUES ($1, $2, $3, $4, 'pending', 0)"
+         VALUES ($1, $2, $3, $4, 'pending', 0)",
     )
     .bind(recovery_session_id)
     .bind(user_id)
@@ -1073,16 +1076,26 @@ async fn initiate_recovery(
     })?;
 
     if let Some(email_service) = &state.email {
-        email_service.send_otp(&body.email, &otp).await.map_err(|e| {
-            tracing::error!("Failed to send recovery OTP email: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        email_service
+            .send_otp(&body.email, &otp)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to send recovery OTP email: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
     } else {
-        tracing::warn!("⚠️  [NO SES] Recovery OTP not sent for {} (set SES_FROM_ADDRESS to enable)", body.email);
+        tracing::warn!(
+            "⚠️  [NO SES] Recovery OTP not sent for {} (set SES_FROM_ADDRESS to enable)",
+            body.email
+        );
         #[cfg(debug_assertions)]
         tracing::debug!("DEV ONLY — OTP: {}", otp);
     }
-    tracing::info!("Recovery initiated for user {} (session: {})", user_id, recovery_session_id);
+    tracing::info!(
+        "Recovery initiated for user {} (session: {})",
+        user_id,
+        recovery_session_id
+    );
 
     // Audit log
     let _ = state
@@ -1138,22 +1151,22 @@ async fn verify_recovery_otp(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let recovery_session_id = uuid::Uuid::parse_str(&body.recovery_session_id)
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let recovery_session_id =
+        uuid::Uuid::parse_str(&body.recovery_session_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Fetch recovery session with atomic attempt increment
-    let session: Option<(uuid::Uuid, Vec<u8>, chrono::DateTime<Utc>, String, i32)> = sqlx::query_as(
-        "UPDATE recovery_sessions SET attempts = COALESCE(attempts, 0) + 1
+    let session: Option<(uuid::Uuid, Vec<u8>, chrono::DateTime<Utc>, String, i32)> =
+        sqlx::query_as(
+            "UPDATE recovery_sessions SET attempts = COALESCE(attempts, 0) + 1
          WHERE id = $1
-         RETURNING user_id, otp_hash, expires_at, status, attempts"
-    )
-    .bind(recovery_session_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+         RETURNING user_id, otp_hash, expires_at, status, attempts",
+        )
+        .bind(recovery_session_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let (user_id, otp_hash, expires_at, status, attempts) =
-        session.ok_or(StatusCode::NOT_FOUND)?;
+    let (user_id, otp_hash, expires_at, status, attempts) = session.ok_or(StatusCode::NOT_FOUND)?;
 
     // Check expiration
     if Utc::now() > expires_at {
@@ -1214,7 +1227,7 @@ async fn verify_recovery_otp(
     let shard_row: (Vec<u8>, Vec<u8>, i16) = sqlx::query_as(
         "SELECT encrypted_shard, nonce, party_index
          FROM shard_metadata
-         WHERE user_id = $1 AND location = 'server'"
+         WHERE user_id = $1 AND location = 'server'",
     )
     .bind(user_id)
     .fetch_one(db)
@@ -1255,7 +1268,11 @@ async fn verify_recovery_otp(
         .on_session_created(session_id, user_id, "reshare", &parties, threshold, None)
         .await
     {
-        tracing::error!("Server reshare init failed for session {}: {}", session_id, e);
+        tracing::error!(
+            "Server reshare init failed for session {}: {}",
+            session_id,
+            e
+        );
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -1264,7 +1281,7 @@ async fn verify_recovery_otp(
         "SELECT from_party, to_party, round, payload
          FROM mpc_messages
          WHERE session_id = $1 AND from_party = 1 AND round = 1
-         ORDER BY created_at ASC"
+         ORDER BY created_at ASC",
     )
     .bind(session_id)
     .fetch_all(db)
@@ -1317,11 +1334,10 @@ async fn verify_recovery_otp(
     };
 
     // Issue JWT token pair
-    let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id)
-        .map_err(|e| {
-            tracing::error!("Failed to issue token pair: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let token_pair = issue_token_pair(&user_id.to_string(), &body.device_id).map_err(|e| {
+        tracing::error!("Failed to issue token pair: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // Audit log - successful recovery
     let _ = state

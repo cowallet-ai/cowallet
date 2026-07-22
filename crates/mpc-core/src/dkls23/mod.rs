@@ -75,10 +75,9 @@ impl KeyShare {
             && (self.public_key[0] == 0x02 || self.public_key[0] == 0x03)
         {
             // Compressed: decompress via k256
-            let encoded = EncodedPoint::from_bytes(&self.public_key)
-                .expect("invalid compressed pubkey");
-            let point = AffinePoint::from_encoded_point(&encoded)
-                .expect("decompression failed");
+            let encoded =
+                EncodedPoint::from_bytes(&self.public_key).expect("invalid compressed pubkey");
+            let point = AffinePoint::from_encoded_point(&encoded).expect("decompression failed");
             let uncompressed = point.to_encoded_point(false);
             // uncompressed is 65 bytes (0x04 || x || y), skip prefix
             uncompressed.as_bytes()[1..].to_vec()

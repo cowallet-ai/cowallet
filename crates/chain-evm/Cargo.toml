@@ -3,6 +3,7 @@ name = "chain-evm"
 description = "EVM chain adapter — MpcSigner, EIP-1559, ERC-4337, multi-chain"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 mpc-core = { path = "../mpc-core" }

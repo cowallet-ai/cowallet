@@ -2,8 +2,8 @@ use super::{DecryptedShard, EncryptedShard, ShardLocation};
 use crate::errors::{MpcError, Result};
 use aes_gcm::aead::Aead;
 use aes_gcm::{
-    Aes256Gcm, Nonce,
     aead::{KeyInit, Payload},
+    Aes256Gcm, Nonce,
 };
 use rand::RngCore;
 
@@ -93,10 +93,10 @@ pub fn decrypt_shard(
 /// Derive a wrapping key from a user password using Argon2id.
 /// Used for backup shard encryption.
 pub fn derive_key_from_password(password: &[u8], salt: &[u8; 16]) -> Result<[u8; 32]> {
-    use argon2::{Argon2, Algorithm, Version, Params};
+    use argon2::{Algorithm, Argon2, Params, Version};
 
-    let params = Params::new(65536, 3, 4, None)
-        .map_err(|e| MpcError::ShardEncryption(e.to_string()))?;
+    let params =
+        Params::new(65536, 3, 4, None).map_err(|e| MpcError::ShardEncryption(e.to_string()))?;
     let mut key = [0u8; 32];
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(password, salt, &mut key)

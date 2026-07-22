@@ -66,8 +66,8 @@ impl RetryConfig {
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
-        let base_delay = self.initial_delay.as_millis() as f64
-            * self.backoff_multiplier.powf(attempt as f64);
+        let base_delay =
+            self.initial_delay.as_millis() as f64 * self.backoff_multiplier.powf(attempt as f64);
 
         let capped_delay = base_delay.min(self.max_delay.as_millis() as f64);
 
@@ -305,13 +305,7 @@ pub struct CircuitBreakerStats {
 #[macro_export]
 macro_rules! retryable {
     ($operation:expr, $name:expr) => {
-        retry_with_backoff(
-            RetryConfig::default(),
-            || $operation,
-            |_| true,
-            $name,
-        )
-        .await
+        retry_with_backoff(RetryConfig::default(), || $operation, |_| true, $name).await
     };
     ($operation:expr, $name:expr, $config:expr) => {
         retry_with_backoff($config, || $operation, |_| true, $name).await
@@ -530,10 +524,14 @@ mod tests {
         assert_eq!(result, Ok(42));
 
         // Failed calls
-        let result = cb.call(|| async { Err::<i32, _>("error1".to_string()) }).await;
+        let result = cb
+            .call(|| async { Err::<i32, _>("error1".to_string()) })
+            .await;
         assert_eq!(result, Err(Some("error1".to_string())));
 
-        let result = cb.call(|| async { Err::<i32, _>("error2".to_string()) }).await;
+        let result = cb
+            .call(|| async { Err::<i32, _>("error2".to_string()) })
+            .await;
         assert_eq!(result, Err(Some("error2".to_string())));
 
         // Circuit should be open now

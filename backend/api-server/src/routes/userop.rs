@@ -1,12 +1,6 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
-};
-use serde::{Deserialize, Serialize};
 use alloy_primitives::{Address, Bytes, U256};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+use serde::{Deserialize, Serialize};
 
 use crate::{errors::ApiError, middleware::auth::Claims, state::AppState};
 use chain_evm::userop::{
@@ -94,9 +88,7 @@ async fn build_userop_handler(
     let (pre_verification_gas, verification_gas_limit, call_gas_limit) =
         estimate_userop_gas(&userop, req.entry_point, bundler_url)
             .await
-            .map_err(|e| {
-                ApiError::internal(format!("gas estimation failed: {}", e))
-            })?;
+            .map_err(|e| ApiError::internal(format!("gas estimation failed: {}", e)))?;
 
     userop.pre_verification_gas = pre_verification_gas;
     userop.verification_gas_limit = verification_gas_limit;
@@ -104,8 +96,13 @@ async fn build_userop_handler(
 
     // Request paymaster sponsorship if configured
     let sponsored = if let Some(paymaster_url) = &state.paymaster_url {
-        match request_paymaster_sponsorship(&mut userop, paymaster_url, req.entry_point, req.chain_id)
-            .await
+        match request_paymaster_sponsorship(
+            &mut userop,
+            paymaster_url,
+            req.entry_point,
+            req.chain_id,
+        )
+        .await
         {
             Ok(_) => {
                 tracing::info!("Paymaster sponsorship approved");
@@ -162,13 +159,12 @@ async fn submit_userop_handler(
         .parse()
         .map_err(|_| ApiError::auth_forbidden("invalid user id in token"))?;
     let sender_bytes = req.userop.sender.as_slice().to_vec();
-    let wallet: Option<(uuid::Uuid, String)> = sqlx::query_as(
-        "SELECT user_id, status FROM wallets WHERE eth_address = $1",
-    )
-    .bind(&sender_bytes)
-    .fetch_optional(db)
-    .await
-    .map_err(ApiError::database_error)?;
+    let wallet: Option<(uuid::Uuid, String)> =
+        sqlx::query_as("SELECT user_id, status FROM wallets WHERE eth_address = $1")
+            .bind(&sender_bytes)
+            .fetch_optional(db)
+            .await
+            .map_err(ApiError::database_error)?;
     match wallet {
         Some((owner, status)) => {
             if owner != caller_id {

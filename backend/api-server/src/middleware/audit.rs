@@ -11,8 +11,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::PgPool;
-use uuid::Uuid;
 use std::time::Instant;
+use uuid::Uuid;
 
 /// Audit log entry for sensitive operations
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -111,17 +111,8 @@ impl AuditLogger {
         result: AuditResult,
         ip_address: Option<String>,
     ) -> Result<(), sqlx::Error> {
-        self.log_with_details(
-            user_id,
-            action,
-            result,
-            ip_address,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
+        self.log_with_details(user_id, action, result, ip_address, None, None, None, None)
+            .await
     }
 
     /// Log with additional details including duration
@@ -242,7 +233,12 @@ pub async fn audit_middleware(request: Request<Body>, next: Next) -> Response<Bo
         .and_then(|h| h.to_str().ok())
         .map(|s| s.split(',').next().unwrap_or(s).trim().to_string());
 
-    tracing::debug!("Audit middleware: {} {} from {:?}", method, path, ip_address);
+    tracing::debug!(
+        "Audit middleware: {} {} from {:?}",
+        method,
+        path,
+        ip_address
+    );
 
     // Process request
     let response = next.run(request).await;

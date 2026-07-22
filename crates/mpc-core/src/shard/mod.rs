@@ -41,8 +41,8 @@ impl DecryptedShard {
     /// This will attempt to lock the memory to prevent swapping to disk.
     /// If memory locking fails, the data is still stored with zeroization on drop.
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        let secret_share = SecureVec::new(bytes)
-            .unwrap_or_else(|_| SecureVec::new(Vec::new()).unwrap());
+        let secret_share =
+            SecureVec::new(bytes).unwrap_or_else(|_| SecureVec::new(Vec::new()).unwrap());
         Self {
             party_index: 0,
             secret_share,

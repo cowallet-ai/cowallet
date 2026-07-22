@@ -94,7 +94,10 @@ impl InMemoryTransport {
     pub fn publish(&self, msg: ProtocolMessage) -> Result<()> {
         let mut queues = self.queues.lock().unwrap();
         let key = (msg.session_id.clone(), msg.to);
-        queues.entry(key).or_insert_with(VecDeque::new).push_back(msg);
+        queues
+            .entry(key)
+            .or_insert_with(VecDeque::new)
+            .push_back(msg);
         Ok(())
     }
 

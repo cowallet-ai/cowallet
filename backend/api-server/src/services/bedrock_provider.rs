@@ -31,7 +31,12 @@ impl BedrockProvider {
 
         let client = Client::new();
         tracing::info!("AI provider: right.codes DeepSeek (model={})", model_id);
-        Ok(Self { client, api_key, base_url, model_id })
+        Ok(Self {
+            client,
+            api_key,
+            base_url,
+            model_id,
+        })
     }
 
     fn messages_url(&self) -> String {
@@ -68,9 +73,16 @@ enum ContentPart {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
-    ToolUse { id: String, name: String, input: serde_json::Value },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
     #[serde(rename = "tool_result")]
-    ToolResult { tool_use_id: String, content: String },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -91,7 +103,11 @@ enum ResponseBlock {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
-    ToolUse { id: String, name: String, input: serde_json::Value },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
     // Ignore any other block types (e.g. thinking) gracefully.
     #[serde(other)]
     Other,
@@ -124,9 +140,8 @@ fn convert_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage
                 }
                 if let Some(tool_calls) = &msg.tool_calls {
                     for tc in tool_calls {
-                        let input: serde_json::Value =
-                            serde_json::from_str(&tc.arguments)
-                                .unwrap_or(serde_json::Value::Object(Default::default()));
+                        let input: serde_json::Value = serde_json::from_str(&tc.arguments)
+                            .unwrap_or(serde_json::Value::Object(Default::default()));
                         parts.push(ContentPart::ToolUse {
                             id: tc.id.clone(),
                             name: tc.name.clone(),
@@ -135,7 +150,10 @@ fn convert_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage
                     }
                 }
                 if !parts.is_empty() {
-                    api_msgs.push(ApiMessage { role: "assistant".into(), content: parts });
+                    api_msgs.push(ApiMessage {
+                        role: "assistant".into(),
+                        content: parts,
+                    });
                 }
             }
             ChatRole::Tool => {
@@ -143,7 +161,10 @@ fn convert_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage
                 let tool_id = msg.tool_call_id.as_deref().unwrap_or("unknown").to_string();
                 api_msgs.push(ApiMessage {
                     role: "user".into(),
-                    content: vec![ContentPart::ToolResult { tool_use_id: tool_id, content }],
+                    content: vec![ContentPart::ToolResult {
+                        tool_use_id: tool_id,
+                        content,
+                    }],
                 });
             }
         }
@@ -152,12 +173,19 @@ fn convert_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage
 }
 
 fn convert_tools(tools: &[ToolDef]) -> Option<Vec<ApiTool>> {
-    if tools.is_empty() { return None; }
-    Some(tools.iter().map(|t| ApiTool {
-        name: t.name.clone(),
-        description: t.description.clone(),
-        input_schema: t.parameters.clone(),
-    }).collect())
+    if tools.is_empty() {
+        return None;
+    }
+    Some(
+        tools
+            .iter()
+            .map(|t| ApiTool {
+                name: t.name.clone(),
+                description: t.description.clone(),
+                input_schema: t.parameters.clone(),
+            })
+            .collect(),
+    )
 }
 
 const MAX_TOKENS: u32 = 4096;
@@ -183,7 +211,9 @@ impl AiProvider for BedrockProvider {
             stream: false,
         };
 
-        let resp = self.client.post(self.messages_url())
+        let resp = self
+            .client
+            .post(self.messages_url())
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("Content-Type", "application/json")
@@ -206,9 +236,9 @@ impl AiProvider for BedrockProvider {
                 ResponseBlock::Text { text } => content.push_str(&text),
                 ResponseBlock::ToolUse { id, name, input } => {
                     tool_calls.push(ToolCallInfo {
-                        id, name,
-                        arguments: serde_json::to_string(&input)
-                            .unwrap_or_default(),
+                        id,
+                        name,
+                        arguments: serde_json::to_string(&input).unwrap_or_default(),
                     });
                 }
                 ResponseBlock::Other => {}
@@ -216,7 +246,11 @@ impl AiProvider for BedrockProvider {
         }
 
         Ok(ChatResponse {
-            content: if content.is_empty() { None } else { Some(content) },
+            content: if content.is_empty() {
+                None
+            } else {
+                Some(content)
+            },
             tool_calls,
         })
     }
@@ -238,7 +272,9 @@ impl AiProvider for BedrockProvider {
             stream: true,
         };
 
-        let resp = self.client.post(self.messages_url())
+        let resp = self
+            .client
+            .post(self.messages_url())
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("Content-Type", "application/json")

@@ -83,7 +83,7 @@ impl TxTracker {
                AND tx_hash IS NOT NULL
                AND created_at > NOW() - INTERVAL '1 hour'
              ORDER BY created_at ASC
-             LIMIT 100"
+             LIMIT 100",
         )
         .fetch_all(&self.db)
         .await
@@ -97,14 +97,17 @@ impl TxTracker {
         let dropped = sqlx::query(
             "UPDATE transactions SET status = 'failed'
              WHERE status IN ('pending', 'broadcast')
-               AND created_at <= NOW() - INTERVAL '1 hour'"
+               AND created_at <= NOW() - INTERVAL '1 hour'",
         )
         .execute(&self.db)
         .await
         .map_err(|e| format!("DB drop old txs failed: {}", e))?;
 
         if dropped.rows_affected() > 0 {
-            tracing::info!("[tx_tracker] marked {} old transactions as failed (dropped)", dropped.rows_affected());
+            tracing::info!(
+                "[tx_tracker] marked {} old transactions as failed (dropped)",
+                dropped.rows_affected()
+            );
         }
 
         let now = chrono::Utc::now();
@@ -135,7 +138,8 @@ impl TxTracker {
                 Err(e) => {
                     tracing::warn!(
                         "[tx_tracker] receipt check failed for {}: {}",
-                        tx_hash_hex, e
+                        tx_hash_hex,
+                        e
                     );
                 }
             }
@@ -197,7 +201,9 @@ impl TxTracker {
             .and_then(|b| b.as_str())
             .unwrap_or("0x0");
         let block_number = i64::from_str_radix(
-            block_number_hex.strip_prefix("0x").unwrap_or(block_number_hex),
+            block_number_hex
+                .strip_prefix("0x")
+                .unwrap_or(block_number_hex),
             16,
         )
         .unwrap_or(0);
@@ -206,11 +212,9 @@ impl TxTracker {
             .get("gasUsed")
             .and_then(|g| g.as_str())
             .unwrap_or("0x0");
-        let gas_used = i64::from_str_radix(
-            gas_used_hex.strip_prefix("0x").unwrap_or(gas_used_hex),
-            16,
-        )
-        .unwrap_or(0);
+        let gas_used =
+            i64::from_str_radix(gas_used_hex.strip_prefix("0x").unwrap_or(gas_used_hex), 16)
+                .unwrap_or(0);
 
         Ok(Some(TxReceipt {
             success,
@@ -221,12 +225,16 @@ impl TxTracker {
 
     /// Update a transaction as confirmed or failed based on receipt.
     async fn update_confirmed(&self, tx_hash_bytes: &[u8], receipt: &TxReceipt) {
-        let status = if receipt.success { "confirmed" } else { "failed" };
+        let status = if receipt.success {
+            "confirmed"
+        } else {
+            "failed"
+        };
 
         let result = sqlx::query(
             "UPDATE transactions
              SET status = $1, block_number = $2, gas_used = $3, confirmed_at = NOW()
-             WHERE tx_hash = $4 AND status IN ('pending', 'broadcast')"
+             WHERE tx_hash = $4 AND status IN ('pending', 'broadcast')",
         )
         .bind(status)
         .bind(receipt.block_number)

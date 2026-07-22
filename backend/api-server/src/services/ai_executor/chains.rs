@@ -63,13 +63,15 @@ impl ToolContext {
     pub(super) async fn execute_get_wallet_address(&self, tool_id: &str) -> ToolExecutionResult {
         let address = match parse_wallet_address(self.wallet_address.as_deref()) {
             Some(a) => a,
-            None => return ToolExecutionResult {
-                tool_id: tool_id.to_string(),
-                tool_name: "get_wallet_address".into(),
-                success: false,
-                result: Value::Null,
-                error: Some("钱包地址未提供".into()),
-            },
+            None => {
+                return ToolExecutionResult {
+                    tool_id: tool_id.to_string(),
+                    tool_name: "get_wallet_address".into(),
+                    success: false,
+                    result: Value::Null,
+                    error: Some("钱包地址未提供".into()),
+                }
+            }
         };
         let result = serde_json::json!({
             "address": format!("0x{:x}", address),
