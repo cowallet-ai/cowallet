@@ -1,0 +1,53 @@
+# Flutter CI — 分析 + 单测.
+# 仅在 mobile/** 有变更时触发。
+name: Flutter CI
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**"]
+  pull_request:
+    paths: ["mobile/**"]
+
+jobs:
+  analyze:
+    name: flutter analyze
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+  test:
+    name: flutter test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test --coverage

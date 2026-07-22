@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# pre-commit 门禁 — 零依赖,通过 git 共享。
+#
+# 启用(每次 clone 后执行一次): git config core.hooksPath .githooks
+# 紧急跳过:                     git commit --no-verify
+#
+# 执行两件事:
+#   1. 扫 staged diff 中的明显密钥(gitleaks 的 belt-and-suspenders 补充)。
+#   2. 对本次提交触及的 crate/mobile 做增量检查。
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# ── 1. 密钥扫描 ──────────────────────────────────────────────────────────────
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks protect --staged --config .gitleaks.toml --redact --no-banner; then
+    echo "✗ gitleaks: staged diff 中检测到疑似密钥" >&2
+    fail=1
+  fi
+else
+  # 回退:最小 regex,避免没装 gitleaks 时门禁失效。
+  leak="$(git diff --cached -U0 --diff-filter=ACM \
+      -- . ':(exclude)*.env.example' ':(exclude)*.env.prod.example' ':(exclude)*.env.prod.template' \
+    | grep -E '^\+' \
+    | grep -Ei '(api[_-]?key|secret|password|token)["'\'' ]*[:=]["'\'' ]*[A-Za-z0-9/_+-]{16,}|sk-[A-Za-z0-9]{20,}' \
+    | grep -Eiv 'change[-_]me|your-[a-z-]+-here|sk-\.\.\.|postgres:postgres|ci-only-dummy' \
+    || true)"
+  if [ -n "$leak" ]; then
+    echo "✗ staged diff 中疑有密钥(安装 gitleaks 可提高准确性):" >&2
+    echo "$leak" | sed 's/^/    /' >&2
+    fail=1
+  fi
+fi
+
+# ── 2. 增量检查 ───────────────────────────────────────────────────────────────
+# Rust:仅检查本次提交改到的 crate。
+for manifest in $(echo "$staged" | grep -oE '^[^/]+/[^/]+/' | sort -u | xargs -I{} find {} -maxdepth 1 -name Cargo.toml 2>/dev/null || true); do
+  pkg_dir="$(dirname "$manifest")"
+  pkg_name="$(basename "$pkg_dir")"
+  echo "• cargo check: $pkg_name"
+  if ! ( cd "$pkg_dir" && cargo check --quiet 2>&1 ); then
+    echo "✗ cargo check 失败: $pkg_name" >&2
+    fail=1
+  fi
+done
+
+# Flutter:若 mobile/ 有改动则 flutter analyze。
+if echo "$staged" | grep -q "^mobile/"; then
+  if command -v flutter >/dev/null 2>&1; then
+    echo "• flutter analyze"
+    if ! ( cd mobile && flutter analyze --quiet 2>&1 ); then
+      echo "✗ flutter analyze 失败" >&2
+      fail=1
+    fi
+  else
+    echo "⚠ flutter 未安装,跳过 mobile 增量检查"
+  fi
+fi
+
+# ── 结果 ──────────────────────────────────────────────────────────────────────
+if [ "$fail" -ne 0 ]; then
+  echo "" >&2
+  echo "pre-commit 门禁失败。修复后重试,或用 git commit --no-verify 跳过。" >&2
+  exit 1
+fi
+echo "✓ CoSign 本地协签通过"
