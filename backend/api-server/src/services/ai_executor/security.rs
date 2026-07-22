@@ -6,6 +6,12 @@ use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+/// Block window scanned for ERC-20 Approval events in the security audit.
+/// Unbounded earliest→latest getLogs is rejected by public RPCs, so we scan a
+/// recent window ending at the chain head. On Base (~2s blocks) 800k blocks
+/// ≈ 18 days. Tradeoff: approvals granted before this window are not surfaced.
+const APPROVAL_SCAN_BLOCKS: u64 = 800_000;
+
 /// Shard-health signals for the security audit, read from `shard_metadata`.
 ///
 /// Extracted from `execute_security_audit` so the shard-completeness logic can be
@@ -461,19 +467,39 @@ impl ToolContext {
         }
     }
 
-    /// Check ERC-20 token approvals on-chain via eth_getLogs
+    /// Check ERC-20 token approvals on-chain via eth_getLogs.
+    ///
+    /// Returns `Some((unlimited_count, details))` on a successful check — including
+    /// `Some((0, vec![]))` for a clean wallet. Returns `None` ONLY when the on-chain
+    /// query genuinely fails, so the caller can distinguish "clean" from "unavailable".
     async fn check_token_approvals(&self, address: &Address) -> Option<(usize, Vec<Value>)> {
         // ERC-20 Approval event topic: keccak256("Approval(address,address,uint256)")
         let approval_topic = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925";
         let owner_topic = format!("0x000000000000000000000000{:x}", address);
 
-        // Check on the primary chain (Ethereum mainnet or Base)
-        let chain_id = 8453u64; // Base as default active chain
+        // Check on the primary chain (Base as default active chain).
+        let chain_id = 8453u64;
+
+        // Bound the scan to a recent window: unbounded earliest→latest is rejected
+        // by public RPCs. Resolve the chain head, then look back APPROVAL_SCAN_BLOCKS.
+        let head_resp = self
+            .app_state
+            .rpc_call(chain_id, &serde_json::json!({
+                "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1
+            }))
+            .await
+            .ok()?;
+        let head = head_resp
+            .get("result")
+            .and_then(|v| v.as_str())
+            .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())?;
+        let from_block = head.saturating_sub(APPROVAL_SCAN_BLOCKS);
+
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "method": "eth_getLogs",
             "params": [{
-                "fromBlock": "earliest",
+                "fromBlock": format!("0x{:x}", from_block),
                 "toBlock": "latest",
                 "topics": [approval_topic, &owner_topic]
             }],
@@ -481,17 +507,27 @@ impl ToolContext {
         });
 
         let resp = self.app_state.rpc_call(chain_id, &body).await.ok()?;
+        // A well-formed response has result: []. Missing result = failed query → None.
         let logs = resp.get("result")?.as_array()?;
 
         let max_uint256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
         let mut unlimited_approvals: Vec<Value> = Vec::new();
 
         for log in logs.iter().rev().take(50) {
-            let data = log.get("data")?.as_str()?;
+            // A single malformed log entry must not abort the whole scan.
+            let data = match log.get("data").and_then(|d| d.as_str()) {
+                Some(d) => d,
+                None => continue,
+            };
             // Unlimited approval: data == max_uint256
             if data == max_uint256 {
-                let spender_topic = log.get("topics")?.as_array()?.get(2)?.as_str().unwrap_or("");
-                let contract = log.get("address")?.as_str().unwrap_or("unknown");
+                let spender_topic = log
+                    .get("topics")
+                    .and_then(|t| t.as_array())
+                    .and_then(|t| t.get(2))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                let contract = log.get("address").and_then(|a| a.as_str()).unwrap_or("unknown");
                 unlimited_approvals.push(serde_json::json!({
                     "contract": contract,
                     "spender": spender_topic,
@@ -499,12 +535,10 @@ impl ToolContext {
             }
         }
 
+        // Successful check. A clean wallet is Some((0, [])), NOT None — None is
+        // reserved for genuine query failure so the caller can tell them apart.
         let count = unlimited_approvals.len();
-        if count > 0 {
-            Some((count, unlimited_approvals.into_iter().take(5).collect()))
-        } else {
-            None
-        }
+        Some((count, unlimited_approvals.into_iter().take(5).collect()))
     }
 }
 

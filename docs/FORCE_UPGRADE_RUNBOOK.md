@@ -61,14 +61,24 @@ CoWallet 采用**客户端 + 服务端双层强制升级**：
 ### Step 2 — 移动端构建并提审（build 17）
 
 1. 确认 `mobile/pubspec.yaml` 为目标版本(当前 `1.0.1+17`)。
-2. 构建:
+2. **重编 FFI 原生产物(改过 `crates/` 时必做)**。
+   Android `.so`(`jniLibs/`)与 iOS `ffi_mobile.xcframework` 是 `crates/ffi-mobile`
+   的构建产物,**不由 `flutter build` 自动编译**(gradle 无 cargokit 钩子)。若本次
+   动过任何 `crates/`(如 v1.0.1 的 `mpc-core` 签名协议改动),旧产物会让 App 打进
+   过期的 native 代码 —— 强升级后仍是旧协议,与新后端签不了名。
+   ```bash
+   ./scripts/rebuild_ffi.sh         # codegen + Android .so(4 架构)+ iOS xcframework
+   ```
+   > 判断是否需要:`git diff --stat main...HEAD -- crates/`,有输出即必须重编。
+   > 纯 Dart 改动(如本强升级功能)不需要;但本次 release 动了 `mpc-core`,必做。
+3. 构建 App 包:
    ```bash
    cd mobile && flutter pub get
    ./build-android-prod.sh          # Android release(AAB/APK)
    ../scripts/build_ios.sh          # iOS release(或 Xcode Archive)
    ```
-3. 提交 App Store 与 Play Store 审核。
-4. 审核期如需评审绕过登录,用 compose 里现成的 `REVIEW_BYPASS_EMAIL`/
+4. 提交 App Store 与 Play Store 审核。
+5. 审核期如需评审绕过登录,用 compose 里现成的 `REVIEW_BYPASS_EMAIL`/
    `REVIEW_BYPASS_OTP`,**审核通过后清空并重新部署**。
 
 ### Step 3 — 双端上架通过 → 拉高门槛（gate 生效）
@@ -129,6 +139,7 @@ git reset --hard <上一个正常 commit> && ./deploy.sh
 - [ ] 发版分支已合入 `main`
 - [ ] `.env` 中 `MIN_APP_BUILD=0`,后端已部署,`/config/app-version` 返回 200
 - [ ] `pubspec.yaml` build 号已递增
+- [ ] 改过 `crates/` 时已 `./scripts/rebuild_ffi.sh` 重编 `.so`/xcframework
 - [ ] Android / iOS release 已构建并提审
 - [ ] **双端商店均已上架可下载**（拉门槛的前置条件）
 - [ ] `IOS_STORE_URL` 已填真实数字 App Store ID
@@ -146,3 +157,6 @@ git reset --hard <上一个正常 commit> && ./deploy.sh
 - **新 App 也被拦**:门槛设得比新 build 还高。门槛须 ≤ 已上架的最新 build。
 - **改了 env 不生效**:需 `docker compose up -d api-server` 重启容器,`restart`
   不重新读 `.env`。
+- **升级后仍签不了名 / "RustLib has not been initialized"**:打包前漏跑
+  `rebuild_ffi.sh`,App 里是过期的 `.so`/xcframework。改过 `crates/` 必须先重编
+  再打包(见 Step 2)。
