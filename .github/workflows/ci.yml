@@ -17,8 +17,23 @@ permissions:
   contents: read
 
 jobs:
+  # 格式门禁:纯静态,不需 DB / 编译,秒级返回,先挡住格式漂移。
+  # 一次性 fmt 提交 682b5d89 之后本 job 应恒绿(见 .git-blame-ignore-revs)。
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all --check
+
   test:
-    name: Test (api-server)
+    name: Test (workspace)
     runs-on: ubuntu-latest
 
     # Postgres for #[sqlx::test]: sqlx creates an isolated database per test at
@@ -62,10 +77,11 @@ jobs:
         with:
           workspaces: "."
 
-      # Test-only gate. fmt/clippy are intentionally NOT enforced here yet: the
-      # tree currently has pre-existing formatting and unused-variable debt that
-      # would make CI red for reasons unrelated to the code under test. Add
-      # `cargo fmt --all -- --check` and `cargo clippy -- -D warnings` in a
-      # follow-up once that debt is cleaned up.
-      - name: Run tests (api-server)
-        run: cargo test -p api-server --all-targets
+      # 全 workspace 测试门禁。原先只测 api-server,导致 mpc-core(21 个
+      # 测试文件)、chain-evm、policy-engine 等密码学/资金核心 crate 完全不进
+      # 门禁 —— 对一个 MPC 钱包是最大的回归风险敞口。现改为全 workspace。
+      # 已验证:cargo test --workspace --all-targets --no-run 编译 0 error。
+      # clippy 仍暂不强制(184 warn + 2 err 历史债,见 rust-audit.yml 的 advisory
+      # clippy job);债清后再在此升为 -D warnings。
+      - name: Run tests (workspace)
+        run: cargo test --workspace --all-targets

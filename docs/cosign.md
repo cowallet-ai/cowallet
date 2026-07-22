@@ -14,11 +14,15 @@
 
 | 层 | 工具 | Workflow | 门禁 |
 |---|---|---|---|
-| 构建 + 测试(Rust) | cargo test | `ci.yml` | required |
-| 依赖漏洞(Rust) | cargo audit (RustSec) | `rust-audit.yml` | required |
+| 构建 + 测试(**全 workspace**) | cargo test --workspace | `ci.yml` | required |
+| 代码格式 | cargo fmt --check | `ci.yml` | required |
+| 依赖 license / 来源 / 重复 | cargo-deny | `cargo-deny.yml` | required |
+| 依赖漏洞(RustSec) | cargo-deny advisories | `cargo-deny.yml` | advisory |
 | 静态分析(Rust) | cargo clippy | `rust-audit.yml` | advisory |
 | 移动端分析 + 测试 | flutter analyze/test | `flutter-ci.yml` | required(mobile 变更时) |
 | 密钥扫描 | gitleaks | `security.yml` | required(PR 新提交) |
+| PR 标题规范 | conventional-commit lint | `pr-hygiene.yml` | required |
+| PR 体量 | 行数/文件数告警 | `pr-hygiene.yml` | advisory |
 | 本地 pre-commit | `.githooks/` | — | advisory |
 
 `.github/CODEOWNERS` 额外把 MPC/资金/安全路径(`crates/mpc-core`、`crates/storage-crypto`、
@@ -27,9 +31,19 @@
 
 ## 为什么这样选(不照搬参考项目)
 
-- **cargo audit 而非 CodeQL**:CodeQL 原生不支持 Rust。RustSec 咨询库是 Rust 生态的等价物。
-- **clippy 先 advisory**:仓库有历史 lint debt,先 `continue-on-error` 不阻塞 PR;
-  待 debt 清完移除该标志、升为 required(改 `rust-audit.yml` 的 clippy job)。
+- **全 workspace 测试**:原先只测 `api-server`,把 `mpc-core`(门限签名核心,21 个测试
+  文件)、`chain-evm`、`policy-engine`、`storage-crypto` 等密码学/资金 crate 全挡在门禁外——
+  对 MPC 钱包是最大回归敞口。现改 `cargo test --workspace --all-targets`,已验证编译 0 error。
+- **cargo-deny 取代 cargo audit**:deny 的 advisories 是 audit 的超集,且额外管 license 合规、
+  依赖来源(防投毒)、重复依赖。license/来源为 required 硬门禁(当前干净);advisories 为
+  advisory —— 仓库现存 45 项既存安全债(含 `rsa` Marvin 侧信道、`rustls-webpki` 证书校验漏洞),
+  修复涉及升级加密/NATS 依赖有回归风险,由专门安全任务跟踪;门禁仍会挡 PR **新引入**的漏洞。
+- **rustfmt 硬门禁**:一次性 `cargo fmt --all`(commit `682b5d89`,记入 `.git-blame-ignore-revs`
+  不污染 blame)清掉存量格式债后开启 `cargo fmt --all --check`。
+- **clippy 仍 advisory**:仓库有 184 warn + 2 err 的 lint debt,`continue-on-error` 不阻塞;
+  待清完移除该标志升 required(`rust-audit.yml` 的 clippy job)。
+- **AGPL 例外**:`synedrion`/`manul`(MPC 门限签名依赖)为 AGPL-3.0,在 `deny.toml` 精确放行
+  并留档,其余 AGPL 仍拒绝。⚠️ 法务需知悉 AGPL copyleft 网络条款。
 - **gitleaks PR 只扫新提交**:git 历史中有已知误报和一个已轮换的历史密钥(见下),
   PR 模式用 `--log-opts origin/<base>..HEAD` 只看新增,不因历史债务变红。
 
@@ -79,9 +93,13 @@ git config core.hooksPath .githooks
 ## 启用 branch protection(需 maintainer 手动开)
 
 `Settings → Branches → Add rule (main)`:
-1. Require status checks:勾选 `Test (api-server)`、`cargo audit (RustSec)`、`gitleaks (secret scan)`
+1. Require status checks,勾选这些 required:
+   - `Test (workspace)`、`rustfmt`(均来自 `ci.yml`)
+   - `cargo-deny (licenses/bans/sources)`(来自 `cargo-deny.yml`)
+   - `gitleaks (secret scan)`、`PR 标题(conventional commit)`
 2. Require review from Code Owners(启用 CODEOWNERS 路由)
-3. clippy/flutter debt 清完后再把对应 check 设为 required
+3. 保持 advisory(**勿**设 required):`cargo-deny (advisories)`、`cargo clippy`、
+   `PR 体量告警` —— 各自有存量债或本就是提示性。debt 清完后再逐个升 required。
 
 ## 未采用(及原因)
 

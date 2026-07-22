@@ -1,0 +1,68 @@
+# PR 卫生 —— 标题规范(conventional commit)+ 体量告警。
+# 目的:保证提交可读、可审;标题门禁挡不规范标题,体量只告警不阻塞。
+name: PR Hygiene
+
+on:
+  pull_request:
+    # opened/edited:标题变化时复检;synchronize:新 push 复算体量。
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: write   # 体量告警需要贴/更新评论
+  contents: read
+
+jobs:
+  semantic-title:
+    name: PR 标题(conventional commit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # 与仓库 commit 约定一致的 type 白名单。
+          types: |
+            feat
+            fix
+            chore
+            docs
+            test
+            refactor
+            ci
+            style
+            perf
+            build
+          # 不强制 scope;标题首字母不强制大写(中文标题友好)。
+          requireScope: false
+          subjectPattern: ".+"
+
+  size-warning:
+    name: PR 体量告警(不阻塞)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // 阈值:改动行数 > 800 或 文件数 > 40 时贴告警评论(仅提示,不 fail)。
+            const LINES = 800, FILES = 40;
+            const pr = context.payload.pull_request;
+            const changed = pr.additions + pr.deletions;
+            const files = pr.changed_files;
+            const marker = '<!-- pr-size-warning -->';
+            const big = changed > LINES || files > FILES;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (!big) {
+              if (existing) await github.rest.issues.deleteComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id });
+              core.info(`PR 体量 OK:${changed} 行 / ${files} 文件`);
+              return;
+            }
+            const body = `${marker}\n⚠️ **PR 体量较大**:${changed} 行改动、${files} 个文件`
+              + `(阈值 ${LINES} 行 / ${FILES} 文件)。\n考虑拆分为更小的 PR 以便审查。此为提示,不阻塞合并。`;
+            if (existing) await github.rest.issues.updateComment({
+              owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, body });
