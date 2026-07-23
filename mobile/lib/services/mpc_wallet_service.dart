@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:convert/convert.dart';
 import '../api/mpc_api.dart';
 import '../bridge/mpc_bridge.dart';
@@ -167,9 +167,9 @@ class MpcWalletService implements WalletService {
       // The UI will prompt the user to choose a storage method.
       try {
         _lastBackupShard = await _deriveBackupShard(localSessionId);
-        print('[MpcWalletService] Backup shard derived successfully (${_lastBackupShard!.length} bytes)');
+        debugPrint('[MpcWalletService] Backup shard derived successfully (${_lastBackupShard!.length} bytes)');
       } catch (e) {
-        print('[MpcWalletService] Backup shard derivation skipped: $e');
+        debugPrint('[MpcWalletService] Backup shard derivation skipped: $e');
       }
 
       await SecureStorage.save('mpc_address', walletInfo.address);
@@ -192,7 +192,7 @@ class MpcWalletService implements WalletService {
       return walletInfo;
     } catch (e) {
       // Save state on error for potential recovery
-      print('[MpcWalletService] DKG error: $e');
+      debugPrint('[MpcWalletService] DKG error: $e');
       throw MpcSessionInterruptedException(
         'DKG session interrupted: $e',
         sessionState: await MpcSessionStore.loadSession(),
@@ -393,7 +393,7 @@ class MpcWalletService implements WalletService {
 
       return signature;
     } catch (e) {
-      print('[MpcWalletService] Sign error: $e');
+      debugPrint('[MpcWalletService] Sign error: $e');
       throw MpcSessionInterruptedException(
         'Sign session interrupted: $e',
         sessionState: await MpcSessionStore.loadSession(),
@@ -521,7 +521,7 @@ class MpcWalletService implements WalletService {
 
       return walletInfo;
     } catch (e) {
-      print('[MpcWalletService] Reshare error: $e');
+      debugPrint('[MpcWalletService] Reshare error: $e');
       throw MpcSessionInterruptedException(
         'Reshare session interrupted: $e',
         sessionState: await MpcSessionStore.loadSession(),
@@ -538,7 +538,7 @@ class MpcWalletService implements WalletService {
   Future<int> runPresign({required String walletId, int count = 5}) async {
     // Skip if a sign operation is in progress — presign can retry later
     if (_signInProgress) {
-      print('[MpcWalletService] Skipping presign: sign operation in progress');
+      debugPrint('[MpcWalletService] Skipping presign: sign operation in progress');
       return 0;
     }
 
@@ -563,7 +563,7 @@ class MpcWalletService implements WalletService {
     for (int i = 0; i < count; i++) {
       // Bail out if a sign operation is waiting
       if (_signInProgress) {
-        print('[MpcWalletService] Aborting presign batch: sign operation pending');
+        debugPrint('[MpcWalletService] Aborting presign batch: sign operation pending');
         break;
       }
 
@@ -620,19 +620,19 @@ class MpcWalletService implements WalletService {
   Future<void> _refreshBackupShard(String remoteSessionId, List<int> deviceContribution) async {
     try {
       if (deviceContribution.length != 32) {
-        print('[MpcWalletService] Invalid device backup contribution length after reshare');
+        debugPrint('[MpcWalletService] Invalid device backup contribution length after reshare');
         return;
       }
 
       final serverResult = await MpcApi.getBackupContribution(remoteSessionId);
       if (!serverResult.isSuccess || serverResult.data == null) {
-        print('[MpcWalletService] Failed to fetch server reshare backup contribution');
+        debugPrint('[MpcWalletService] Failed to fetch server reshare backup contribution');
         return;
       }
 
       final serverContribution = serverResult.data!;
       if (serverContribution.length != 32) {
-        print('[MpcWalletService] Invalid server backup contribution length after reshare');
+        debugPrint('[MpcWalletService] Invalid server backup contribution length after reshare');
         return;
       }
 
@@ -642,7 +642,7 @@ class MpcWalletService implements WalletService {
       );
 
       if (newBackupShard.length != 32) {
-        print('[MpcWalletService] Invalid combined backup shard after reshare');
+        debugPrint('[MpcWalletService] Invalid combined backup shard after reshare');
         return;
       }
 
@@ -657,11 +657,11 @@ class MpcWalletService implements WalletService {
         try {
           await Services.backup.storeBackupShard(newBackupShard, useCloud: true);
           _backupNeedsReExport = false;
-          print('[MpcWalletService] Cloud backup updated with refreshed shard');
+          debugPrint('[MpcWalletService] Cloud backup updated with refreshed shard');
         } catch (e) {
           // Cloud overwrite failed — fall back to prompting a manual re-export.
           _backupNeedsReExport = true;
-          print('[MpcWalletService] Cloud backup update failed, needs manual re-export: $e');
+          debugPrint('[MpcWalletService] Cloud backup update failed, needs manual re-export: $e');
         }
       } else {
         // file / encrypted_file / never-backed-up: user must re-export manually.
@@ -675,10 +675,10 @@ class MpcWalletService implements WalletService {
         await SecureStorage.save(SecureStorage.keyRotationPendingCreatedAt,
             DateTime.now().toIso8601String());
         await SecureStorage.save(SecureStorage.keyBackupReExportPending, '1');
-        print('[MpcWalletService] New backup shard staged, awaiting user re-export');
+        debugPrint('[MpcWalletService] New backup shard staged, awaiting user re-export');
       }
     } catch (e) {
-      print('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
+      debugPrint('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
     }
   }
 

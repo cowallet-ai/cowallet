@@ -1,5 +1,6 @@
 /// 钱包API - 多钱包管理接口
 /// 支持创建、查询、管理多个MPC钱包及其关联链
+library;
 
 import '../network/dio_client.dart';
 import '../network/result.dart';

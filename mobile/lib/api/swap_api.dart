@@ -25,7 +25,7 @@ class SwapApi {
         "sell_token": sellToken,
         "buy_token": buyToken,
         "sell_amount": sellAmount,
-        if (takerAddress != null) "taker_address": takerAddress,
+        "taker_address": ?takerAddress,
       },
     );
   }
@@ -49,7 +49,7 @@ class SwapApi {
         "buy_token": buyToken,
         "sell_amount": sellAmount,
         "taker_address": takerAddress,
-        if (toAddress != null) "to_address": toAddress,
+        "to_address": ?toAddress,
         "slippage": slippage,
       },
     );
@@ -58,7 +58,7 @@ class SwapApi {
   static Future<Result<List<dynamic>>> getTokens({String? chain}) async {
     return await DioClient.get(
       "/swap/tokens",
-      queryParameters: {if (chain != null) "chain": chain},
+      queryParameters: {"chain": ?chain},
     );
   }
 

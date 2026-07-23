@@ -18,13 +18,18 @@ class AndroidStrongBoxChannel {
   static const platform = MethodChannel('com.cowallet.mpc/strongbox');
   static const storageChannel = MethodChannel('com.cowallet.mpc/keystore');
 
-  /// Check if StrongBox is available on this device
+  /// Check if StrongBox is available on this device.
+  ///
+  /// This is a capability probe: callers (e.g. [SecureHardware.isAvailable])
+  /// treat it as a plain bool, so a probe failure must report "not available"
+  /// rather than throw — matching the iOS [IosSecureEnclaveChannel.isAvailable]
+  /// contract.
   static Future<bool> isAvailable() async {
     try {
       final result = await platform.invokeMethod<bool>('isAvailable');
       return result ?? false;
     } catch (e) {
-      throw SbException('Failed to check StrongBox availability: $e');
+      return false;
     }
   }
 
@@ -42,8 +47,8 @@ class AndroidStrongBoxChannel {
       }
 
       return result;
-    } on PlatformException catch (e) {
-      throw SbException('generateKey failed: ${e.message}');
+    } catch (e) {
+      throw SbException('generateKey failed: $e');
     }
   }
 
@@ -61,8 +66,8 @@ class AndroidStrongBoxChannel {
       }
 
       return result;
-    } on PlatformException catch (e) {
-      throw SbException('getPublicKey failed: ${e.message}');
+    } catch (e) {
+      throw SbException('getPublicKey failed: $e');
     }
   }
 
@@ -90,8 +95,8 @@ class AndroidStrongBoxChannel {
       }
 
       return result;
-    } on PlatformException catch (e) {
-      throw SbException('signWithBiometric failed: ${e.message}');
+    } catch (e) {
+      throw SbException('signWithBiometric failed: $e');
     }
   }
 
@@ -107,8 +112,8 @@ class AndroidStrongBoxChannel {
           'value': value,
         },
       );
-    } on PlatformException catch (e) {
-      throw SbException('storeSecret failed: ${e.message}');
+    } catch (e) {
+      throw SbException('storeSecret failed: $e');
     }
   }
 
@@ -122,8 +127,8 @@ class AndroidStrongBoxChannel {
       );
 
       return result;
-    } on PlatformException catch (e) {
-      throw SbException('getSecret failed: ${e.message}');
+    } catch (e) {
+      throw SbException('getSecret failed: $e');
     }
   }
 
@@ -134,8 +139,8 @@ class AndroidStrongBoxChannel {
         'deleteSecret',
         {'key': key},
       );
-    } on PlatformException catch (e) {
-      throw SbException('deleteSecret failed: ${e.message}');
+    } catch (e) {
+      throw SbException('deleteSecret failed: $e');
     }
   }
 
@@ -147,8 +152,8 @@ class AndroidStrongBoxChannel {
         'storeEncryptedShard',
         {'data': shardBytes},
       );
-    } on PlatformException catch (e) {
-      throw SbException('storeEncryptedShard failed: ${e.message}');
+    } catch (e) {
+      throw SbException('storeEncryptedShard failed: $e');
     }
   }
 
@@ -163,8 +168,8 @@ class AndroidStrongBoxChannel {
       if (result is Uint8List) return result.toList();
       if (result is List) return result.cast<int>();
       return null;
-    } on PlatformException catch (e) {
-      throw SbException('loadEncryptedShard failed: ${e.message}');
+    } catch (e) {
+      throw SbException('loadEncryptedShard failed: $e');
     }
   }
 }

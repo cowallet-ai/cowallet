@@ -1,4 +1,5 @@
 /// 简单的测试示例 - 验证 Flutter 测试框架正常工作
+library;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,7 +10,7 @@ void main() {
     });
 
     test('string concatenation works', () {
-      expect('Hello' + ' ' + 'World', equals('Hello World'));
+      expect('Hello' ' ' 'World', equals('Hello World'));
     });
 
     test('list operations work', () {

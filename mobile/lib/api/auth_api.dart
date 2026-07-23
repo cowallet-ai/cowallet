@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:convert/convert.dart';
 import '../network/dio_client.dart';
@@ -53,8 +54,8 @@ class AuthApi {
         "email": email,
         "otp": otp,
         if (force) "force": true,
-        if (backupShardHash != null) "backup_shard_hash": backupShardHash,
-        if (devicePubkey != null) "device_pubkey": devicePubkey,
+        "backup_shard_hash": ?backupShardHash,
+        "device_pubkey": ?devicePubkey,
         if (devicePubkey != null && deviceAlg != null) "device_pubkey_alg": deviceAlg,
       },
     );
@@ -66,13 +67,13 @@ class AuthApi {
       String? userId = result.data?["user_id"];
 
       // Do not log token material, not even a prefix (F-021).
-      print("📝 AuthApi.register response: token=${token != null ? "<received>" : "<null>"}, userId=$userId");
+      debugPrint("📝 AuthApi.register response: token=${token != null ? "<received>" : "<null>"}, userId=$userId");
 
       if (token != null) {
         await SecureStorage.saveToken(token);
-        print("✅ Token saved to SecureStorage");
+        debugPrint("✅ Token saved to SecureStorage");
       } else {
-        print("❌ Token is null in response");
+        debugPrint("❌ Token is null in response");
       }
 
       if (refreshToken != null) {
@@ -81,10 +82,10 @@ class AuthApi {
 
       if (userId != null) {
         await SecureStorage.saveUserId(userId);
-        print("✅ UserId saved to SecureStorage");
+        debugPrint("✅ UserId saved to SecureStorage");
       }
     } else {
-      print("❌ Registration failed: ${result.errorMessage}");
+      debugPrint("❌ Registration failed: ${result.errorMessage}");
     }
     return result;
   }

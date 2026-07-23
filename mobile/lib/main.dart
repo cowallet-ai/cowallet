@@ -1,5 +1,3 @@
-import 'dart:ui';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -41,9 +39,9 @@ void main() async {
   runApp(const CowalletApp());
 
   // Start initialization in background
-  print('[main] Starting background initialization...');
+  debugPrint('[main] Starting background initialization...');
   Services.initAll().then((_) {
-    print('[main] All services initialized');
+    debugPrint('[main] All services initialized');
     // Remove native splash when app is ready
     FlutterNativeSplash.remove();
   });
@@ -96,7 +94,7 @@ class _CowalletAppState extends State<CowalletApp> {
 
   /// Initialize locale: check saved preference or auto-detect from system
   Future<void> _initLocale() async {
-    final savedLang = await Services.settings.language;
+    final savedLang = Services.settings.language;
     if (savedLang == 'zh' || savedLang == 'en') {
       setState(() => _locale = Locale(savedLang));
     } else {
@@ -193,7 +191,7 @@ class _CowalletAppState extends State<CowalletApp> {
       final pending = await Services.mpcWallet.isBackupReExportPending();
       if (!pending) return;
       final ctx = _navigatorKey.currentContext;
-      if (ctx == null || !mounted) return;
+      if (ctx == null || !ctx.mounted) return;
       await Navigator.of(ctx).push(
         MaterialPageRoute(
           fullscreenDialog: true,

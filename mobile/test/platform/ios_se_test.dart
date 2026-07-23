@@ -1,10 +1,16 @@
 // Integration tests for iOS Secure Enclave
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cowallet/platform/ios_se_channel.dart';
 import 'package:cowallet/platform/se_manager.dart';
 
 void main() {
+  // Platform-channel calls need the services binding; without it the channel
+  // throws a raw "Binding not initialized" FlutterError instead of the
+  // SeException these tests expect.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('iOS Secure Enclave Platform Channel', () {
     test('isAvailable returns boolean', () async {
       final available = await IosSecureEnclaveChannel.isAvailable();
@@ -68,7 +74,7 @@ void main() {
         expect(available, isA<bool>());
       } catch (e) {
         // Expected in unit tests on non-iOS platforms
-        print('SE not available: $e');
+        debugPrint('SE not available: $e');
       }
     });
 
@@ -78,7 +84,7 @@ void main() {
         // Should be null before initialization
         expect(keyId, anyOf([isNull, isA<String>()]));
       } catch (e) {
-        print('Error: $e');
+        debugPrint('Error: $e');
       }
     });
 
@@ -88,7 +94,7 @@ void main() {
         // Should succeed without error
       } catch (e) {
         // Expected in unit tests
-        print('Clear wallet error: $e');
+        debugPrint('Clear wallet error: $e');
       }
     });
   });

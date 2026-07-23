@@ -731,17 +731,6 @@ abstract class AppLocalizations {
   /// **'Use voice to interact with AI assistant'**
   String get voiceInputSub;
 
-  /// No description provided for @aiModel.
-  ///
-  /// In en, this message translates to:
-  /// **'AI Model'**
-  String get aiModel;
-
-  /// No description provided for @aiModelSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose your preferred AI assistant'**
-  String get aiModelSub;
 
   /// No description provided for @language.
   ///
