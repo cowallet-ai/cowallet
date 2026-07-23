@@ -511,19 +511,32 @@ fn test_sign_with_wrong_share_fails() {
         payload: server_response,
     };
 
-    let corrupted_sig = sign_device
-        .process_round2(vec![server_response_msg])
-        .unwrap();
-
-    // Verify: Signature should NOT validate with the correct public key
-    let verification_result = corrupted_sig.verify(&msg_hash, &public_key).unwrap();
-
-    assert!(
-        !verification_result,
-        "SECURITY VIOLATION: corrupted share produced valid signature!"
-    );
-
-    println!("✓ Security validated: corrupted share produces invalid signature");
+    // Security invariant: a corrupted device share must NOT yield a signature
+    // that verifies against the real public key. The protocol may enforce this
+    // in either of two fail-closed ways, and BOTH are acceptable:
+    //
+    //   (a) abort during Round 2 — `process_round2` returns Err because the
+    //       assembled signature fails the internal ecrecover-to-pubkey check
+    //       ("assembled signature does not recover to the wallet public key");
+    //       the device refuses to emit anything. This is the STRONGER outcome.
+    //   (b) return a signature that fails `verify` against the public key.
+    //
+    // (The device gained the Round-2 recover-or-abort guard after this test was
+    // written; because the test was #[ignore]d, that hardening silently made the
+    // old "must return an invalid sig" expectation unreachable. Accept both.)
+    match sign_device.process_round2(vec![server_response_msg]) {
+        Err(e) => {
+            println!("✓ Security validated: corrupted share aborted signing: {e}");
+        }
+        Ok(corrupted_sig) => {
+            let verification_result = corrupted_sig.verify(&msg_hash, &public_key).unwrap();
+            assert!(
+                !verification_result,
+                "SECURITY VIOLATION: corrupted share produced valid signature!"
+            );
+            println!("✓ Security validated: corrupted share produced an invalid signature");
+        }
+    }
 }
 
 /// Test 4: Verify all 2-of-3 party combinations can complete DKG and sign.

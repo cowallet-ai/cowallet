@@ -83,5 +83,47 @@ jobs:
       # 已验证:cargo test --workspace --all-targets --no-run 编译 0 error。
       # clippy 仍暂不强制(184 warn + 2 err 历史债,见 rust-audit.yml 的 advisory
       # clippy job);债清后再在此升为 -D warnings。
+      #
+      # 注意:这里默认 NOT 跑 #[ignore] 的分布式 Paillier MtA e2e —— 它们单个
+      # 在 debug 下 ~13 分钟。那些全流程门禁在下面独立的 distributed-e2e job 里
+      # 用 --release 跑(Paillier 快 10-20 倍),既挡 PR 又不拖慢本 job / 本地。
       - name: Run tests (workspace)
         run: cargo test --workspace --all-targets
+
+  # 分布式 MPC 全流程 e2e 门禁(COW-1)。
+  #
+  # 为什么单列一个 job:e2e_protocol_flow.rs 与 chain-evm 的 distributed_tx_sign
+  # 走真实分布式路径(new_distributed + Paillier MtA + DKG finalize 生成 2048-bit
+  # Paillier 密钥),单个测试 debug 下 ~13 分钟,进主 test job 会让每个 PR 多等
+  # 40-60 分钟,本地 `cargo test` 也会被拖死 —— 所以它们保留 #[ignore],默认不跑。
+  #
+  # 本 job 用 --release 显式 `-- --ignored` 把它们跑起来:release 下 Paillier 快
+  # 10-20 倍,整组可在 CI 时间预算内完成,且 PR 失败即阻断(反向验证:改坏签名
+  # 逻辑 → test_sign_with_wrong_share_fails / recovers_correct_address 会红)。
+  distributed-e2e:
+    name: Distributed MPC e2e (release, ignored)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          # 与主 test job 的 debug 产物分开缓存,避免 release/debug 互相失效。
+          key: distributed-e2e-release
+
+      # mpc-core:完整 DKG→sign、reshare→sign、corrupted-share(反向验证)、
+      # all-pairs、multi-reshare 五条 #[ignore] 全流程。
+      - name: Distributed DKG / sign / reshare e2e (mpc-core)
+        run: cargo test --release -p mpc-core --test e2e_protocol_flow -- --ignored --nocapture
+
+      # chain-evm:分布式签一笔真实 EIP-1559 交易 → ecrecover 回钱包地址 →
+      # EIP-2718 编码校验(交易提交链路:签名→构造→广播 shape)。
+      - name: Distributed EIP-1559 tx sign e2e (chain-evm)
+        run: cargo test --release -p chain-evm --test distributed_tx_sign -- --ignored --nocapture

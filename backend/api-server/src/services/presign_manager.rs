@@ -362,6 +362,150 @@ impl PresignManager {
     }
 }
 
+/// DB-backed integration tests for the production presignature lifecycle
+/// (generate → reserve → consume). Distributed presign is NOT a protocol in
+/// this codebase — `PresignSession::generate_round1` is a stub; production
+/// pre-computes signing material through THIS manager (ephemeral k_1 + R_1,
+/// AES-256-GCM encrypted, AAD-bound to the wallet). So the "distributed presign
+/// path" the co-signer actually runs is exactly what these tests cover.
+///
+/// Gated behind the `integration-tests` feature so `cargo test` stays green
+/// without Postgres. Run with:
+///   DATABASE_URL=postgres://… cargo test -p api-server --features integration-tests
+#[cfg(all(test, feature = "integration-tests"))]
+mod integration_tests {
+    use super::*;
+
+    /// Seed one user + one wallet and return (user_id, wallet_id).
+    async fn seed_user_wallet(pool: &PgPool) -> (Uuid, Uuid) {
+        let uid = Uuid::new_v4();
+        sqlx::query("INSERT INTO users (id, email, device_id) VALUES ($1,$2,$3)")
+            .bind(uid)
+            .bind(format!("presign-{uid}@example.com"))
+            .bind(format!("device-{uid}"))
+            .execute(pool)
+            .await
+            .unwrap();
+
+        let wid = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO wallets (id, user_id, public_key, eth_address) VALUES ($1,$2,$3,$4)",
+        )
+        .bind(wid)
+        .bind(uid)
+        .bind(&[1u8; 33][..])
+        .bind(&[2u8; 20][..])
+        .execute(pool)
+        .await
+        .unwrap();
+
+        (uid, wid)
+    }
+
+    /// Full production presign lifecycle: generate N → available count == N →
+    /// reserve one (decrypts to a valid k_1 scalar + R_1 point, status flips to
+    /// 'reserved') → consume (status flips to 'consumed', no longer available).
+    #[sqlx::test(migrations = "../migrations")]
+    async fn presign_generate_reserve_consume_lifecycle(pool: PgPool) {
+        let mgr = PresignManager::new(pool.clone(), EncryptionService::for_test());
+        let (uid, wid) = seed_user_wallet(&pool).await;
+
+        // 1) Generate 3 presignatures.
+        let n = mgr.generate_presignatures(uid, wid, 3).await.unwrap();
+        assert_eq!(n, 3, "should have generated exactly 3");
+        assert_eq!(
+            mgr.get_available_count(wid).await.unwrap(),
+            3,
+            "all 3 must be available immediately after generation"
+        );
+
+        // 2) Reserve one for a signing session.
+        let session_id = Uuid::new_v4();
+        let reserved = mgr
+            .reserve_presignature(wid, session_id)
+            .await
+            .unwrap()
+            .expect("a presignature must be available to reserve");
+
+        // The decrypted material must be a well-formed k_1 scalar (32 bytes,
+        // non-zero, a valid secp256k1 scalar) and R_1 (33-byte compressed SEC1
+        // point) with R_1 == k_1 * G — exactly what the signing Round 1 consumes
+        // via generate_round1_with_presign.
+        assert_eq!(reserved.k.len(), 32, "k_1 must be 32 bytes");
+        assert_eq!(reserved.big_r.len(), 33, "R_1 must be 33 compressed bytes");
+        assert_ne!(reserved.k, vec![0u8; 32], "k_1 must be non-zero");
+
+        let k_arr: [u8; 32] = reserved.k.as_slice().try_into().unwrap();
+        let k_scalar = Option::<Scalar>::from(
+            <Scalar as k256::elliptic_curve::PrimeField>::from_repr(k_arr.into()),
+        )
+        .expect("k_1 must be a valid secp256k1 scalar");
+        let expected_r = ProjectivePoint::GENERATOR * k_scalar;
+        let expected_r_affine: AffinePoint = expected_r.into();
+        let expected_r_bytes = expected_r_affine.to_encoded_point(true);
+        assert_eq!(
+            reserved.big_r.as_slice(),
+            expected_r_bytes.as_bytes(),
+            "R_1 must equal k_1 * G (commitment consistency)"
+        );
+
+        // Reserving decremented the available pool.
+        assert_eq!(
+            mgr.get_available_count(wid).await.unwrap(),
+            2,
+            "reserving one must drop available from 3 to 2"
+        );
+        let status: String = sqlx::query_scalar("SELECT status FROM presignatures WHERE id = $1")
+            .bind(reserved.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(status, "reserved");
+
+        // 3) Consume it after a "successful" sign.
+        mgr.consume_presignature(reserved.id).await.unwrap();
+        let status: String = sqlx::query_scalar("SELECT status FROM presignatures WHERE id = $1")
+            .bind(reserved.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(status, "consumed");
+        assert_eq!(
+            mgr.get_available_count(wid).await.unwrap(),
+            2,
+            "consumed presignature must not return to the available pool"
+        );
+    }
+
+    /// A presignature is AES-GCM encrypted with the wallet id as AAD. Reserving
+    /// under a DIFFERENT wallet id must fail to decrypt — a row copied/swapped
+    /// across wallets is unusable (parity with shard encryption). Here we assert
+    /// the binding by reserving with the wrong wallet and expecting an error.
+    #[sqlx::test(migrations = "../migrations")]
+    async fn reserved_presignature_is_wallet_bound(pool: PgPool) {
+        let mgr = PresignManager::new(pool.clone(), EncryptionService::for_test());
+        let (uid, wid) = seed_user_wallet(&pool).await;
+        let (_uid2, wid2) = seed_user_wallet(&pool).await;
+
+        mgr.generate_presignatures(uid, wid, 1).await.unwrap();
+
+        // Move the row to wid2 directly in the DB (simulating a swap), then try
+        // to reserve under wid2. The AAD (wid) no longer matches → decrypt fails.
+        sqlx::query("UPDATE presignatures SET wallet_id = $1 WHERE wallet_id = $2")
+            .bind(wid2)
+            .bind(wid)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let result = mgr.reserve_presignature(wid2, Uuid::new_v4()).await;
+        assert!(
+            result.is_err(),
+            "decrypting a presignature under a mismatched wallet AAD must fail"
+        );
+    }
+}
+
 #[cfg(test)]
 mod nonce_safety_tests {
     /// Guards against regressing to releasing stale reservations back to
