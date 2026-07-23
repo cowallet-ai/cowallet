@@ -95,3 +95,16 @@ aws-sdk-sesv2 = "1"
 # Testing
 proptest = "1"
 criterion = "0.5"
+
+# ── 编译 profile ────────────────────────────────────────────────────────────
+# 加密依赖(num-bigint 大整数模幂 + glass_pumpkin 安全素数生成)在 opt-level=0
+# 下慢几十倍 —— Paillier keygen 会拖到数分钟。这里只把「依赖包」优化编译,自己
+# 的 crate 仍随 dev/test 的 opt0 走,增量编译速度不受影响。
+# test profile 继承 dev,故 cargo test / nextest 同样受益。
+[profile.dev.package."*"]
+opt-level = 3
+
+# mpc-core 自身的 Paillier encrypt/decrypt 模幂也是热点,单独优化本 crate。
+# 仅影响编译产物的运行速度,不改任何测试语义。
+[profile.dev.package.mpc-core]
+opt-level = 3
