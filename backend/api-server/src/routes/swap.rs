@@ -221,7 +221,9 @@ async fn build_swap_tx(
 
     // Reject if amount is below deposit minimum
     if let Some(ref min_str) = quote.deposit_min {
-        if let (Ok(min_val), Ok(sell_val)) = (min_str.parse::<f64>(), req.sell_amount.parse::<f64>()) {
+        if let (Ok(min_val), Ok(sell_val)) =
+            (min_str.parse::<f64>(), req.sell_amount.parse::<f64>())
+        {
             if sell_val < min_val {
                 return Err(ApiError::bad_request(&format!(
                     "Amount too small. Minimum: {} {}",
@@ -354,8 +356,10 @@ fn resolve_token_address(token: &str, chain_id: u64) -> Result<String> {
     }
     bridgers::token_address(token, chain_id)
         .map(|s| s.to_string())
-        .ok_or_else(|| ApiError::bad_request(&format!(
-            "Unknown token '{}' on chain {}. Provide a contract address instead.",
-            token, chain_id
-        )))
+        .ok_or_else(|| {
+            ApiError::bad_request(&format!(
+                "Unknown token '{}' on chain {}. Provide a contract address instead.",
+                token, chain_id
+            ))
+        })
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../api/mpc_api.dart';
 import 'mpc_session_store.dart';
@@ -95,7 +96,7 @@ class PendingSignService {
           }
         }
       } catch (e) {
-        print('[PendingSignService] Error checking local session: $e');
+        debugPrint('[PendingSignService] Error checking local session: $e');
       }
 
       // Session is no longer valid, clear local state
@@ -119,7 +120,7 @@ class PendingSignService {
         }
       }
     } catch (e) {
-      print('[PendingSignService] Error checking backend sessions: $e');
+      debugPrint('[PendingSignService] Error checking backend sessions: $e');
     }
 
     _currentPending = null;

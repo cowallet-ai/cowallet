@@ -53,15 +53,21 @@ class MpcApi {
     required int toParty,
     required int round,
     required List<int> payload,
+    String? hmac,
   }) async {
+    final Map<String, dynamic> data = {
+      "from_party": fromParty,
+      "to_party": toParty,
+      "round": round,
+      "payload": payload,
+    };
+    // Server-bound messages (to_party == server) require a per-session HMAC (F-004).
+    if (hmac != null) {
+      data["hmac"] = hmac;
+    }
     Result result = await DioClient.post(
       "/mpc/session/$sessionId/msg",
-      data: {
-        "from_party": fromParty,
-        "to_party": toParty,
-        "round": round,
-        "payload": payload,
-      },
+      data: data,
     );
     return Result.success(result.isSuccess);
   }

@@ -329,12 +329,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceInputSub => 'Use voice to interact with AI assistant';
 
   @override
-  String get aiModel => 'AI Model';
-
-  @override
-  String get aiModelSub => 'Choose your preferred AI assistant';
-
-  @override
   String get language => 'Language';
 
   @override
@@ -375,6 +369,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get resetWalletChecking => 'Checking balance...';
+
+  @override
+  String get deleteAccount => 'Delete Account';
+
+  @override
+  String get deleteAccountSub => 'Permanently delete your account and all data';
+
+  @override
+  String get deleteAccountHasBalance => 'Your wallet still has a balance. Deleting your account permanently destroys your keys and the funds cannot be recovered. We recommend transferring your assets out first. Continue anyway?';
+
+  @override
+  String get deleteAccountConfirmTitle => 'Delete Account Permanently?';
+
+  @override
+  String get deleteAccountConfirmBody => 'This cannot be undone. Your wallet, key shares, transaction history, and all data will be permanently deleted and cannot be recovered.';
+
+  @override
+  String get deleteAccountConfirm => 'Delete Permanently';
+
+  @override
+  String get deleteAccountDeleting => 'Deleting account...';
+
+  @override
+  String get deleteAccountSuccess => 'Account deleted';
+
+  @override
+  String get deleteAccountFailed => 'Deletion failed, please try again';
 
   @override
   String get signoff1 => 'CoWallet · 2026';

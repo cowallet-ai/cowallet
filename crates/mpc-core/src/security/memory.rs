@@ -136,7 +136,10 @@ impl SecureVec {
         let ptr = data.as_ptr();
         // Safety: ptr points to valid memory of len bytes, owned by data
         let guard = unsafe { mlock_guard(ptr, len) };
-        Ok(Self { data, _guard: guard })
+        Ok(Self {
+            data,
+            _guard: guard,
+        })
     }
 
     /// Create a new empty `SecureVec` with the specified capacity.
@@ -146,7 +149,10 @@ impl SecureVec {
         let ptr = data.as_mut_ptr();
         // Safety: ptr points to valid memory of capacity bytes
         let guard = unsafe { mlock_guard(ptr, capacity) };
-        Ok(Self { data, _guard: guard })
+        Ok(Self {
+            data,
+            _guard: guard,
+        })
     }
 
     /// Get a reference to the underlying bytes.
@@ -184,8 +190,7 @@ impl SecureVec {
 
 impl Clone for SecureVec {
     fn clone(&self) -> Self {
-        Self::new(self.data.clone())
-            .expect("Failed to clone SecureVec - mlock failed")
+        Self::new(self.data.clone()).expect("Failed to clone SecureVec - mlock failed")
     }
 }
 
@@ -267,7 +272,10 @@ impl From<Vec<u8>> for SecureVec {
             let data = Vec::new();
             // Safety: no data is locked
             let guard = unsafe { mlock_guard(std::ptr::null(), 0) };
-            Self { data, _guard: guard }
+            Self {
+                data,
+                _guard: guard,
+            }
         })
     }
 }

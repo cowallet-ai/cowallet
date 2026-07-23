@@ -223,8 +223,8 @@ fn extract_time_period(text: &str) -> Vec<Entity> {
 
     let lower = text.to_lowercase();
     for (pattern, normalized) in &time_patterns {
-        if lower.contains(pattern.split('|').next().unwrap()) ||
-           pattern.split('|').skip(1).any(|p| text.contains(p))
+        if lower.contains(pattern.split('|').next().unwrap())
+            || pattern.split('|').skip(1).any(|p| text.contains(p))
         {
             entities.push(Entity {
                 kind: EntityKind::TimePeriod,
@@ -265,17 +265,20 @@ mod tests {
         let intent = classify("send 0.1 ETH to 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1");
         assert_eq!(intent.kind, IntentKind::Transfer);
 
-        let amount_entity = intent.entities.iter()
+        let amount_entity = intent
+            .entities
+            .iter()
             .find(|e| e.kind == EntityKind::Amount);
         assert!(amount_entity.is_some());
         assert_eq!(amount_entity.unwrap().value, "0.1");
 
-        let token_entity = intent.entities.iter()
-            .find(|e| e.kind == EntityKind::Token);
+        let token_entity = intent.entities.iter().find(|e| e.kind == EntityKind::Token);
         assert!(token_entity.is_some());
         assert_eq!(token_entity.unwrap().value, "ETH");
 
-        let address_entity = intent.entities.iter()
+        let address_entity = intent
+            .entities
+            .iter()
             .find(|e| e.kind == EntityKind::Address);
         assert!(address_entity.is_some());
     }
@@ -285,17 +288,20 @@ mod tests {
         let intent = classify("给 alice 转 100 USDC");
         assert_eq!(intent.kind, IntentKind::Transfer);
 
-        let amount_entity = intent.entities.iter()
+        let amount_entity = intent
+            .entities
+            .iter()
             .find(|e| e.kind == EntityKind::Amount);
         assert!(amount_entity.is_some());
         assert_eq!(amount_entity.unwrap().value, "100");
 
-        let token_entity = intent.entities.iter()
-            .find(|e| e.kind == EntityKind::Token);
+        let token_entity = intent.entities.iter().find(|e| e.kind == EntityKind::Token);
         assert!(token_entity.is_some());
         assert_eq!(token_entity.unwrap().value, "USDC");
 
-        let contact_entity = intent.entities.iter()
+        let contact_entity = intent
+            .entities
+            .iter()
             .find(|e| e.kind == EntityKind::Contact);
         assert!(contact_entity.is_some());
         assert_eq!(contact_entity.unwrap().value, "alice");
@@ -306,8 +312,7 @@ mod tests {
         let intent = classify("ETH price today");
         assert_eq!(intent.kind, IntentKind::PriceQuery);
 
-        let token_entity = intent.entities.iter()
-            .find(|e| e.kind == EntityKind::Token);
+        let token_entity = intent.entities.iter().find(|e| e.kind == EntityKind::Token);
         assert!(token_entity.is_some());
         assert_eq!(token_entity.unwrap().value, "ETH");
     }
@@ -317,7 +322,9 @@ mod tests {
         let intent = classify("我今天花了多少钱");
         assert_eq!(intent.kind, IntentKind::SpendingSummary);
 
-        let time_entity = intent.entities.iter()
+        let time_entity = intent
+            .entities
+            .iter()
             .find(|e| e.kind == EntityKind::TimePeriod);
         assert!(time_entity.is_some());
         assert_eq!(time_entity.unwrap().value, "today");
@@ -328,7 +335,9 @@ mod tests {
         let intent = classify("本周支出统计");
         assert_eq!(intent.kind, IntentKind::SpendingSummary);
 
-        let time_entity = intent.entities.iter()
+        let time_entity = intent
+            .entities
+            .iter()
             .find(|e| e.kind == EntityKind::TimePeriod);
         assert!(time_entity.is_some());
         assert_eq!(time_entity.unwrap().value, "this_week");

@@ -11,6 +11,7 @@ import '../views/recovery/recovery_view.dart';
 import '../views/settings/backup_shard_view.dart';
 import '../views/settings/policy_view.dart';
 import '../views/wallet/tx_history_view.dart';
+import '../views/force_upgrade_view.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../theme/colors.dart';
 import '../theme/typography.dart';
@@ -26,6 +27,7 @@ class AppRouter {
   static const txHistory = '/tx-history';
   static const backupShard = '/backup-shard';
   static const policy = '/policy';
+  static const forceUpgrade = '/force-upgrade';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -46,6 +48,14 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const BackupShardView());
       case policy:
         return MaterialPageRoute(builder: (_) => const PolicyView());
+      case forceUpgrade:
+        final args = (settings.arguments as Map<String, dynamic>?) ?? const {};
+        return MaterialPageRoute(
+          builder: (_) => ForceUpgradeView(
+            iosStoreUrl: (args['ios'] as String?) ?? '',
+            androidStoreUrl: (args['android'] as String?) ?? '',
+          ),
+        );
       default:
         return MaterialPageRoute(builder: (_) => const AppShell());
     }
@@ -55,14 +65,12 @@ class AppRouter {
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
-  static final chatKey = GlobalKey<ChatViewState>();
-
   static void goToChatAndSend(BuildContext context, String message) {
     final shellState = context.findAncestorStateOfType<_AppShellState>();
     if (shellState != null) {
       shellState.switchToChat();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        chatKey.currentState?.sendMessage(message);
+        shellState._chatKey.currentState?.sendMessage(message);
       });
     }
   }
@@ -72,7 +80,7 @@ class AppShell extends StatefulWidget {
     if (shellState != null) {
       shellState.switchToChat();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        chatKey.currentState?.showTxDetail(txData);
+        shellState._chatKey.currentState?.showTxDetail(txData);
       });
     }
   }
@@ -84,14 +92,22 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
 
+  // Per-instance key (NOT a static/global singleton). A static GlobalKey caused
+  // "Duplicate GlobalKey" crashes: during navigation transitions two AppShell
+  // instances briefly coexist, and both mounted a ChatView with the same key.
+  // An instance field means each shell owns its own key, so there is never a
+  // collision. Cross-widget access still goes through _AppShellState via
+  // findAncestorStateOfType (see goToChatAndSend/goToChatAndShowTx).
+  final _chatKey = GlobalKey<ChatViewState>();
+
   void switchToChat() {
     setState(() => _currentIndex = 2);
   }
 
-  final _views = <Widget>[
+  late final _views = <Widget>[
     const HomeView(),
     const WalletView(),
-    ChatView(key: AppShell.chatKey),
+    ChatView(key: _chatKey),
     const DefiHubView(),
     const SettingsView(),
   ];

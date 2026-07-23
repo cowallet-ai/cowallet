@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, B256, U256, keccak256};
+use alloy_primitives::{keccak256, Address, B256, U256};
 
 /// EIP-712 typed data signing for structured messages.
 ///
@@ -150,11 +150,15 @@ pub fn encode_field_string(s: &str) -> B256 {
 /// Returns: 32-byte big-endian representation
 pub fn encode_field_uint256(val: &U256) -> B256 {
     let mut buf = [0u8; 32];
-    val.to_be_bytes_vec().iter().rev().enumerate().for_each(|(i, &b)| {
-        if i < 32 {
-            buf[31 - i] = b;
-        }
-    });
+    val.to_be_bytes_vec()
+        .iter()
+        .rev()
+        .enumerate()
+        .for_each(|(i, &b)| {
+            if i < 32 {
+                buf[31 - i] = b;
+            }
+        });
     B256::from(buf)
 }
 
@@ -204,10 +208,9 @@ mod tests {
         let encoded = encode_field_string(s);
         // keccak256("hello") = 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8
         let expected = B256::from([
-            0x1c, 0x8a, 0xff, 0x95, 0x06, 0x85, 0xc2, 0xed,
-            0x4b, 0xc3, 0x17, 0x4f, 0x34, 0x72, 0x28, 0x7b,
-            0x56, 0xd9, 0x51, 0x7b, 0x9c, 0x94, 0x81, 0x27,
-            0x31, 0x9a, 0x09, 0xa7, 0xa3, 0x6d, 0xea, 0xc8,
+            0x1c, 0x8a, 0xff, 0x95, 0x06, 0x85, 0xc2, 0xed, 0x4b, 0xc3, 0x17, 0x4f, 0x34, 0x72,
+            0x28, 0x7b, 0x56, 0xd9, 0x51, 0x7b, 0x9c, 0x94, 0x81, 0x27, 0x31, 0x9a, 0x09, 0xa7,
+            0xa3, 0x6d, 0xea, 0xc8,
         ]);
         assert_eq!(encoded, expected);
     }
@@ -266,8 +269,7 @@ mod tests {
     #[test]
     fn test_domain_separator_with_different_fields() {
         // Test with only name
-        let domain1 = EIP712Domain::new()
-            .with_name("Test".to_string());
+        let domain1 = EIP712Domain::new().with_name("Test".to_string());
         let separator1 = domain_separator(&domain1);
 
         // Test with name and version

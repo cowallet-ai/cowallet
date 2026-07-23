@@ -228,10 +228,7 @@ pub fn build_transfer_userop(
         }
         Some(token_addr) => {
             // ERC-20 transfer: encode execute(TokenContract, 0, transferCalldata)
-            let transfer_call = transferCall {
-                to,
-                amount: value,
-            };
+            let transfer_call = transferCall { to, amount: value };
             let transfer_calldata = transfer_call.abi_encode();
 
             let execute_call = executeCall {
@@ -465,7 +462,9 @@ pub async fn estimate_userop_gas(
 
     Ok((
         estimate.pre_verification_gas.unwrap_or(U256::from(50_000)),
-        estimate.verification_gas_limit.unwrap_or(U256::from(500_000)),
+        estimate
+            .verification_gas_limit
+            .unwrap_or(U256::from(500_000)),
         estimate.call_gas_limit.unwrap_or(U256::from(100_000)),
     ))
 }

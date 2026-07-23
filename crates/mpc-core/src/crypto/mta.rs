@@ -1,5 +1,13 @@
 //! Multiplicative-to-Additive (MtA) protocol using Paillier homomorphism.
 //!
+//! ⚠️ SECURITY / STATUS: This standalone MtA implementation is NOT currently
+//! wired into the DKLS23 signing path (which uses an inline Paillier MtA with
+//! range + modulus proofs in `dkls23::sign`). Critically, `MtABob`'s handling
+//! below does NOT verify a range proof on Alice's ciphertext, so a malicious
+//! Alice could feed an out-of-range value and mount a wraparound attack. Do NOT
+//! use this module in production before adding range-proof verification
+//! (mirroring `crypto::paillier_proof`). Kept for reference/experimentation.
+//!
 //! Converts a multiplicative sharing of a value into an additive sharing:
 //!   Given: Alice holds `a`, Bob holds `b`
 //!   Want: Alice gets `alpha`, Bob gets `beta` such that alpha + beta = a * b (mod q)
@@ -77,7 +85,10 @@ impl MtAAlice {
         let n = &self.keypair.public.n;
 
         // Decrypt: plaintext = (a*b - beta) mod N
-        let plaintext = self.keypair.secret.decrypt(&self.keypair.public, &msg.c_beta);
+        let plaintext = self
+            .keypair
+            .secret
+            .decrypt(&self.keypair.public, &msg.c_beta);
 
         // If plaintext > N/2, it represents a negative value (N - |val|)
         // Convert to signed interpretation then reduce mod q
@@ -175,11 +186,8 @@ mod tests {
         let first_msg = alice.generate_first_message();
 
         // Step 2: Bob processes and returns his share
-        let (second_msg, bob_output) = MtABob::process_first_message(
-            &keypair.public,
-            &b_bytes,
-            &first_msg,
-        );
+        let (second_msg, bob_output) =
+            MtABob::process_first_message(&keypair.public, &b_bytes, &first_msg);
 
         // Step 3: Alice processes Bob's response
         let alice_output = alice.process_second_message(&second_msg);
@@ -209,11 +217,8 @@ mod tests {
         let alice = MtAAlice::new(a_bytes, keypair.clone());
 
         let first_msg = alice.generate_first_message();
-        let (second_msg, bob_output) = MtABob::process_first_message(
-            &keypair.public,
-            &b_bytes,
-            &first_msg,
-        );
+        let (second_msg, bob_output) =
+            MtABob::process_first_message(&keypair.public, &b_bytes, &first_msg);
         let alice_output = alice.process_second_message(&second_msg);
 
         let alpha = scalar_to_biguint(&alice_output.alpha);

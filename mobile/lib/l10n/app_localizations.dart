@@ -731,17 +731,6 @@ abstract class AppLocalizations {
   /// **'Use voice to interact with AI assistant'**
   String get voiceInputSub;
 
-  /// No description provided for @aiModel.
-  ///
-  /// In en, this message translates to:
-  /// **'AI Model'**
-  String get aiModel;
-
-  /// No description provided for @aiModelSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose your preferred AI assistant'**
-  String get aiModelSub;
 
   /// No description provided for @language.
   ///
@@ -826,6 +815,33 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Checking balance...'**
   String get resetWalletChecking;
+
+  /// No description provided for @deleteAccount.
+  String get deleteAccount;
+
+  /// No description provided for @deleteAccountSub.
+  String get deleteAccountSub;
+
+  /// No description provided for @deleteAccountHasBalance.
+  String get deleteAccountHasBalance;
+
+  /// No description provided for @deleteAccountConfirmTitle.
+  String get deleteAccountConfirmTitle;
+
+  /// No description provided for @deleteAccountConfirmBody.
+  String get deleteAccountConfirmBody;
+
+  /// No description provided for @deleteAccountConfirm.
+  String get deleteAccountConfirm;
+
+  /// No description provided for @deleteAccountDeleting.
+  String get deleteAccountDeleting;
+
+  /// No description provided for @deleteAccountSuccess.
+  String get deleteAccountSuccess;
+
+  /// No description provided for @deleteAccountFailed.
+  String get deleteAccountFailed;
 
   /// No description provided for @signoff1.
   ///

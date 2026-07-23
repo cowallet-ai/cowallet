@@ -80,6 +80,13 @@ PODS:
     - GoogleUtilities/UserDefaults (~> 8.1)
     - nanopb (~> 3.30910.0)
   - Flutter (1.0.0)
+  - flutter_inappwebview_ios (0.0.1):
+    - Flutter
+    - flutter_inappwebview_ios/Core (= 0.0.1)
+    - OrderedSet (~> 6.0.3)
+  - flutter_inappwebview_ios/Core (0.0.1):
+    - Flutter
+    - OrderedSet (~> 6.0.3)
   - flutter_local_notifications (0.0.1):
     - Flutter
   - flutter_native_splash (2.4.3):
@@ -172,6 +179,9 @@ PODS:
     - nanopb/encode (= 3.30910.0)
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
+  - OrderedSet (6.0.3)
+  - package_info_plus (0.4.5):
+    - Flutter
   - PromisesObjC (2.4.0)
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
@@ -184,6 +194,8 @@ PODS:
     - Flutter
     - FlutterMacOS
   - SwiftyGif (5.4.5)
+  - url_launcher_ios (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - ffi_mobile (from `Frameworks`)
@@ -191,6 +203,7 @@ DEPENDENCIES:
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
   - Flutter (from `Flutter`)
+  - flutter_inappwebview_ios (from `.symlinks/plugins/flutter_inappwebview_ios/ios`)
   - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - flutter_native_splash (from `.symlinks/plugins/flutter_native_splash/ios`)
   - flutter_secure_storage (from `.symlinks/plugins/flutter_secure_storage/ios`)
@@ -198,8 +211,10 @@ DEPENDENCIES:
   - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
   - local_auth_darwin (from `.symlinks/plugins/local_auth_darwin/darwin`)
   - mobile_scanner (from `.symlinks/plugins/mobile_scanner/ios`)
+  - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - speech_to_text (from `.symlinks/plugins/speech_to_text/darwin`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 SPEC REPOS:
   trunk:
@@ -226,6 +241,7 @@ SPEC REPOS:
     - MLKitCommon
     - MLKitVision
     - nanopb
+    - OrderedSet
     - PromisesObjC
     - SDWebImage
     - SwiftyGif
@@ -241,6 +257,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/firebase_messaging/ios"
   Flutter:
     :path: Flutter
+  flutter_inappwebview_ios:
+    :path: ".symlinks/plugins/flutter_inappwebview_ios/ios"
   flutter_local_notifications:
     :path: ".symlinks/plugins/flutter_local_notifications/ios"
   flutter_native_splash:
@@ -255,10 +273,14 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/local_auth_darwin/darwin"
   mobile_scanner:
     :path: ".symlinks/plugins/mobile_scanner/ios"
+  package_info_plus:
+    :path: ".symlinks/plugins/package_info_plus/ios"
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   speech_to_text:
     :path: ".symlinks/plugins/speech_to_text/darwin"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
@@ -277,6 +299,7 @@ SPEC CHECKSUMS:
   FirebaseInstallations: 317270fec08a5d418fdbc8429282238cab3ac843
   FirebaseMessaging: 3b26e2cee503815e01c3701236b020aa9b576f09
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_inappwebview_ios: b89ba3482b96fb25e00c967aae065701b66e9b99
   flutter_local_notifications: ad39620c743ea4c15127860f4b5641649a988100
   flutter_native_splash: c32d145d68aeda5502d5f543ee38c192065986cf
   flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
@@ -296,11 +319,14 @@ SPEC CHECKSUMS:
   MLKitVision: 45e79d68845a2de77e2dd4d7f07947f0ed157b0e
   mobile_scanner: af8f71879eaba2bbcb4d86c6a462c3c0e7f23036
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
+  OrderedSet: e539b66b644ff081c73a262d24ad552a69be3a94
+  package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   speech_to_text: 3b313d98516d3d0406cea424782ec25470c59d19
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
+  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
 PODFILE CHECKSUM: 46c18849418ffb65bfb536dc4d643e321da0d7e9
 

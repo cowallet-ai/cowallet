@@ -15,6 +15,18 @@ class SecureStorage {
   static const String keyDeviceId = "device_id";
   static const String keyPendingBackupShard = "pending_backup_shard";
   static const String keyPendingBackupCreatedAt = "pending_backup_created_at";
+  /// Set to "1" after a key rotation whose refreshed backup shard still needs to
+  /// be re-exported by the user (offline-file backups). Durable so that killing
+  /// or backgrounding the app during the mandatory re-export does not lose the
+  /// requirement — startup re-routes to the mandatory backup screen while set.
+  static const String keyBackupReExportPending = "backup_reexport_pending";
+
+  /// The refreshed backup shard (base64) staged during a key rotation, awaiting
+  /// mandatory re-export. Kept SEPARATE from [keyPendingBackupShard] (which the
+  /// DKG/onboarding flow uses) so the two flows never overwrite each other's
+  /// staged shard. Deleted once the rotation re-export completes.
+  static const String keyRotationPendingShard = "rotation_pending_shard";
+  static const String keyRotationPendingCreatedAt = "rotation_pending_created_at";
   static const String keyOnboardingStep = "onboarding_step";
 
   // 存token

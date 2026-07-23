@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     extract::{Query, State},
     routing::get,
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -327,10 +327,31 @@ pub async fn fetch_defi_llama_data(
 
 fn map_project_to_type(project: &str) -> ProtocolType {
     match project {
-        s if s.starts_with("aave") || s.starts_with("morpho") || s.starts_with("compound") => ProtocolType::Lending,
-        s if s.starts_with("uniswap") || s.starts_with("sushi") || s.starts_with("aerodrome") || s.starts_with("velodrome") || s.starts_with("pancakeswap") => ProtocolType::Dex,
-        s if s.starts_with("lido") || s.starts_with("rocket-pool") || s.starts_with("coinbase-staked") => ProtocolType::LiquidStaking,
-        s if s.starts_with("pendle") || s.starts_with("yearn") || s.starts_with("convex") || s.starts_with("curve") || s.starts_with("beefy") => ProtocolType::Vault,
+        s if s.starts_with("aave") || s.starts_with("morpho") || s.starts_with("compound") => {
+            ProtocolType::Lending
+        }
+        s if s.starts_with("uniswap")
+            || s.starts_with("sushi")
+            || s.starts_with("aerodrome")
+            || s.starts_with("velodrome")
+            || s.starts_with("pancakeswap") =>
+        {
+            ProtocolType::Dex
+        }
+        s if s.starts_with("lido")
+            || s.starts_with("rocket-pool")
+            || s.starts_with("coinbase-staked") =>
+        {
+            ProtocolType::LiquidStaking
+        }
+        s if s.starts_with("pendle")
+            || s.starts_with("yearn")
+            || s.starts_with("convex")
+            || s.starts_with("curve")
+            || s.starts_with("beefy") =>
+        {
+            ProtocolType::Vault
+        }
         _ => ProtocolType::Farm,
     }
 }
@@ -365,7 +386,8 @@ fn format_project_name(project: &str) -> String {
         .map(|(_, v)| v.to_string())
         .unwrap_or_else(|| {
             // Capitalize first letter of each word
-            project.split('-')
+            project
+                .split('-')
                 .map(|w| {
                     let mut c = w.chars();
                     match c.next() {
@@ -456,7 +478,6 @@ pub struct SearchQuery {
     pub limit: Option<usize>,
 }
 
-
 async fn search(
     State(state): State<AppState>,
     Query(q): Query<SearchQuery>,
@@ -509,12 +530,17 @@ async fn search(
                 let matches = opp
                     .token_a
                     .as_ref()
-                    .map(|t| t.symbol == token_upper || t.address.to_lowercase() == token.to_lowercase())
+                    .map(|t| {
+                        t.symbol == token_upper || t.address.to_lowercase() == token.to_lowercase()
+                    })
                     .unwrap_or(false)
                     || opp
                         .token_b
                         .as_ref()
-                        .map(|t| t.symbol == token_upper || t.address.to_lowercase() == token.to_lowercase())
+                        .map(|t| {
+                            t.symbol == token_upper
+                                || t.address.to_lowercase() == token.to_lowercase()
+                        })
                         .unwrap_or(false);
                 if !matches {
                     return false;
@@ -525,7 +551,11 @@ async fn search(
         .collect();
 
     // Sort by APY descending
-    filtered.sort_by(|a, b| b.apy.partial_cmp(&a.apy).unwrap_or(std::cmp::Ordering::Equal));
+    filtered.sort_by(|a, b| {
+        b.apy
+            .partial_cmp(&a.apy)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let limit = q.limit.unwrap_or(20).min(50);
     let total_count = filtered.len();
@@ -574,5 +604,7 @@ async fn list_protocols(Query(q): Query<SearchQuery>) -> Json<ProtocolsResponse>
         })
         .collect();
 
-    Json(ProtocolsResponse { protocols: filtered })
+    Json(ProtocolsResponse {
+        protocols: filtered,
+    })
 }

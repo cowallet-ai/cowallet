@@ -8,29 +8,35 @@ use serde_json::Value;
 
 impl ToolContext {
     // --- get_balance ---
-    pub(super) async fn execute_get_balance(&self, tool_id: &str, params: Value) -> ToolExecutionResult {
+    pub(super) async fn execute_get_balance(
+        &self,
+        tool_id: &str,
+        params: Value,
+    ) -> ToolExecutionResult {
         let chain_id_filter: Option<u64> = parse_param(&params, "chain_id");
         let token_filter: Option<String> = parse_param(&params, "token");
         let owner = match parse_wallet_address(self.wallet_address.as_deref()) {
             Some(a) => a,
-            None => return ToolExecutionResult {
-                tool_id: tool_id.to_string(),
-                tool_name: "get_balance".into(),
-                success: false,
-                result: Value::Null,
-                error: Some("钱包地址未提供".into()),
-            },
+            None => {
+                return ToolExecutionResult {
+                    tool_id: tool_id.to_string(),
+                    tool_name: "get_balance".into(),
+                    success: false,
+                    result: Value::Null,
+                    error: Some("钱包地址未提供".into()),
+                }
+            }
         };
         let address = format!("0x{:x}", owner);
 
-        // Use Covalent API if configured
-        if let Some(api_key) = &self.app_state.covalent_api_key {
+        // Use OKX API if configured
+        if let Some(creds) = &self.app_state.okx_credentials {
             // Multi-chain query if no chain_id specified
             if chain_id_filter.is_none() {
                 let supported_chains = vec![1u64, 8453, 42161, 10, 56, 137];
-                match crate::services::covalent::get_all_chain_balances(
+                match crate::services::okx::get_all_chain_balances(
                     &self.app_state.http,
-                    api_key,
+                    creds,
                     &address,
                     &supported_chains,
                 )
@@ -40,10 +46,14 @@ impl ToolContext {
                         let mut chains_data: Vec<serde_json::Value> = Vec::new();
 
                         for chain in &all_balances.chains {
-                            let filtered_tokens: Vec<&crate::services::covalent::TokenBalance> =
+                            let filtered_tokens: Vec<&crate::services::okx::TokenBalance> =
                                 if let Some(ref symbol) = token_filter {
                                     let s = symbol.to_uppercase();
-                                    chain.tokens.iter().filter(|b| b.symbol.to_uppercase() == s).collect()
+                                    chain
+                                        .tokens
+                                        .iter()
+                                        .filter(|b| b.symbol.to_uppercase() == s)
+                                        .collect()
                                 } else {
                                     chain.tokens.iter().collect()
                                 };
@@ -79,25 +89,28 @@ impl ToolContext {
                         };
                     }
                     Err(e) => {
-                        tracing::warn!("Covalent multi-chain balance query failed: {}", e);
+                        tracing::warn!("OKX multi-chain balance query failed: {}", e);
                     }
                 }
             } else {
                 // Single chain query
                 let chain_id = chain_id_filter.unwrap();
-                match crate::services::covalent::get_balances(
+                match crate::services::okx::get_balances(
                     &self.app_state.http,
-                    api_key,
+                    creds,
                     &address,
                     chain_id,
                 )
                 .await
                 {
                     Ok(balances) => {
-                        let filtered: Vec<&crate::services::covalent::TokenBalance> =
+                        let filtered: Vec<&crate::services::okx::TokenBalance> =
                             if let Some(ref symbol) = token_filter {
                                 let s = symbol.to_uppercase();
-                                balances.iter().filter(|b| b.symbol.to_uppercase() == s).collect()
+                                balances
+                                    .iter()
+                                    .filter(|b| b.symbol.to_uppercase() == s)
+                                    .collect()
                             } else {
                                 balances.iter().collect()
                             };
@@ -107,10 +120,8 @@ impl ToolContext {
                             .filter_map(|b| b.usd.parse::<f64>().ok())
                             .sum();
 
-                        let tokens: Vec<serde_json::Value> = filtered
-                            .iter()
-                            .map(|b| token_balance_to_json(b))
-                            .collect();
+                        let tokens: Vec<serde_json::Value> =
+                            filtered.iter().map(|b| token_balance_to_json(b)).collect();
 
                         let result = serde_json::json!({
                             "address": address,
@@ -128,7 +139,7 @@ impl ToolContext {
                         };
                     }
                     Err(e) => {
-                        tracing::warn!("Covalent balance query failed, falling back to RPC: {}", e);
+                        tracing::warn!("OKX balance query failed, falling back to RPC: {}", e);
                     }
                 }
             }
@@ -173,7 +184,11 @@ impl ToolContext {
     }
 
     // --- get_token_info ---
-    pub(super) async fn execute_get_token_info(&self, tool_id: &str, params: Value) -> ToolExecutionResult {
+    pub(super) async fn execute_get_token_info(
+        &self,
+        tool_id: &str,
+        params: Value,
+    ) -> ToolExecutionResult {
         let token_symbol: String = parse_param(&params, "token").unwrap_or_else(|| "ETH".into());
         let chain_id_param: Option<u64> = parse_param(&params, "chain_id");
         let symbol_upper = token_symbol.to_uppercase();
@@ -189,15 +204,19 @@ impl ToolContext {
         // Get balance from Covalent if available
         let mut balance_info = serde_json::json!(null);
         let mut resolved_chain_id = chain_id;
-        if let (Some(api_key), Some(ref addr)) = (&self.app_state.covalent_api_key, &address_str) {
+        if let (Some(creds), Some(ref addr)) = (&self.app_state.okx_credentials, &address_str) {
             if chain_id == 0 {
                 // Multi-chain search: find which chain has this token
                 let all_chains: &[u64] = &[1, 137, 8453, 42161, 10, 56];
                 for &cid in all_chains {
-                    if let Ok(balances) = crate::services::covalent::get_balances(
-                        &self.app_state.http, api_key, addr, cid,
-                    ).await {
-                        if let Some(token) = balances.iter().find(|b| b.symbol.to_uppercase() == symbol_upper) {
+                    if let Ok(balances) =
+                        crate::services::okx::get_balances(&self.app_state.http, creds, addr, cid)
+                            .await
+                    {
+                        if let Some(token) = balances
+                            .iter()
+                            .find(|b| b.symbol.to_uppercase() == symbol_upper)
+                        {
                             resolved_chain_id = cid;
                             balance_info = serde_json::json!({
                                 "balance": token.balance_formatted,
@@ -214,10 +233,14 @@ impl ToolContext {
                     }
                 }
             } else {
-                if let Ok(balances) = crate::services::covalent::get_balances(
-                    &self.app_state.http, api_key, addr, chain_id,
-                ).await {
-                    if let Some(token) = balances.iter().find(|b| b.symbol.to_uppercase() == symbol_upper) {
+                if let Ok(balances) =
+                    crate::services::okx::get_balances(&self.app_state.http, creds, addr, chain_id)
+                        .await
+                {
+                    if let Some(token) = balances
+                        .iter()
+                        .find(|b| b.symbol.to_uppercase() == symbol_upper)
+                    {
                         resolved_chain_id = chain_id;
                         balance_info = serde_json::json!({
                             "balance": token.balance_formatted,
@@ -238,17 +261,22 @@ impl ToolContext {
         }
 
         // Get price from PriceCache (DeFiLlama primary, CoinGecko fallback)
-        let mut price_usd = self.app_state.price_cache
+        let mut price_usd = self
+            .app_state
+            .price_cache
             .get_usd_price(&self.app_state.http, &symbol_upper)
             .await;
 
         // Fallback: if symbol lookup failed, try by contract address via DeFiLlama
         if price_usd.is_none() {
-            let contract_addr = balance_info.get("contract_address")
+            let contract_addr = balance_info
+                .get("contract_address")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty());
             if let Some(addr) = contract_addr {
-                price_usd = self.app_state.price_cache
+                price_usd = self
+                    .app_state
+                    .price_cache
                     .get_token_price_by_address(&self.app_state.http, resolved_chain_id, addr)
                     .await;
             }
@@ -328,7 +356,14 @@ impl ToolContext {
             "params": [address, "latest"],
             "id": 1
         });
-        let resp = self.app_state.http.post(rpc_url).json(&body).send().await.ok()?;
+        let resp = self
+            .app_state
+            .http
+            .post(rpc_url)
+            .json(&body)
+            .send()
+            .await
+            .ok()?;
         let json = resp.json::<serde_json::Value>().await.ok()?;
         let hex = json.get("result")?.as_str()?;
         u128::from_str_radix(hex.strip_prefix("0x").unwrap_or(hex), 16).ok()
@@ -343,7 +378,14 @@ impl ToolContext {
             "params": [],
             "id": 1
         });
-        let resp = self.app_state.http.post(rpc_url).json(&body).send().await.ok()?;
+        let resp = self
+            .app_state
+            .http
+            .post(rpc_url)
+            .json(&body)
+            .send()
+            .await
+            .ok()?;
         let json = resp.json::<serde_json::Value>().await.ok()?;
         let hex = json.get("result")?.as_str()?;
         u128::from_str_radix(hex.strip_prefix("0x").unwrap_or(hex), 16).ok()

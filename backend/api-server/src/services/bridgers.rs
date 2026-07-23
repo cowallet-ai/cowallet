@@ -240,7 +240,11 @@ pub async fn get_quote(
 
     tracing::info!(
         "[Bridgers] quote {}({}) -> {}({}) amount={}",
-        from_coin_code, from_chain, to_coin_code, to_chain, from_token_amount
+        from_coin_code,
+        from_chain,
+        to_coin_code,
+        to_chain,
+        from_token_amount
     );
 
     let mut body = serde_json::json!({
@@ -267,21 +271,26 @@ pub async fn get_quote(
             let h = http_c.clone();
             let b = body_c.clone();
             async move {
-                let r = h.post(format!("{}/api/sswap/quote", BRIDGERS_API_BASE))
-                    .json(&b).send().await
+                let r = h
+                    .post(format!("{}/api/sswap/quote", BRIDGERS_API_BASE))
+                    .json(&b)
+                    .send()
+                    .await
                     .map_err(|e| format!("Bridgers quote request failed: {}", e))?;
                 let status = r.status();
                 if !status.is_success() {
                     let t = r.text().await.unwrap_or_default();
                     return Err(format!("Bridgers API returned {}: {}", status, t));
                 }
-                r.json::<BridgersResponse<QuoteDataWrapper>>().await
+                r.json::<BridgersResponse<QuoteDataWrapper>>()
+                    .await
                     .map_err(|e| format!("Bridgers quote parse error: {}", e))
             }
         },
         is_retryable_error,
         "bridgers_get_quote",
-    ).await?;
+    )
+    .await?;
 
     if !is_success_code(&resp.res_code) {
         let msg = resp.res_msg.unwrap_or_else(|| "Unknown error".into());
@@ -289,32 +298,43 @@ pub async fn get_quote(
     }
 
     let wrapper = resp.data.ok_or("Bridgers returned empty quote data")?;
-    let data = wrapper.tx_data.ok_or("Bridgers returned empty txData in quote")?;
+    let data = wrapper
+        .tx_data
+        .ok_or("Bridgers returned empty txData in quote")?;
 
     tracing::debug!("[Bridgers] quote raw data: {:?}", data);
 
     let buy_amount = value_to_string(&data.to_token_amount).unwrap_or_else(|| "0".into());
-    let buy_amount_min = value_to_string(&data.amount_out_min).unwrap_or_else(|| buy_amount.clone());
+    let buy_amount_min =
+        value_to_string(&data.amount_out_min).unwrap_or_else(|| buy_amount.clone());
     // Bridgers' instantRate is already buy-per-sell in human-readable terms. Prefer it.
     // Fallback: compute from human buy_amount / human sell_amount (from_token_amount is RAW wei,
     // so convert it down by from_token_decimal first).
     let price = value_to_string(&data.instant_rate)
         .filter(|r| r.parse::<f64>().map(|v| v > 0.0).unwrap_or(false))
         .unwrap_or_else(|| {
-            let from_decimals = data.from_token_decimal
+            let from_decimals = data
+                .from_token_decimal
                 .as_ref()
                 .and_then(|v| v.as_u64())
                 .unwrap_or(18) as i32;
             let sell_raw: f64 = from_token_amount.parse().unwrap_or(0.0);
             let sell_human = sell_raw / 10f64.powi(from_decimals);
             let buy_f: f64 = buy_amount.parse().unwrap_or(0.0);
-            if sell_human > 0.0 { format!("{:.10}", buy_f / sell_human) } else { "0".into() }
+            if sell_human > 0.0 {
+                format!("{:.10}", buy_f / sell_human)
+            } else {
+                "0".into()
+            }
         });
-    let fee_rate = data.fee.map(|v| match v {
-        Value::Number(n) => n.to_string(),
-        Value::String(s) => s,
-        _ => "0.002".into(),
-    }).unwrap_or_else(|| "0.002".into());
+    let fee_rate = data
+        .fee
+        .map(|v| match v {
+            Value::Number(n) => n.to_string(),
+            Value::String(s) => s,
+            _ => "0.002".into(),
+        })
+        .unwrap_or_else(|| "0.002".into());
     let chain_fee = value_to_string(&data.chain_fee).unwrap_or_else(|| "0".into());
 
     Ok(SwapQuote {
@@ -333,7 +353,8 @@ pub async fn get_quote(
         deposit_min: value_to_string(&data.deposit_min),
         deposit_max: value_to_string(&data.deposit_max),
         estimated_time: data.estimated_time.as_ref().and_then(|v| {
-            v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            v.as_u64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
         }),
     })
 }
@@ -363,16 +384,27 @@ pub async fn build_swap_tx(
     // Sanitize amounts: Bridgers requires integer strings (no decimals)
     let clean_from_amount = sanitize_amount(from_token_amount);
     let clean_amount_out_min = sanitize_amount(amount_out_min);
-    // If amountOutMin is "0" or empty, use "1" (accept any positive output)
-    let final_amount_out_min = if clean_amount_out_min == "0" || clean_amount_out_min.is_empty() {
-        "1".to_string()
-    } else {
-        clean_amount_out_min.clone()
-    };
+    // Fail closed on a missing minimum-output. Previously "0"/empty was coerced
+    // to "1" (accept ANY positive output), which is ~100% slippage — a bad or
+    // manipulated quote, or an MEV sandwich, could take almost the entire trade.
+    // Since `to`/`data`/`value` are taken verbatim from the Bridgers response,
+    // the min-out is the only slippage protection, so we require a real one.
+    if clean_amount_out_min == "0" || clean_amount_out_min.is_empty() {
+        return Err(
+            "swap quote returned no minimum output amount; refusing to build a \
+             transaction with no slippage protection"
+                .to_string(),
+        );
+    }
+    let final_amount_out_min = clean_amount_out_min.clone();
 
     tracing::info!(
         "[Bridgers] swap fromTokenAmount={} amountOutMin={} slippage={} (raw inputs: {} / {})",
-        clean_from_amount, final_amount_out_min, slippage, from_token_amount, amount_out_min
+        clean_from_amount,
+        final_amount_out_min,
+        slippage,
+        from_token_amount,
+        amount_out_min
     );
 
     let body = serde_json::json!({
@@ -400,21 +432,26 @@ pub async fn build_swap_tx(
             let h = http_c.clone();
             let b = body_c.clone();
             async move {
-                let r = h.post(format!("{}/api/sswap/swap", BRIDGERS_API_BASE))
-                    .json(&b).send().await
+                let r = h
+                    .post(format!("{}/api/sswap/swap", BRIDGERS_API_BASE))
+                    .json(&b)
+                    .send()
+                    .await
                     .map_err(|e| format!("Bridgers swap request failed: {}", e))?;
                 let status = r.status();
                 if !status.is_success() {
                     let t = r.text().await.unwrap_or_default();
                     return Err(format!("Bridgers API returned {}: {}", status, t));
                 }
-                r.json::<BridgersResponse<SwapDataWrapper>>().await
+                r.json::<BridgersResponse<SwapDataWrapper>>()
+                    .await
                     .map_err(|e| format!("Bridgers swap parse error: {}", e))
             }
         },
         is_retryable_error,
         "bridgers_build_swap",
-    ).await?;
+    )
+    .await?;
 
     if !is_success_code(&resp.res_code) {
         let msg = resp.res_msg.unwrap_or_else(|| "Unknown error".into());
@@ -444,14 +481,14 @@ pub async fn build_swap_tx(
     })
 }
 
-pub async fn get_tokens(
-    http: &Client,
-    chain: Option<&str>,
-) -> Result<Vec<BridgersToken>, String> {
+pub async fn get_tokens(http: &Client, chain: Option<&str>) -> Result<Vec<BridgersToken>, String> {
     let body = serde_json::json!({ "chain": chain });
 
-    let resp = http.post(format!("{}/api/exchangeRecord/getToken", BRIDGERS_API_BASE))
-        .json(&body).send().await
+    let resp = http
+        .post(format!("{}/api/exchangeRecord/getToken", BRIDGERS_API_BASE))
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("Bridgers getToken request failed: {}", e))?;
 
     if !resp.status().is_success() {
@@ -459,13 +496,14 @@ pub async fn get_tokens(
         return Err(format!("Bridgers getToken error: {}", t));
     }
 
-    let parsed: BridgersResponse<Value> = resp.json().await
+    let parsed: BridgersResponse<Value> = resp
+        .json()
+        .await
         .map_err(|e| format!("Bridgers getToken parse error: {}", e))?;
 
     let data = parsed.data.unwrap_or(Value::Object(Default::default()));
     let tokens_val = data.get("tokens").cloned().unwrap_or(Value::Array(vec![]));
-    let tokens: Vec<BridgersToken> = serde_json::from_value(tokens_val)
-        .unwrap_or_default();
+    let tokens: Vec<BridgersToken> = serde_json::from_value(tokens_val).unwrap_or_default();
 
     Ok(tokens)
 }
@@ -508,8 +546,14 @@ pub async fn upload_order_hash(
         "sourceFlag": source_flag,
     });
 
-    let resp = http.post(format!("{}/api/exchangeRecord/updateDataAndStatus", BRIDGERS_API_BASE))
-        .json(&body).send().await
+    let resp = http
+        .post(format!(
+            "{}/api/exchangeRecord/updateDataAndStatus",
+            BRIDGERS_API_BASE
+        ))
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("Bridgers upload order failed: {}", e))?;
 
     if !resp.status().is_success() {
@@ -517,25 +561,35 @@ pub async fn upload_order_hash(
         return Err(format!("Bridgers upload order error: {}", t));
     }
 
-    let parsed: BridgersResponse<Value> = resp.json().await
+    let parsed: BridgersResponse<Value> = resp
+        .json()
+        .await
         .map_err(|e| format!("Bridgers upload order parse error: {}", e))?;
 
-    let order_id = parsed.data
-        .and_then(|d| d.get("orderId").and_then(|v| v.as_str()).map(|s| s.to_string()))
+    let order_id = parsed
+        .data
+        .and_then(|d| {
+            d.get("orderId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
         .or_else(|| parsed.res_msg.clone())
         .unwrap_or_else(|| "unknown".into());
 
     Ok(order_id)
 }
 
-pub async fn get_order_status(
-    http: &Client,
-    order_id: &str,
-) -> Result<OrderStatus, String> {
+pub async fn get_order_status(http: &Client, order_id: &str) -> Result<OrderStatus, String> {
     let body = serde_json::json!({ "orderId": order_id });
 
-    let resp = http.post(format!("{}/api/exchangeRecord/getTransDataById", BRIDGERS_API_BASE))
-        .json(&body).send().await
+    let resp = http
+        .post(format!(
+            "{}/api/exchangeRecord/getTransDataById",
+            BRIDGERS_API_BASE
+        ))
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("Bridgers order status request failed: {}", e))?;
 
     if !resp.status().is_success() {
@@ -543,14 +597,25 @@ pub async fn get_order_status(
         return Err(format!("Bridgers order status error: {}", t));
     }
 
-    let parsed: BridgersResponse<Value> = resp.json().await
+    let parsed: BridgersResponse<Value> = resp
+        .json()
+        .await
         .map_err(|e| format!("Bridgers order status parse error: {}", e))?;
 
     let data = parsed.data.unwrap_or(Value::Object(Default::default()));
-    let status = data.get("status").and_then(|v| v.as_str())
-        .unwrap_or("pending").to_string();
-    let from_hash = data.get("fromHash").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let to_hash = data.get("toHash").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let status = data
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("pending")
+        .to_string();
+    let from_hash = data
+        .get("fromHash")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let to_hash = data
+        .get("toHash")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     Ok(OrderStatus {
         order_id: order_id.to_string(),
@@ -576,8 +641,14 @@ pub async fn query_records(
         "fromAddress": from_address,
     });
 
-    let resp = http.post(format!("{}/api/exchangeRecord/getTransData", BRIDGERS_API_BASE))
-        .json(&body).send().await
+    let resp = http
+        .post(format!(
+            "{}/api/exchangeRecord/getTransData",
+            BRIDGERS_API_BASE
+        ))
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("Bridgers queryRecords request failed: {}", e))?;
 
     if !resp.status().is_success() {
@@ -585,7 +656,9 @@ pub async fn query_records(
         return Err(format!("Bridgers queryRecords error: {}", t));
     }
 
-    let parsed: BridgersResponse<Value> = resp.json().await
+    let parsed: BridgersResponse<Value> = resp
+        .json()
+        .await
         .map_err(|e| format!("Bridgers queryRecords parse error: {}", e))?;
 
     Ok(parsed.data.unwrap_or(Value::Array(vec![])))
@@ -599,7 +672,9 @@ pub fn amount_to_raw(amount: &str, decimals: u32) -> Result<String, String> {
         return Err("Amount must be positive".to_string());
     }
     let negative = amt.starts_with('-');
-    if negative { return Err("Amount must be positive".to_string()); }
+    if negative {
+        return Err("Amount must be positive".to_string());
+    }
 
     let (integer, fraction) = match amt.split_once('.') {
         Some((i, f)) => (i, f.trim_end_matches('0')),
@@ -627,7 +702,11 @@ pub fn amount_to_raw(amount: &str, decimals: u32) -> Result<String, String> {
 pub fn raw_to_amount(raw: &str, decimals: u32) -> String {
     let value: f64 = raw.parse().unwrap_or(0.0);
     let amount = value / 10f64.powi(decimals as i32);
-    if decimals <= 6 { format!("{:.2}", amount) } else { format!("{:.6}", amount) }
+    if decimals <= 6 {
+        format!("{:.2}", amount)
+    } else {
+        format!("{:.6}", amount)
+    }
 }
 
 fn sanitize_amount(s: &str) -> String {
@@ -635,11 +714,19 @@ fn sanitize_amount(s: &str) -> String {
     match s.split_once('.') {
         Some((int, _)) => {
             let t = int.trim_start_matches('0');
-            if t.is_empty() { "0".to_string() } else { t.to_string() }
+            if t.is_empty() {
+                "0".to_string()
+            } else {
+                t.to_string()
+            }
         }
         None => {
             let t = s.trim_start_matches('0');
-            if t.is_empty() { "0".to_string() } else { t.to_string() }
+            if t.is_empty() {
+                "0".to_string()
+            } else {
+                t.to_string()
+            }
         }
     }
 }

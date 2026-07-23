@@ -1,9 +1,8 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Extension,
+    Extension, Json, Router,
 };
 use chrono;
 use serde::{Deserialize, Serialize};
@@ -24,9 +23,9 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 pub struct UploadShardRequest {
-    location: String,  // 'device', 'server', 'backup'
+    location: String, // 'device' or 'backup' (the 'server' shard is DKG-owned, not uploadable here)
     party_index: i16,
-    shard_hex: String,  // Hex-encoded shard data (33 bytes for Shamir)
+    shard_hex: String, // Hex-encoded shard data (33 bytes for Shamir)
 }
 
 #[derive(Serialize)]
@@ -74,14 +73,19 @@ async fn shard_status(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let rows: Vec<(String, i16, String, Option<chrono::DateTime<chrono::Utc>>, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+    let rows: Vec<(
+        String,
+        i16,
+        String,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<chrono::DateTime<chrono::Utc>>,
+    )> = sqlx::query_as(
         "SELECT location, party_index, status, last_used, last_verified
          FROM shard_metadata
          WHERE user_id = $1
-         ORDER BY party_index"
+         ORDER BY party_index",
     )
     .bind(user_id)
     .fetch_all(db)
@@ -91,15 +95,18 @@ async fn shard_status(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let shards = rows.into_iter().map(|(location, party_index, status, last_used, last_verified)| {
-        ShardStatusItem {
-            location,
-            party_index,
-            status,
-            last_used: last_used.map(|t| t.to_rfc3339()),
-            last_verified: last_verified.map(|t| t.to_rfc3339()),
-        }
-    }).collect();
+    let shards = rows
+        .into_iter()
+        .map(
+            |(location, party_index, status, last_used, last_verified)| ShardStatusItem {
+                location,
+                party_index,
+                status,
+                last_used: last_used.map(|t| t.to_rfc3339()),
+                last_verified: last_verified.map(|t| t.to_rfc3339()),
+            },
+        )
+        .collect();
 
     Ok(Json(ShardStatusResponse {
         shards,
@@ -118,18 +125,20 @@ async fn upload_shard(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    // Validate location
-    let valid_locations = ["device", "server", "backup"];
+    // Validate location. The 'server' shard is owned exclusively by the DKG
+    // participant (encrypted with AES-GCM + AAD identity binding via
+    // MpcParticipant/shard_store); allowing it here would let a REST upload
+    // overwrite the DKG-managed row with an unbound, incompatibly-encrypted blob
+    // and brick signing.
+    let valid_locations = ["device", "backup"];
     if !valid_locations.contains(&body.location.as_str()) {
         return Err(StatusCode::BAD_REQUEST);
     }
 
     // Decode hex shard
-    let shard_bytes = hex::decode(&body.shard_hex)
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let shard_bytes = hex::decode(&body.shard_hex).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     if shard_bytes.len() != 33 {
         // Shamir share: 1 byte x + 32 bytes y
@@ -137,11 +146,10 @@ async fn upload_shard(
     }
 
     // Encrypt the shard
-    let encrypted = encryption.encrypt(&shard_bytes)
-        .map_err(|e| {
-            tracing::error!("Encryption failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let encrypted = encryption.encrypt(&shard_bytes).map_err(|e| {
+        tracing::error!("Encryption failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // Upsert shard metadata + encrypted content
     let shard_id: (Uuid,) = sqlx::query_as(
@@ -154,7 +162,7 @@ async fn upload_shard(
              encryption_key_id = EXCLUDED.encryption_key_id,
              status = 'healthy',
              last_verified = NOW()
-         RETURNING id"
+         RETURNING id",
     )
     .bind(user_id)
     .bind(&body.location)
@@ -192,28 +200,27 @@ async fn get_shard(
         .require_db()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // Require client ephemeral key for envelope encryption
-    let client_key_hex = query.client_ephemeral_key.as_deref()
-        .ok_or_else(|| {
-            tracing::warn!("Shard retrieval without client_ephemeral_key rejected");
-            StatusCode::BAD_REQUEST
-        })?;
+    let client_key_hex = query.client_ephemeral_key.as_deref().ok_or_else(|| {
+        tracing::warn!("Shard retrieval without client_ephemeral_key rejected");
+        StatusCode::BAD_REQUEST
+    })?;
 
-    let client_key_bytes = hex::decode(client_key_hex)
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let client_key_bytes = hex::decode(client_key_hex).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Parse client's ephemeral public key (secp256k1)
-    let client_pk = k256::PublicKey::from_sec1_bytes(&client_key_bytes)
-        .map_err(|_| {
-            tracing::error!("Invalid client ephemeral public key");
-            StatusCode::BAD_REQUEST
-        })?;
+    let client_pk = k256::PublicKey::from_sec1_bytes(&client_key_bytes).map_err(|_| {
+        tracing::error!("Invalid client ephemeral public key");
+        StatusCode::BAD_REQUEST
+    })?;
 
-    // Validate location
-    let valid_locations = ["device", "server", "backup"];
+    // Validate location. 'server' shards are DKG-owned and encrypted with
+    // AES-GCM + AAD identity binding (see upload_shard); they can never be read
+    // back through this transport path, which decrypts with the unbound
+    // 'default-key' context and would fail.
+    let valid_locations = ["device", "backup"];
     if !valid_locations.contains(&location.as_str()) {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -222,7 +229,7 @@ async fn get_shard(
     let row: (Vec<u8>, Vec<u8>, i16, String) = sqlx::query_as(
         "SELECT encrypted_shard, nonce, party_index, status
          FROM shard_metadata
-         WHERE user_id = $1 AND location = $2"
+         WHERE user_id = $1 AND location = $2",
     )
     .bind(user_id)
     .bind(&location)
@@ -252,16 +259,15 @@ async fn get_shard(
         ciphertext: encrypted_shard,
     };
 
-    let decrypted = encryption.decrypt(&encrypted)
-        .map_err(|e| {
-            tracing::error!("Decryption failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let decrypted = encryption.decrypt(&encrypted).map_err(|e| {
+        tracing::error!("Decryption failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // Update last_used timestamp
     let _ = sqlx::query(
         "UPDATE shard_metadata SET last_used = NOW()
-         WHERE user_id = $1 AND location = $2"
+         WHERE user_id = $1 AND location = $2",
     )
     .bind(user_id)
     .bind(&location)
@@ -269,23 +275,30 @@ async fn get_shard(
     .await;
 
     // Envelope encryption: ECDH with client's ephemeral key, then AES-GCM
+    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
+    use hkdf::Hkdf;
     use k256::ecdh::EphemeralSecret;
-    use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
-    use sha2::{Sha256, Digest as Sha256Digest};
+    use sha2::Sha256;
 
     let server_secret = EphemeralSecret::random(&mut rand::thread_rng());
     let server_pk = server_secret.public_key();
     let shared_secret = server_secret.diffie_hellman(&client_pk);
 
-    // Derive AES key from shared secret via SHA-256
-    let aes_key = Sha256::digest(shared_secret.raw_secret_bytes());
-    let cipher = Aes256Gcm::new_from_slice(&aes_key)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Derive AES-256 key via HKDF-SHA256 (RFC 5869).
+    // salt=None (uses HKDF zero-length salt, equivalent to all-zeros),
+    // info binds the key to this protocol context.
+    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+    let mut aes_key_bytes = [0u8; 32];
+    hkdf.expand(b"cowallet-shard-transport-v1", &mut aes_key_bytes)
+        .expect("HKDF expand: 32-byte output is always valid");
+    let cipher =
+        Aes256Gcm::new_from_slice(&aes_key_bytes).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let transport_nonce_bytes: [u8; 12] = rand::random();
     let nonce_for_transport = aes_gcm::Nonce::from_slice(&transport_nonce_bytes);
 
-    let encrypted_for_transport = cipher.encrypt(nonce_for_transport, decrypted.as_slice())
+    let encrypted_for_transport = cipher
+        .encrypt(nonce_for_transport, decrypted.as_slice())
         .map_err(|_| {
             tracing::error!("Transport encryption failed");
             StatusCode::INTERNAL_SERVER_ERROR
@@ -320,11 +333,13 @@ async fn store_backup_hash(
     Extension(claims): Extension<Claims>,
     Json(body): Json<StoreBackupHashRequest>,
 ) -> Result<Json<StoreBackupHashResponse>, StatusCode> {
-    let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let db = state
+        .require_db()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let hash_bytes = hex::decode(&body.backup_shard_hash_hex)
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let hash_bytes =
+        hex::decode(&body.backup_shard_hash_hex).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     if hash_bytes.len() != 32 {
         return Err(StatusCode::BAD_REQUEST);
@@ -332,7 +347,7 @@ async fn store_backup_hash(
 
     sqlx::query(
         "UPDATE shard_metadata SET backup_shard_hash = $1
-         WHERE user_id = $2 AND location = 'server'"
+         WHERE user_id = $2 AND location = 'server'",
     )
     .bind(&hash_bytes)
     .bind(user_id)

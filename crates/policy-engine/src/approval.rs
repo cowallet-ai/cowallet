@@ -220,12 +220,7 @@ mod tests {
 
     #[test]
     fn test_rejection_when_not_enough_approvers_left() {
-        let approvers = vec![
-            "alice".into(),
-            "bob".into(),
-            "carol".into(),
-            "dave".into(),
-        ];
+        let approvers = vec!["alice".into(), "bob".into(), "carol".into(), "dave".into()];
         let mut req = ApprovalRequest::new("tx-008".into(), approvers, 3, 24);
 
         req.add_approval("alice", false);

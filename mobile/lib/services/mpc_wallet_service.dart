@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:convert/convert.dart';
 import '../api/mpc_api.dart';
 import '../bridge/mpc_bridge.dart';
@@ -8,8 +8,11 @@ import '../network/mpc_websocket.dart';
 import '../platform/cloud_backup.dart';
 import '../platform/secure_hardware.dart';
 import '../utils/secure_storage.dart';
+import '../utils/mpc_hmac.dart';
 import 'backup_shard_service.dart';
+import 'locator.dart';
 import 'key_health_service.dart';
+import 'step_timer.dart';
 import 'wallet_service.dart';
 import 'mpc_session_store.dart';
 
@@ -20,6 +23,9 @@ import 'mpc_session_store.dart';
 /// - Party 2: 备份分片 (iCloud Keychain / Google Cloud Backup / 用户离线保管)
 class MpcWalletService implements WalletService {
   String? _currentSessionId;
+  /// Per-session HMAC key (hex) returned by create_session. Used to
+  /// authenticate server-bound MPC messages (F-004).
+  String? _currentHmacKey;
   BackupResult? _lastBackupResult;
   List<int>? _lastBackupShard;
   bool _backupNeedsReExport = false;
@@ -36,6 +42,12 @@ class MpcWalletService implements WalletService {
   /// 执行完整的 DKG 密钥生成协议
   /// [walletId] 可选，用于多钱包场景
   Future<WalletInfo> runDkg({String? walletId}) async {
+    // Ensure the Rust FFI bridge is ready before any DKG FFI call. Background
+    // init may not have finished (or may have timed out) when the user reaches
+    // wallet creation; this awaits/performs init idempotently to avoid the
+    // "flutter_rust_bridge has not been initialized" race.
+    await MpcBridge.ensureInitialized();
+
     final sessionResult = await MpcApi.createSession(
       sessionType: 'keygen',
       parties: [_deviceParty, _serverParty],
@@ -49,6 +61,7 @@ class MpcWalletService implements WalletService {
 
     final sessionId = sessionResult.data!['session_id'] as String;
     _currentSessionId = sessionId;
+    _currentHmacKey = sessionResult.data!['hmac_key'] as String?;
     _lastMessageId = 0;
 
     final ws = MpcWebSocket(sessionId: sessionId, partyIndex: _deviceParty);
@@ -85,10 +98,8 @@ class MpcWalletService implements WalletService {
       final round1Payload = List<int>.from(round1Msg['payload'] as List);
 
       // Send Round 1 via HTTP (reliable delivery)
-      await MpcApi.sendMessage(
+      await _sendToServer(
         sessionId: sessionId,
-        fromParty: _deviceParty,
-        toParty: _serverParty,
         round: 1,
         payload: round1Payload,
       );
@@ -129,10 +140,8 @@ class MpcWalletService implements WalletService {
         if (to == _serverParty) {
           final round2Payload = List<int>.from(msg['payload'] as List);
           // Send Round 2 via HTTP (reliable delivery)
-          await MpcApi.sendMessage(
+          await _sendToServer(
             sessionId: sessionId,
-            fromParty: _deviceParty,
-            toParty: _serverParty,
             round: 2,
             payload: round2Payload,
           );
@@ -158,9 +167,9 @@ class MpcWalletService implements WalletService {
       // The UI will prompt the user to choose a storage method.
       try {
         _lastBackupShard = await _deriveBackupShard(localSessionId);
-        print('[MpcWalletService] Backup shard derived successfully (${_lastBackupShard!.length} bytes)');
+        debugPrint('[MpcWalletService] Backup shard derived successfully (${_lastBackupShard!.length} bytes)');
       } catch (e) {
-        print('[MpcWalletService] Backup shard derivation skipped: $e');
+        debugPrint('[MpcWalletService] Backup shard derivation skipped: $e');
       }
 
       await SecureStorage.save('mpc_address', walletInfo.address);
@@ -169,9 +178,11 @@ class MpcWalletService implements WalletService {
       // Fresh DKG: clear stale recovery commitment so verification uses Lagrange
       await SecureStorage.delete('mpc_server_commitment');
 
-      // Persist device shard to hardware-backed storage and public key to secure storage
-      final deviceShardBytes = await MpcBridge.exportDeviceShard();
-      await SecureHardware.storeDeviceShard(Uint8List.fromList(deviceShardBytes));
+      // Save the public key. The device shard is intentionally NOT persisted
+      // here: storing it under a hardware-backed (biometric-bound) key would
+      // trigger a native prompt before the user reaches the protection screen.
+      // The shard stays in Rust memory; the onboarding flow calls
+      // persistDeviceShard() once the hardware key store is initialized.
       final pubKeyHex = walletInfo.publicKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
       await SecureStorage.save('mpc_public_key', pubKeyHex);
 
@@ -181,7 +192,7 @@ class MpcWalletService implements WalletService {
       return walletInfo;
     } catch (e) {
       // Save state on error for potential recovery
-      print('[MpcWalletService] DKG error: $e');
+      debugPrint('[MpcWalletService] DKG error: $e');
       throw MpcSessionInterruptedException(
         'DKG session interrupted: $e',
         sessionState: await MpcSessionStore.loadSession(),
@@ -191,25 +202,39 @@ class MpcWalletService implements WalletService {
     }
   }
 
+  /// Persist the device shard (Party 0) once the hardware key store is ready.
+  /// Called by the onboarding flow after DKG — NOT during DKG — so the native
+  /// keystore prompt only appears when the user reaches the protection screen.
+  ///
+  /// The shard is exported fresh from Rust memory (kept there by runDkg) and
+  /// stored under the hardware-backed, auth-bound key (biometric / device
+  /// credential). Safe to call again on re-provision.
+  Future<void> persistDeviceShard() async {
+    final deviceShardBytes = await MpcBridge.exportDeviceShard();
+    await SecureHardware.storeDeviceShard(Uint8List.fromList(deviceShardBytes));
+  }
+
   /// 按需加载设备分片到 Rust 内存（签名前调用）
   /// Public so MpcSessionManager can call it during sign recovery.
+  ///
+  /// The device shard is always hardware-backed: loading it fires the native
+  /// keystore prompt (biometric, with device-passcode fallback) to authorize
+  /// the auth-bound key. That prompt IS the authentication for shard ops.
   Future<void> ensureShardLoaded() async {
-    final shardBytes = await SecureHardware.loadDeviceShard();
-
-    if (shardBytes == null || shardBytes.isEmpty) {
-      throw MpcException('Device shard not found in secure hardware');
-    }
-
     final pubKeyHex = await SecureStorage.get('mpc_public_key');
     if (pubKeyHex == null || pubKeyHex.isEmpty) {
       throw MpcException('Public key not found');
     }
-
     final publicKey = List<int>.generate(
       pubKeyHex.length ~/ 2,
       (i) => int.parse(pubKeyHex.substring(i * 2, i * 2 + 2), radix: 16),
     );
 
+    // Hardware path (biometric / device credential).
+    final shardBytes = await SecureHardware.loadDeviceShard();
+    if (shardBytes == null || shardBytes.isEmpty) {
+      throw MpcException('Device shard not found in secure hardware');
+    }
     await MpcBridge.importDeviceShard(
       shardBytes: shardBytes.toList(),
       publicKey: publicKey,
@@ -266,7 +291,9 @@ class MpcWalletService implements WalletService {
   }
 
   Future<List<int>> _runSignInternal(List<int> msgHash, {String? walletId, SignTxFields? txFields}) async {
+    final timer = StepTimer('MpcSign');
     await ensureShardLoaded();
+    timer.mark('ensureShardLoaded');
 
     final sessionResult = await MpcApi.createSession(
       sessionType: 'sign',
@@ -274,6 +301,7 @@ class MpcWalletService implements WalletService {
       threshold: 2,
       walletId: walletId,
     );
+    timer.mark('createSession');
 
     if (!sessionResult.isSuccess || sessionResult.data == null) {
       throw MpcException('Failed to create sign session: ${sessionResult.errorMessage}');
@@ -281,14 +309,17 @@ class MpcWalletService implements WalletService {
 
     final remoteSessionId = sessionResult.data!['session_id'] as String;
     _currentSessionId = remoteSessionId;
+    _currentHmacKey = sessionResult.data!['hmac_key'] as String?;
     _lastMessageId = 0;
 
     final ws = MpcWebSocket(sessionId: remoteSessionId, partyIndex: _deviceParty);
     try {
       await ws.connect();
+      timer.mark('wsConnect');
 
       final round1 = await MpcBridge.signGenerateRound1(msgHash);
       final localSessionId = round1.sessionId;
+      timer.mark('localRound1Gen');
 
       // Save initial session state for recovery
       await MpcSessionStore.saveSession(MpcSessionState(
@@ -303,19 +334,19 @@ class MpcWalletService implements WalletService {
       // Send Round 1: structured JSON {r0, msg_hash, tx{...}} so the server
       // can independently recompute the signing hash and enforce policy.
       final round1Json = buildSignRound1Payload(round1.payload, msgHash, txFields);
-      await MpcApi.sendMessage(
+      await _sendToServer(
         sessionId: remoteSessionId,
-        fromParty: _deviceParty,
-        toParty: _serverParty,
         round: 1,
         payload: round1Json,
       );
+      timer.mark('sendRound1');
 
       await MpcSessionStore.updateCurrentRound(1);
 
       // Wait for server's Round 1 (R_1) — server tags its R1 reply round=1
       final serverR1 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 1);
       final serverR1Payload = serverR1.first.payload;
+      timer.mark('waitServerR1');
 
       // Sync _lastMessageId so Round 2 fallback skips Round 1 messages
       await _syncLastMessageId(remoteSessionId);
@@ -325,26 +356,28 @@ class MpcWalletService implements WalletService {
         localSessionId,
         serverR1Payload,
       );
+      timer.mark('processR1+genR2');
 
       // Send DeviceContribution via HTTP (reliable delivery)
-      await MpcApi.sendMessage(
+      await _sendToServer(
         sessionId: remoteSessionId,
-        fromParty: _deviceParty,
-        toParty: _serverParty,
         round: 2,
         payload: round2Payload,
       );
+      timer.mark('sendRound2');
 
       await MpcSessionStore.updateCurrentRound(2);
 
       // Wait for server's signature — server tags ServerSignature round=3 (round+1)
       final serverR2 = await _waitForMessages(ws, expectedCount: 1, expectedRound: 3);
       final serverR2Payload = serverR2.first.payload;
+      timer.mark('waitServerSig');
 
       final signature = await MpcBridge.signProcessRound2(
         localSessionId,
         serverR2Payload,
       );
+      timer.mark('processR2+finalize');
 
       if (signature.length != 65) {
         throw MpcException('Invalid signature length: ${signature.length}');
@@ -360,13 +393,14 @@ class MpcWalletService implements WalletService {
 
       return signature;
     } catch (e) {
-      print('[MpcWalletService] Sign error: $e');
+      debugPrint('[MpcWalletService] Sign error: $e');
       throw MpcSessionInterruptedException(
         'Sign session interrupted: $e',
         sessionState: await MpcSessionStore.loadSession(),
       );
     } finally {
       await ws.disconnect();
+      timer.done();
     }
   }
 
@@ -381,20 +415,10 @@ class MpcWalletService implements WalletService {
   ///   on restart → use backup shard recovery.
   /// - After hardware persist: device done; backup refresh is best-effort
   Future<WalletInfo> runReshare({String? walletId}) async {
-    // Ensure device shard is loaded into Rust memory
-    final shardBytes = await SecureHardware.loadDeviceShard();
-    if (shardBytes == null || shardBytes.isEmpty) {
-      throw MpcException('Device shard not found in secure storage');
-    }
-    final pubKeyHex = await SecureStorage.get('mpc_public_key');
-    final pubKey = pubKeyHex != null && pubKeyHex.isNotEmpty
-        ? List<int>.generate(pubKeyHex.length ~/ 2,
-            (i) => int.parse(pubKeyHex.substring(i * 2, i * 2 + 2), radix: 16))
-        : <int>[];
-    await MpcBridge.importDeviceShard(
-      shardBytes: shardBytes.toList(),
-      publicKey: pubKey,
-    );
+    // Ensure device shard is loaded into Rust memory. Uses the same loader as
+    // signing: the hardware-backed shard load fires the native keystore prompt
+    // (biometric, with device-passcode fallback) to authorize the key.
+    await ensureShardLoaded();
 
     final sessionResult = await MpcApi.createSession(
       sessionType: 'reshare',
@@ -409,6 +433,7 @@ class MpcWalletService implements WalletService {
 
     final remoteSessionId = sessionResult.data!['session_id'] as String;
     _currentSessionId = remoteSessionId;
+    _currentHmacKey = sessionResult.data!['hmac_key'] as String?;
 
     final ws = MpcWebSocket(sessionId: remoteSessionId, partyIndex: _deviceParty);
     try {
@@ -468,7 +493,8 @@ class MpcWalletService implements WalletService {
       // Must persist to hardware immediately.
       final walletInfo = await MpcBridge.reshareFinalize(localSessionId);
 
-      // Persist new device shard to hardware IMMEDIATELY after finalize
+      // Persist the NEW device shard IMMEDIATELY after finalize to the
+      // hardware-backed key store — the single storage path for the shard.
       final newShardBytes = await MpcBridge.exportDeviceShard();
       await SecureHardware.storeDeviceShard(Uint8List.fromList(newShardBytes));
 
@@ -480,6 +506,13 @@ class MpcWalletService implements WalletService {
       await SecureStorage.save('mpc_public_key', pubKeyHex);
       await SecureStorage.save('last_key_rotation', DateTime.now().toIso8601String());
 
+      // Bug fix: reshare puts all shards on a NEW polynomial, so any stored
+      // server commitment from a prior recovery is now stale. Leaving it made
+      // _verifyBackupShard take the Feldman branch with an outdated commitment
+      // and fail. Clear it so verification uses the fresh device/PIN shard
+      // (matches what runDkg does after a fresh keygen).
+      await SecureStorage.delete('mpc_server_commitment');
+
       // Re-derive backup shard (best-effort — device+server are already safe)
       await _refreshBackupShard(remoteSessionId, deviceBackupContrib);
 
@@ -488,7 +521,7 @@ class MpcWalletService implements WalletService {
 
       return walletInfo;
     } catch (e) {
-      print('[MpcWalletService] Reshare error: $e');
+      debugPrint('[MpcWalletService] Reshare error: $e');
       throw MpcSessionInterruptedException(
         'Reshare session interrupted: $e',
         sessionState: await MpcSessionStore.loadSession(),
@@ -505,7 +538,7 @@ class MpcWalletService implements WalletService {
   Future<int> runPresign({required String walletId, int count = 5}) async {
     // Skip if a sign operation is in progress — presign can retry later
     if (_signInProgress) {
-      print('[MpcWalletService] Skipping presign: sign operation in progress');
+      debugPrint('[MpcWalletService] Skipping presign: sign operation in progress');
       return 0;
     }
 
@@ -530,7 +563,7 @@ class MpcWalletService implements WalletService {
     for (int i = 0; i < count; i++) {
       // Bail out if a sign operation is waiting
       if (_signInProgress) {
-        print('[MpcWalletService] Aborting presign batch: sign operation pending');
+        debugPrint('[MpcWalletService] Aborting presign batch: sign operation pending');
         break;
       }
 
@@ -587,19 +620,19 @@ class MpcWalletService implements WalletService {
   Future<void> _refreshBackupShard(String remoteSessionId, List<int> deviceContribution) async {
     try {
       if (deviceContribution.length != 32) {
-        print('[MpcWalletService] Invalid device backup contribution length after reshare');
+        debugPrint('[MpcWalletService] Invalid device backup contribution length after reshare');
         return;
       }
 
       final serverResult = await MpcApi.getBackupContribution(remoteSessionId);
       if (!serverResult.isSuccess || serverResult.data == null) {
-        print('[MpcWalletService] Failed to fetch server reshare backup contribution');
+        debugPrint('[MpcWalletService] Failed to fetch server reshare backup contribution');
         return;
       }
 
       final serverContribution = serverResult.data!;
       if (serverContribution.length != 32) {
-        print('[MpcWalletService] Invalid server backup contribution length after reshare');
+        debugPrint('[MpcWalletService] Invalid server backup contribution length after reshare');
         return;
       }
 
@@ -609,15 +642,43 @@ class MpcWalletService implements WalletService {
       );
 
       if (newBackupShard.length != 32) {
-        print('[MpcWalletService] Invalid combined backup shard after reshare');
+        debugPrint('[MpcWalletService] Invalid combined backup shard after reshare');
         return;
       }
 
       _lastBackupShard = newBackupShard;
-      _backupNeedsReExport = true;
-      print('[MpcWalletService] New backup shard ready, awaiting user choice');
+
+      // Persist the refreshed backup shard according to the method the user
+      // already chose. Cloud backups can be overwritten automatically; file /
+      // encrypted-file backups require the user to re-export (password + save
+      // location), so we only flag that and let the UI prompt.
+      final method = await Services.backup.getBackupMethod();
+      if (method == BackupMethod.cloud) {
+        try {
+          await Services.backup.storeBackupShard(newBackupShard, useCloud: true);
+          _backupNeedsReExport = false;
+          debugPrint('[MpcWalletService] Cloud backup updated with refreshed shard');
+        } catch (e) {
+          // Cloud overwrite failed — fall back to prompting a manual re-export.
+          _backupNeedsReExport = true;
+          debugPrint('[MpcWalletService] Cloud backup update failed, needs manual re-export: $e');
+        }
+      } else {
+        // file / encrypted_file / never-backed-up: user must re-export manually.
+        // Stage the shard durably so that killing/backgrounding the app during
+        // the mandatory re-export does not lose it (in-memory _lastBackupShard
+        // would be gone on relaunch → unrecoverable backup). Startup re-routes
+        // to the mandatory backup screen while the flag is set.
+        _backupNeedsReExport = true;
+        await SecureStorage.save(
+            SecureStorage.keyRotationPendingShard, base64Encode(newBackupShard));
+        await SecureStorage.save(SecureStorage.keyRotationPendingCreatedAt,
+            DateTime.now().toIso8601String());
+        await SecureStorage.save(SecureStorage.keyBackupReExportPending, '1');
+        debugPrint('[MpcWalletService] New backup shard staged, awaiting user re-export');
+      }
     } catch (e) {
-      print('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
+      debugPrint('[MpcWalletService] Failed to refresh backup shard after reshare: $e');
     }
   }
 
@@ -678,12 +739,44 @@ class MpcWalletService implements WalletService {
   /// 轮换后备份分片需要重新导出（离线文件方式）
   bool get backupNeedsReExport => _backupNeedsReExport;
 
+  /// Whether a post-rotation backup re-export is still pending, checked durably.
+  /// Survives app kill/relaunch (the in-memory flag is only a fast path). Used
+  /// by startup routing to force the user back to the mandatory backup screen.
+  Future<bool> isBackupReExportPending() async {
+    if (_backupNeedsReExport) return true;
+    final flag = await SecureStorage.get(SecureStorage.keyBackupReExportPending);
+    return flag == '1';
+  }
+
+  /// Load the staged (refreshed) backup shard persisted during reshare, so the
+  /// mandatory export screen can recover it after an app relaunch even though
+  /// [_lastBackupShard] was cleared. Returns null if none staged.
+  Future<List<int>?> loadStagedBackupShard() async {
+    if (_lastBackupShard != null && _lastBackupShard!.length == 32) {
+      return _lastBackupShard;
+    }
+    final staged = await SecureStorage.get(SecureStorage.keyRotationPendingShard);
+    if (staged == null || staged.isEmpty) return null;
+    final bytes = base64Decode(staged);
+    return bytes.length == 32 ? bytes : null;
+  }
+
+  /// Mark the post-rotation backup re-export as satisfied. Called by the
+  /// mandatory export screen after the user has exported the refreshed shard
+  /// via a path that bypasses [storeBackupShard] (e.g. encrypted-file export).
+  /// Clears both the in-memory state and the durable staging slot.
+  Future<void> markBackupReExported() async {
+    _lastBackupShard = null;
+    _backupNeedsReExport = false;
+    await SecureStorage.delete(SecureStorage.keyBackupReExportPending);
+    await SecureStorage.delete(SecureStorage.keyRotationPendingShard);
+    await SecureStorage.delete(SecureStorage.keyRotationPendingCreatedAt);
+  }
+
   /// 用户选择存储方式后调用此方法。
-  /// [password] 用于通过 Rust 加密导出路径加密备份分片，分片绝不以明文离开安全存储。
   Future<BackupResult> storeBackupShard(
     List<int> shardBytes, {
     required bool useCloud,
-    required String password,
   }) async {
     final backupService = BackupShardService(PlatformCloudBackup());
     final addr = await getAddress();
@@ -693,7 +786,6 @@ class MpcWalletService implements WalletService {
     _lastBackupResult = await backupService.storeBackupShard(
       shardBytes,
       useCloud: useCloud,
-      password: password,
     );
     _lastBackupShard = null;
     _backupNeedsReExport = false;
@@ -703,24 +795,14 @@ class MpcWalletService implements WalletService {
   /// 获取上次 DKG 的备份结果
   BackupResult? get lastBackupResult => _lastBackupResult;
 
-  /// 从云端取回已存储的加密备份密文（base64 blob），用于注册其 SHA-256 指纹。
-  Future<String?> retrieveBackupBlob() async {
-    final backupService = BackupShardService(PlatformCloudBackup());
-    final addr = await getAddress();
-    if (addr.isNotEmpty) {
-      backupService.setWalletAddress(addr);
-    }
-    return backupService.retrieveFromCloud();
+  @override
+  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields, String? walletId}) async {
+    return await runSign(msgHash, txFields: txFields, walletId: walletId);
   }
 
   @override
-  Future<List<int>> sign(List<int> msgHash, {SignTxFields? txFields}) async {
-    return await runSign(msgHash, txFields: txFields);
-  }
-
-  @override
-  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields}) async {
-    final signature = await runSign(msgHash, txFields: txFields);
+  Future<SignResult> signWithSession(List<int> msgHash, {SignTxFields? txFields, String? walletId}) async {
+    final signature = await runSign(msgHash, txFields: txFields, walletId: walletId);
     return SignResult(signature: signature, sessionId: _currentSessionId);
   }
 
@@ -765,12 +847,26 @@ class MpcWalletService implements WalletService {
     final subscription = ws.messages.listen((msg) {
       if (msg.fromParty == _serverParty &&
           (expectedRound == null || msg.round == expectedRound)) {
+        // Delivered live — drop the buffered copy so it isn't double-counted.
+        ws.dropBuffered(msg);
         messages.add(msg);
         if (messages.length >= expectedCount && !completer.isCompleted) {
           completer.complete(messages);
         }
       }
     });
+
+    // Drain messages that arrived before this listener was attached. The server
+    // pushes its reply over the socket within ~1ms of our HTTP send, usually
+    // before `.listen()` above runs; the broadcast stream drops those, so we
+    // recover them from the socket's buffer here. Without this the wait always
+    // times out (45s) and limps along on the HTTP poll fallback.
+    for (final buffered in ws.takeBuffered(fromParty: _serverParty, round: expectedRound)) {
+      messages.add(buffered);
+    }
+    if (messages.length >= expectedCount && !completer.isCompleted) {
+      completer.complete(messages);
+    }
 
     // Fallback timeout with HTTP polling
     final timer = Timer(_wsTimeout, () {
@@ -904,5 +1000,33 @@ class MpcWalletService implements WalletService {
       'round': msg.round,
       'payload': msg.payload,
     });
+  }
+
+  /// Send a message to the server party, authenticated with the per-session
+  /// HMAC key (F-004). Server rejects server-bound messages without a valid
+  /// HMAC over (session_id ‖ round ‖ payload).
+  Future<void> _sendToServer({
+    required String sessionId,
+    required int round,
+    required List<int> payload,
+  }) async {
+    String? hmac;
+    final key = _currentHmacKey;
+    if (key != null && key.isNotEmpty) {
+      hmac = MpcHmac.compute(
+        sessionHmacKeyHex: key,
+        sessionId: sessionId,
+        round: round,
+        payload: payload,
+      );
+    }
+    await MpcApi.sendMessage(
+      sessionId: sessionId,
+      fromParty: _deviceParty,
+      toParty: _serverParty,
+      round: round,
+      payload: payload,
+      hmac: hmac,
+    );
   }
 }

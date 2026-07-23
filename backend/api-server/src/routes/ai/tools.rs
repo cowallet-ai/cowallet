@@ -203,7 +203,10 @@ pub(super) fn wallet_tools_meta() -> Vec<ToolMeta> {
 }
 
 pub(super) fn wallet_tools() -> Vec<ToolDef> {
-    wallet_tools_meta().into_iter().map(|m| m.definition).collect()
+    wallet_tools_meta()
+        .into_iter()
+        .map(|m| m.definition)
+        .collect()
 }
 
 pub(super) fn tool_kind(name: &str) -> ToolKind {

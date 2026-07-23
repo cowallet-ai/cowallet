@@ -201,14 +201,28 @@ Future<void> recoveryClearBackupShard() =>
 Future<bool> recoveryHasBackupShard() =>
     RustLib.instance.api.crateApiRecoveryHasBackupShard();
 
-/// Export the device shard (Party 0) secret share bytes for hardware-backed storage.
-/// SECURITY: This should only be called once after DKG to persist to Secure Enclave/StrongBox.
-/// The caller must immediately encrypt and store it via hardware security module.
+/// Export the device shard (Party 0) for hardware-backed storage.
+///
+/// Format: `secret_share(32) || paillier_keypair_bytes`. When no Paillier
+/// keypair is present (legacy shard), only the 32-byte secret share is
+/// returned, so old stored blobs remain valid. The Paillier keypair is the
+/// device's own MtA keypair, generated once at DKG; persisting it avoids
+/// regenerating safe primes (~2.5s+) on every signature.
+///
+/// SECURITY: This should only be called once after DKG to persist to Secure
+/// Enclave/StrongBox. The caller must immediately encrypt and store it via the
+/// hardware security module — it contains the device secret share AND the
+/// Paillier secret.
 Future<Uint8List> exportDeviceShard() =>
     RustLib.instance.api.crateApiExportDeviceShard();
 
 /// Import a device shard (Party 0) from hardware-backed storage into Rust memory.
 /// Called at app startup to restore the shard from Secure Enclave/StrongBox.
+///
+/// Accepts both the new format (`secret_share(32) || paillier_keypair_bytes`)
+/// and the legacy 32-byte-only format. A legacy shard loads with no Paillier
+/// keypair; the first signature then regenerates one (slow, one-time) until the
+/// wallet is re-exported or resharded.
 Future<void> importDeviceShard({
   required List<int> shardBytes,
   required List<int> publicKey,
@@ -216,6 +230,18 @@ Future<void> importDeviceShard({
   shardBytes: shardBytes,
   publicKey: publicKey,
 );
+
+/// Migrate a legacy device shard (one created before the Paillier keypair was
+/// persisted) by generating the keypair once and storing it back into the
+/// in-memory share. Returns the new exportable shard bytes
+/// (`secret_share(32) || paillier_keypair_bytes`) so the caller can re-persist
+/// to hardware-backed storage; returns `None` if the shard already has a
+/// keypair (no migration needed).
+///
+/// Intended to be called once in the background after `import_device_shard`,
+/// so the first real signature doesn't pay the ~2.5s+ safe-prime generation.
+Future<Uint8List?> ensureDevicePaillierKeypair() =>
+    RustLib.instance.api.crateApiEnsureDevicePaillierKeypair();
 
 /// Verify a backup shard by combining it with the device shard via Lagrange
 /// interpolation to reconstruct the group public key, then comparing against the expected key.
@@ -248,12 +274,25 @@ Future<bool> verifyBackupShardFeldman({
   expectedPublicKey: expectedPublicKey,
 );
 
+/// Load a raw 32-byte backup shard into the Party 2 slot so it can be exported.
+///
+/// Used by the mandatory post-rotation backup screen after an app relaunch:
+/// the refreshed backup shard was staged to durable storage on the Dart side,
+/// but the Rust in-memory Party 2 slot is empty on a cold start, so
+/// `export_backup_shard` (which reads `get_share(2)`) would otherwise fail.
+/// This upserts the staged bytes back into Party 2 without touching the device
+/// (0) or server (1) shards.
+Future<void> loadBackupShardForExport({required List<int> backupBytes}) =>
+    RustLib.instance.api.crateApiLoadBackupShardForExport(
+      backupBytes: backupBytes,
+    );
+
 /// Export the backup shard (Party 2) as a password-encrypted, base64-encoded string.
 ///
 /// Output format: version(1) || salt(16) || nonce(12) || ciphertext(32+16 tag)
 /// The whole blob is then base64-encoded for easy transport (QR code, file, clipboard).
 ///
-/// KDF: Argon2id with default params (19 MiB memory, 2 iterations, 1 parallelism).
+/// KDF: Argon2id with params (m=64 MiB, t=3 iterations, p=4 parallelism).
 /// Cipher: AES-256-GCM with random nonce.
 Future<String> exportBackupShard({required String password}) =>
     RustLib.instance.api.crateApiExportBackupShard(password: password);
@@ -272,7 +311,39 @@ Future<bool> importBackupShard({
   password: password,
 );
 
+/// PIN-encrypt the device shard (Party 0) for storage WITHOUT hardware-backed
+/// biometric protection. This is the "PIN-only" auth path: the shard is
+/// encrypted at the app layer with Argon2id + AES-256-GCM keyed by the user's
+/// PIN, and the resulting blob is stored in ordinary secure storage (no
+/// Secure Enclave / StrongBox auth-bound key, so no biometric prompt).
+///
+/// The blob covers the FULL device shard (`secret_share(32) || paillier_keypair`),
+/// not just the 32-byte scalar, so signing has the Paillier material after
+/// decrypt. Format: `version(1) || salt(16) || nonce(12) || ciphertext`.
+///
+/// Returns base64. Requires DKG to have populated Party 0 in memory.
+Future<String> exportDeviceShardEncrypted({required String pin}) =>
+    RustLib.instance.api.crateApiExportDeviceShardEncrypted(pin: pin);
+
+/// Decrypt a PIN-encrypted device shard produced by [export_device_shard_encrypted]
+/// and load it into memory as Party 0 (mirrors [import_device_shard]).
+///
+/// Returns `true` on success. Wrong PIN → decryption error.
+Future<bool> importDeviceShardEncrypted({
+  required String encryptedData,
+  required String pin,
+  required List<int> publicKey,
+}) => RustLib.instance.api.crateApiImportDeviceShardEncrypted(
+  encryptedData: encryptedData,
+  pin: pin,
+  publicKey: publicKey,
+);
+
 /// Legacy: Sign locally for testing (reconstructs full key — NOT for production).
+///
+/// NOTE: not gated behind `#[cfg(debug_assertions)]` because the generated FRB
+/// bindings (`frb_generated.rs`) reference it unconditionally; gating it broke
+/// `--release` builds. It remains test/legacy-only by convention.
 Future<Uint8List> signHash({required List<int> msgHash}) =>
     RustLib.instance.api.crateApiSignHash(msgHash: msgHash);
 

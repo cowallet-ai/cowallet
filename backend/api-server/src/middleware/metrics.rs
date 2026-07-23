@@ -77,20 +77,13 @@ impl MetricsStore {
         output.push_str(&format!(
             "# HELP http_requests_total Total number of HTTP requests\n"
         ));
-        output.push_str(&format!(
-            "# TYPE http_requests_total counter\n"
-        ));
-        output.push_str(&format!(
-            "http_requests_total {}\n",
-            inner.total_requests
-        ));
+        output.push_str(&format!("# TYPE http_requests_total counter\n"));
+        output.push_str(&format!("http_requests_total {}\n", inner.total_requests));
 
         output.push_str(&format!(
             "# HELP http_request_errors_total Total number of HTTP 5xx errors\n"
         ));
-        output.push_str(&format!(
-            "# TYPE http_request_errors_total counter\n"
-        ));
+        output.push_str(&format!("# TYPE http_request_errors_total counter\n"));
         output.push_str(&format!(
             "http_request_errors_total {}\n",
             inner.error_count
@@ -99,13 +92,8 @@ impl MetricsStore {
         output.push_str(&format!(
             "# HELP process_uptime_seconds Service uptime in seconds\n"
         ));
-        output.push_str(&format!(
-            "# TYPE process_uptime_seconds gauge\n"
-        ));
-        output.push_str(&format!(
-            "process_uptime_seconds {}\n",
-            uptime
-        ));
+        output.push_str(&format!("# TYPE process_uptime_seconds gauge\n"));
+        output.push_str(&format!("process_uptime_seconds {}\n", uptime));
 
         // Per-route stats
         for (key, count) in &inner.request_count {
@@ -122,7 +110,10 @@ impl MetricsStore {
     }
 
     /// Render circuit breaker statistics into Prometheus format
-    pub fn render_circuit_breaker_stats(name: &str, stats: &crate::retry::CircuitBreakerStats) -> String {
+    pub fn render_circuit_breaker_stats(
+        name: &str,
+        stats: &crate::retry::CircuitBreakerStats,
+    ) -> String {
         let state_str = match stats.state {
             crate::retry::CircuitState::Closed => "closed",
             crate::retry::CircuitState::Open => "open",

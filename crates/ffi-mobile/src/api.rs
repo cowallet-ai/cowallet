@@ -94,7 +94,10 @@ pub fn generate_wallet() -> Result<FfiWalletInfo, String> {
     let address = shares[0].eth_address();
     let address_hex = format!(
         "0x{}",
-        address.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        address
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     );
     let public_key = shares[0].public_key.clone();
 
@@ -142,101 +145,91 @@ pub fn clear_wallet() {
 /// Returns the session_id to use for subsequent calls.
 pub fn dkg_session_new(party_index: u16) -> Result<FfiDkgSession, String> {
     let session_id = uuid::Uuid::new_v4().to_string();
-    
+
     let config = SessionConfig {
         session_id: session_id.clone(),
         threshold: 2,
         total_parties: 3,
         party_index,
     };
-    
+
     let dkg = DkgSession::new(config);
     state::create_dkg_session(session_id.clone(), dkg);
-    
+
     Ok(FfiDkgSession { session_id })
 }
 
 /// DKG Round 1: Generate commitments to VSS polynomial.
 /// Returns the broadcast message as JSON.
 pub fn dkg_generate_round1(session_id: String) -> Result<FfiRound1Result, String> {
-    let arc_dkg = state::get_dkg_session_arc(&session_id)
-        .ok_or("DKG session not found")?;
-    
+    let arc_dkg = state::get_dkg_session_arc(&session_id).ok_or("DKG session not found")?;
+
     let msg = {
         let mut dkg = arc_dkg.lock().unwrap();
         dkg.generate_round1()
             .map_err(|e| format!("Round 1 generation failed: {}", e))?
     };
-    
+
     // Serialize message to JSON for Dart
-    let message_json = serde_json::to_string(&msg)
-        .map_err(|e| format!("Serialization failed: {}", e))?;
-    
+    let message_json =
+        serde_json::to_string(&msg).map_err(|e| format!("Serialization failed: {}", e))?;
+
     Ok(FfiRound1Result { message_json })
 }
 
 /// DKG Round 1: Process all commitments from other parties.
-pub fn dkg_process_round1(
-    session_id: String,
-    messages_json: Vec<String>,
-) -> Result<(), String> {
-    let arc_dkg = state::get_dkg_session_arc(&session_id)
-        .ok_or("DKG session not found")?;
-    
+pub fn dkg_process_round1(session_id: String, messages_json: Vec<String>) -> Result<(), String> {
+    let arc_dkg = state::get_dkg_session_arc(&session_id).ok_or("DKG session not found")?;
+
     let mut messages = Vec::new();
     for msg_json in messages_json {
         let msg: ProtocolMessage = serde_json::from_str(&msg_json)
             .map_err(|e| format!("Failed to deserialize message: {}", e))?;
         messages.push(msg);
     }
-    
+
     let mut dkg = arc_dkg.lock().unwrap();
     dkg.process_round1(messages)
         .map_err(|e| format!("Round 1 processing failed: {}", e))?;
-    
+
     Ok(())
 }
 
 /// DKG Round 2: Generate secret share evaluations.
 /// Returns the message(s) to send to other parties as JSON.
 pub fn dkg_generate_round2(session_id: String) -> Result<Vec<String>, String> {
-    let arc_dkg = state::get_dkg_session_arc(&session_id)
-        .ok_or("DKG session not found")?;
-    
+    let arc_dkg = state::get_dkg_session_arc(&session_id).ok_or("DKG session not found")?;
+
     let messages = {
         let mut dkg = arc_dkg.lock().unwrap();
         dkg.generate_round2()
             .map_err(|e| format!("Round 2 generation failed: {}", e))?
     };
-    
+
     let json_messages = messages
         .into_iter()
-        .map(|msg| serde_json::to_string(&msg)
-            .map_err(|e| format!("Serialization failed: {}", e)))
+        .map(|msg| serde_json::to_string(&msg).map_err(|e| format!("Serialization failed: {}", e)))
         .collect::<Result<Vec<_>, _>>()?;
-    
+
     Ok(json_messages)
 }
 
 /// DKG Round 2: Process share evaluations from other parties.
-pub fn dkg_process_round2(
-    session_id: String,
-    messages_json: Vec<String>,
-) -> Result<(), String> {
-    let arc_dkg = state::get_dkg_session_arc(&session_id)
-        .ok_or("DKG session not found")?;
-    
+pub fn dkg_process_round2(session_id: String, messages_json: Vec<String>) -> Result<(), String> {
+    let arc_dkg = state::get_dkg_session_arc(&session_id).ok_or("DKG session not found")?;
+
     let mut messages = Vec::new();
     for msg_json in messages_json {
         let msg: ProtocolMessage = serde_json::from_str(&msg_json)
             .map_err(|e| format!("Failed to deserialize message: {}", e))?;
         messages.push(msg);
     }
-    
+
     let mut dkg = arc_dkg.lock().unwrap();
-    let _key_share = dkg.process_round2(messages)
+    let _key_share = dkg
+        .process_round2(messages)
         .map_err(|e| format!("Round 2 processing failed: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -244,8 +237,7 @@ pub fn dkg_process_round2(
 /// Stores the key shares in memory for later signing.
 /// Does NOT delete the DKG session — call dkg_derive_backup_share first if needed.
 pub fn dkg_finalize(session_id: String) -> Result<FfiDkgComplete, String> {
-    let arc_dkg = state::get_dkg_session_arc(&session_id)
-        .ok_or("DKG session not found")?;
+    let arc_dkg = state::get_dkg_session_arc(&session_id).ok_or("DKG session not found")?;
 
     let key_share = {
         let dkg = arc_dkg.lock().unwrap();
@@ -271,9 +263,11 @@ pub fn dkg_finalize(session_id: String) -> Result<FfiDkgComplete, String> {
 /// Derive the backup shard (Party 2) from DKG round 2 evaluations.
 /// Must be called AFTER dkg_finalize but BEFORE the session is cleaned up.
 /// Returns the raw 32-byte secret share for the backup party.
-pub fn dkg_derive_backup_share(session_id: String, backup_party_index: u16) -> Result<Vec<u8>, String> {
-    let arc_dkg = state::get_dkg_session_arc(&session_id)
-        .ok_or("DKG session not found")?;
+pub fn dkg_derive_backup_share(
+    session_id: String,
+    backup_party_index: u16,
+) -> Result<Vec<u8>, String> {
+    let arc_dkg = state::get_dkg_session_arc(&session_id).ok_or("DKG session not found")?;
 
     let backup_share = {
         let dkg = arc_dkg.lock().unwrap();
@@ -290,15 +284,24 @@ pub fn dkg_derive_backup_share(session_id: String, backup_party_index: u16) -> R
 /// Combine two backup share contributions into the final backup shard.
 /// Adds device_share + server_share modulo the secp256k1 curve order.
 /// Both inputs must be exactly 32 bytes.
-pub fn combine_backup_shares(device_share: Vec<u8>, server_share: Vec<u8>) -> Result<Vec<u8>, String> {
+pub fn combine_backup_shares(
+    device_share: Vec<u8>,
+    server_share: Vec<u8>,
+) -> Result<Vec<u8>, String> {
     use k256::elliptic_curve::PrimeField;
     use k256::Scalar;
 
     if device_share.len() != 32 {
-        return Err(format!("device_share must be 32 bytes, got {}", device_share.len()));
+        return Err(format!(
+            "device_share must be 32 bytes, got {}",
+            device_share.len()
+        ));
     }
     if server_share.len() != 32 {
-        return Err(format!("server_share must be 32 bytes, got {}", server_share.len()));
+        return Err(format!(
+            "server_share must be 32 bytes, got {}",
+            server_share.len()
+        ));
     }
 
     // Parse device contribution
@@ -346,7 +349,10 @@ pub fn sign_generate_round1(msg_hash: Vec<u8>) -> Result<FfiSignRound1, String> 
 
     let share0 = state::get_share(0).ok_or("device shard not loaded")?;
 
-    let msg_arr: [u8; 32] = msg_hash.clone().try_into().map_err(|_| "msg_hash must be 32 bytes")?;
+    let msg_arr: [u8; 32] = msg_hash
+        .clone()
+        .try_into()
+        .map_err(|_| "msg_hash must be 32 bytes")?;
 
     let config = SessionConfig {
         session_id: uuid::Uuid::new_v4().to_string(),
@@ -355,13 +361,10 @@ pub fn sign_generate_round1(msg_hash: Vec<u8>) -> Result<FfiSignRound1, String> 
         party_index: share0.party,
     };
 
-    let mut session = mpc_core::dkls23::sign::SignSession::new_distributed(
-        config,
-        share0,
-        msg_arr,
-    );
+    let mut session = mpc_core::dkls23::sign::SignSession::new_distributed(config, share0, msg_arr);
 
-    let round1_msg = session.generate_round1()
+    let round1_msg = session
+        .generate_round1()
         .map_err(|e| format!("sign round1 generation failed: {}", e))?;
 
     let session_id = round1_msg.session_id.clone();
@@ -380,8 +383,7 @@ pub fn sign_process_round1_and_generate_round2(
     session_id: String,
     server_round1_payload: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
-    let arc_session = state::get_sign_session_arc(&session_id)
-        .ok_or("sign session not found")?;
+    let arc_session = state::get_sign_session_arc(&session_id).ok_or("sign session not found")?;
 
     let mut session = arc_session.lock().unwrap();
 
@@ -393,11 +395,13 @@ pub fn sign_process_round1_and_generate_round2(
         round: 1,
         payload: server_round1_payload,
     };
-    session.process_round1(vec![incoming])
+    session
+        .process_round1(vec![incoming])
         .map_err(|e| format!("process server R1 failed: {}", e))?;
 
     // Generate device's Round 2 (DeviceContribution: c_0, k_0_inv)
-    let round2_msg = session.generate_round2()
+    let round2_msg = session
+        .generate_round2()
         .map_err(|e| format!("generate round2 failed: {}", e))?;
 
     Ok(round2_msg.payload)
@@ -409,8 +413,7 @@ pub fn sign_process_round2(
     session_id: String,
     server_round2_payload: Vec<u8>,
 ) -> Result<FfiSignResult, String> {
-    let arc_session = state::get_sign_session_arc(&session_id)
-        .ok_or("sign session not found")?;
+    let arc_session = state::get_sign_session_arc(&session_id).ok_or("sign session not found")?;
 
     let mut session = arc_session.lock().unwrap();
 
@@ -422,7 +425,8 @@ pub fn sign_process_round2(
         payload: server_round2_payload,
     };
 
-    let sig = session.process_round2(vec![incoming])
+    let sig = session
+        .process_round2(vec![incoming])
         .map_err(|e| format!("process server signature failed: {}", e))?;
 
     let sig_bytes = sig.to_bytes();
@@ -458,8 +462,8 @@ pub struct FfiReshareComplete {
 /// The old shard is consumed; after finalize() the new shard replaces it.
 /// `participants` specifies which parties are active (e.g. [0,1] for device+server).
 pub fn reshare_session_new(party_index: u16) -> Result<FfiReshareSession, String> {
-    let old_share = state::get_share(party_index)
-        .ok_or("device shard not loaded — cannot reshare")?;
+    let old_share =
+        state::get_share(party_index).ok_or("device shard not loaded — cannot reshare")?;
 
     let session_id = uuid::Uuid::new_v4().to_string();
 
@@ -482,32 +486,33 @@ pub fn reshare_session_new(party_index: u16) -> Result<FfiReshareSession, String
 /// Generate reshare Round 1 messages (new VSS polynomial evaluations for each party).
 /// Returns serialized ProtocolMessages to send to other parties.
 pub fn reshare_generate_round1(session_id: String) -> Result<FfiReshareRound1Result, String> {
-    let arc = state::get_reshare_session_arc(&session_id)
-        .ok_or("reshare session not found")?;
+    let arc = state::get_reshare_session_arc(&session_id).ok_or("reshare session not found")?;
 
     let messages = {
         let mut session = arc.lock().unwrap();
-        session.generate_round1()
+        session
+            .generate_round1()
             .map_err(|e| format!("reshare round1 failed: {}", e))?
     };
 
     let json_messages = messages
         .into_iter()
-        .map(|msg| serde_json::to_string(&msg)
-            .map_err(|e| format!("serialization failed: {}", e)))
+        .map(|msg| serde_json::to_string(&msg).map_err(|e| format!("serialization failed: {}", e)))
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(FfiReshareRound1Result { messages_json: json_messages })
+    Ok(FfiReshareRound1Result {
+        messages_json: json_messages,
+    })
 }
 
 /// Get this party's backup contribution from the reshare polynomial: g_device(3).
 /// Must be called after reshare_generate_round1(). Returns 32-byte scalar.
 pub fn reshare_derive_backup_share(session_id: String) -> Result<Vec<u8>, String> {
-    let arc = state::get_reshare_session_arc(&session_id)
-        .ok_or("reshare session not found")?;
+    let arc = state::get_reshare_session_arc(&session_id).ok_or("reshare session not found")?;
 
     let session = arc.lock().unwrap();
-    session.derive_backup_share()
+    session
+        .derive_backup_share()
         .map_err(|e| format!("reshare derive_backup_share failed: {}", e))
 }
 
@@ -516,8 +521,7 @@ pub fn reshare_process_round1(
     session_id: String,
     messages_json: Vec<String>,
 ) -> Result<(), String> {
-    let arc = state::get_reshare_session_arc(&session_id)
-        .ok_or("reshare session not found")?;
+    let arc = state::get_reshare_session_arc(&session_id).ok_or("reshare session not found")?;
 
     let mut messages = Vec::new();
     for msg_json in messages_json {
@@ -527,7 +531,8 @@ pub fn reshare_process_round1(
     }
 
     let mut session = arc.lock().unwrap();
-    session.process_round1(messages)
+    session
+        .process_round1(messages)
         .map_err(|e| format!("reshare process_round1 failed: {}", e))?;
 
     Ok(())
@@ -536,12 +541,12 @@ pub fn reshare_process_round1(
 /// Finalize reshare: extract the new key share and replace the old one in memory.
 /// After this call, the old share is invalid and the new share is active.
 pub fn reshare_finalize(session_id: String) -> Result<FfiReshareComplete, String> {
-    let arc = state::get_reshare_session_arc(&session_id)
-        .ok_or("reshare session not found")?;
+    let arc = state::get_reshare_session_arc(&session_id).ok_or("reshare session not found")?;
 
     let new_share = {
         let mut session = arc.lock().unwrap();
-        session.finalize()
+        session
+            .finalize()
             .map_err(|e| format!("reshare finalization failed: {}", e))?
     };
 
@@ -593,13 +598,11 @@ pub fn presign_generate_round1() -> Result<FfiPresignRound1, String> {
         party_index: share0.party,
     };
 
-    let mut session = mpc_core::dkls23::sign::SignSession::new_distributed(
-        config,
-        share0,
-        dummy_hash,
-    );
+    let mut session =
+        mpc_core::dkls23::sign::SignSession::new_distributed(config, share0, dummy_hash);
 
-    let round1_msg = session.generate_round1()
+    let round1_msg = session
+        .generate_round1()
         .map_err(|e| format!("presign round1 generation failed: {}", e))?;
 
     let session_id = round1_msg.session_id.clone();
@@ -625,15 +628,16 @@ pub fn presign_process_round1_and_generate_round2(
 /// The presign data is an opaque blob containing (k_0, R) that will be
 /// combined with the actual message hash at sign time.
 pub fn presign_finalize(session_id: String) -> Result<FfiPresignComplete, String> {
-    let arc_session = state::get_sign_session_arc(&session_id)
-        .ok_or("presign session not found")?;
+    let arc_session =
+        state::get_sign_session_arc(&session_id).ok_or("presign session not found")?;
 
     let session = arc_session.lock().unwrap();
 
     // Serialize the session state as presig data (k_0 and R point are inside)
     let presig_data = serde_json::to_vec(&PresignData {
         session_id: session_id.clone(),
-    }).map_err(|e| format!("presign serialization failed: {}", e))?;
+    })
+    .map_err(|e| format!("presign serialization failed: {}", e))?;
 
     drop(session);
     state::delete_sign_session(&session_id);
@@ -655,7 +659,10 @@ struct PresignData {
 pub fn recovery_import_backup_shard(backup_bytes: Vec<u8>) -> Result<(), String> {
     // Validate backup bytes length (should be 32 bytes for the secret share)
     if backup_bytes.len() != 32 {
-        return Err(format!("invalid backup shard length: expected 32 bytes, got {}", backup_bytes.len()));
+        return Err(format!(
+            "invalid backup shard length: expected 32 bytes, got {}",
+            backup_bytes.len()
+        ));
     }
 
     // Parse and validate the secret share
@@ -676,7 +683,7 @@ pub fn recovery_import_backup_shard(backup_bytes: Vec<u8>) -> Result<(), String>
         total_parties: 3,
         secret_share: backup_bytes.into(),
         public_key: Vec::new(), // Will be populated during recovery
-        paillier_pk: None, // Backup shard doesn't participate in signing
+        paillier_pk: None,      // Backup shard doesn't participate in signing
         paillier_keypair: None,
     };
 
@@ -754,12 +761,18 @@ pub fn recovery_reconstruct_device_shard(
                 .ok_or("public key decompression failed")?
                 .to_encoded_point(false)
         } else {
-            return Err(format!("unexpected public key length: {}", public_key.len()));
+            return Err(format!(
+                "unexpected public key length: {}",
+                public_key.len()
+            ));
         };
 
         if sum_encoded.as_bytes() != expected_point.as_bytes() {
             state::clear_recovery_backup_shard();
-            return Err("recovery failed: backup shard is incorrect — commitment verification failed".into());
+            return Err(
+                "recovery failed: backup shard is incorrect — commitment verification failed"
+                    .into(),
+            );
         }
     }
 
@@ -780,15 +793,12 @@ pub fn recovery_reconstruct_device_shard(
     let participants = vec![1u16, 2u16]; // Server + Backup
     let target_party = 0u16; // Reconstruct device shard
 
-    let mut reshare = ReshareSession::new_for_recovery(
-        config,
-        backup_share,
-        participants,
-        target_party,
-    );
+    let mut reshare =
+        ReshareSession::new_for_recovery(config, backup_share, participants, target_party);
 
     // Generate our (Party 2) contribution (self-evaluation is stored internally)
-    let _our_messages = reshare.generate_round1()
+    let _our_messages = reshare
+        .generate_round1()
         .map_err(|e| format!("recovery reshare round1 failed: {}", e))?;
 
     // Collect server's reshare messages addressed to Party 0
@@ -800,11 +810,13 @@ pub fn recovery_reconstruct_device_shard(
     }
 
     // process_round1 automatically includes our own evaluation for the target
-    reshare.process_round1(server_msgs)
+    reshare
+        .process_round1(server_msgs)
         .map_err(|e| format!("recovery reshare process_round1 failed: {}", e))?;
 
     // Finalize to get the new device shard (Party 0)
-    let new_device_share = reshare.finalize()
+    let new_device_share = reshare
+        .finalize()
         .map_err(|e| format!("recovery reshare finalization failed: {}", e))?;
 
     let addr = new_device_share.eth_address();
@@ -853,8 +865,7 @@ pub fn recovery_has_backup_shard() -> bool {
 /// hardware security module — it contains the device secret share AND the
 /// Paillier secret.
 pub fn export_device_shard() -> Result<Vec<u8>, String> {
-    let share = state::get_share(0)
-        .ok_or("device shard not loaded — DKG not complete")?;
+    let share = state::get_share(0).ok_or("device shard not loaded — DKG not complete")?;
     let mut out = share.secret_share.as_bytes().to_vec();
     if let Some(kp) = &share.paillier_keypair {
         out.extend_from_slice(kp.as_bytes());
@@ -946,8 +957,6 @@ pub fn ensure_device_paillier_keypair() -> Result<Option<Vec<u8>>, String> {
     Ok(Some(exported))
 }
 
-
-
 /// Verify a backup shard by combining it with the device shard via Lagrange
 /// interpolation to reconstruct the group public key, then comparing against the expected key.
 ///
@@ -997,8 +1006,8 @@ pub fn verify_backup_shard(
     let stored_pubkey = if !expected_public_key.is_empty() {
         expected_public_key
     } else {
-        let device_share = state::get_share(0)
-            .ok_or("no public key available — provide expected_public_key")?;
+        let device_share =
+            state::get_share(0).ok_or("no public key available — provide expected_public_key")?;
         if device_share.public_key.is_empty() {
             return Err("no stored public key to verify against".into());
         }
@@ -1009,11 +1018,9 @@ pub fn verify_backup_shard(
     let share_indices: Vec<u16> = vec![0, 2];
     let share_values: Vec<Vec<u8>> = vec![device_bytes, backup_bytes];
 
-    let reconstructed_secret = mpc_core::dkls23::protocol::shamir_reconstruct(
-        &share_indices,
-        &share_values,
-    )
-    .map_err(|e| format!("Lagrange interpolation failed: {}", e))?;
+    let reconstructed_secret =
+        mpc_core::dkls23::protocol::shamir_reconstruct(&share_indices, &share_values)
+            .map_err(|e| format!("Lagrange interpolation failed: {}", e))?;
 
     // Derive public key from reconstructed secret
     let secret_arr: [u8; 32] = reconstructed_secret
@@ -1052,7 +1059,10 @@ pub fn verify_backup_shard_feldman(
     use k256::{AffinePoint, EncodedPoint, ProjectivePoint, Scalar};
 
     if backup_bytes.len() != 32 {
-        return Err(format!("invalid backup shard length: expected 32, got {}", backup_bytes.len()));
+        return Err(format!(
+            "invalid backup shard length: expected 32, got {}",
+            backup_bytes.len()
+        ));
     }
     if server_commitment.is_empty() {
         return Err("server_commitment is required for Feldman verification".into());
@@ -1097,7 +1107,10 @@ pub fn verify_backup_shard_feldman(
             .ok_or("public key decompression failed")?
             .to_encoded_point(false)
     } else {
-        return Err(format!("unexpected public key length: {}", expected_public_key.len()));
+        return Err(format!(
+            "unexpected public key length: {}",
+            expected_public_key.len()
+        ));
     };
 
     Ok(sum_encoded.as_bytes() == expected.as_bytes())
@@ -1114,17 +1127,58 @@ const BACKUP_SALT_LEN: usize = 16;
 /// AES-GCM nonce length.
 const BACKUP_NONCE_LEN: usize = 12;
 
+/// Load a raw 32-byte backup shard into the Party 2 slot so it can be exported.
+///
+/// Used by the mandatory post-rotation backup screen after an app relaunch:
+/// the refreshed backup shard was staged to durable storage on the Dart side,
+/// but the Rust in-memory Party 2 slot is empty on a cold start, so
+/// `export_backup_shard` (which reads `get_share(2)`) would otherwise fail.
+/// This upserts the staged bytes back into Party 2 without touching the device
+/// (0) or server (1) shards.
+pub fn load_backup_shard_for_export(backup_bytes: Vec<u8>) -> Result<(), String> {
+    if backup_bytes.len() != 32 {
+        return Err(format!(
+            "invalid backup shard length: expected 32 bytes, got {}",
+            backup_bytes.len()
+        ));
+    }
+
+    use k256::elliptic_curve::PrimeField;
+    use k256::Scalar;
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&backup_bytes);
+    let _valid = Option::<Scalar>::from(Scalar::from_repr(bytes.into()))
+        .ok_or_else(|| "invalid backup shard: not a valid scalar".to_string())?;
+
+    // public_key is not needed by export_backup_shard (it only reads
+    // secret_share); leave it empty. total_parties=3 keeps the 2-of-3 shape.
+    let backup_share = mpc_core::dkls23::KeyShare {
+        party: 2,
+        threshold: 2,
+        total_parties: 3,
+        secret_share: backup_bytes.into(),
+        public_key: Vec::new(),
+        paillier_pk: None,
+        paillier_keypair: None,
+    };
+    state::store_single_share(backup_share);
+    Ok(())
+}
+
 /// Export the backup shard (Party 2) as a password-encrypted, base64-encoded string.
 ///
 /// Output format: version(1) || salt(16) || nonce(12) || ciphertext(32+16 tag)
 /// The whole blob is then base64-encoded for easy transport (QR code, file, clipboard).
 ///
-/// KDF: Argon2id with default params (19 MiB memory, 2 iterations, 1 parallelism).
+/// KDF: Argon2id with params (m=64 MiB, t=3 iterations, p=4 parallelism).
 /// Cipher: AES-256-GCM with random nonce.
 pub fn export_backup_shard(password: String) -> Result<String, String> {
-    use aes_gcm::{Aes256Gcm, Nonce, aead::{Aead, KeyInit}};
-    use argon2::Argon2;
-    use base64::{Engine, engine::general_purpose::STANDARD};
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    use argon2::{Algorithm, Argon2, Params, Version};
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use rand::RngCore;
 
     if password.len() < 8 {
@@ -1132,8 +1186,7 @@ pub fn export_backup_shard(password: String) -> Result<String, String> {
     }
 
     // Get the backup shard (Party 2) from state
-    let share = state::get_share(2)
-        .ok_or("backup shard not available — complete DKG first")?;
+    let share = state::get_share(2).ok_or("backup shard not available — complete DKG first")?;
 
     let plaintext = share.secret_share.as_bytes();
     if plaintext.len() != 32 {
@@ -1149,15 +1202,16 @@ pub fn export_backup_shard(password: String) -> Result<String, String> {
     rand::thread_rng().fill_bytes(&mut salt);
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
 
-    // Derive encryption key from password using Argon2id
+    // Derive encryption key from password using Argon2id (m=64MiB, t=3, p=4)
+    let params = Params::new(65536, 3, 4, None).map_err(|e| format!("KDF params: {}", e))?;
     let mut key = [0u8; 32];
-    Argon2::default()
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(password.as_bytes(), &salt, &mut key)
         .map_err(|e| format!("KDF failed: {}", e))?;
 
     // Encrypt with AES-256-GCM
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("cipher init failed: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("cipher init failed: {}", e))?;
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(nonce, plaintext)
@@ -1183,9 +1237,12 @@ pub fn export_backup_shard(password: String) -> Result<String, String> {
 ///
 /// Returns `true` on success.
 pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<bool, String> {
-    use aes_gcm::{Aes256Gcm, Nonce, aead::{Aead, KeyInit}};
-    use argon2::Argon2;
-    use base64::{Engine, engine::general_purpose::STANDARD};
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    use argon2::{Algorithm, Argon2, Params, Version};
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use k256::elliptic_curve::PrimeField;
     use k256::Scalar;
 
@@ -1218,16 +1275,17 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
     let nonce_bytes = &blob[1 + BACKUP_SALT_LEN..1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN];
     let ciphertext = &blob[1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN..];
 
-    // Derive decryption key from password using Argon2id
+    // Derive decryption key from password using Argon2id (m=64MiB, t=3, p=4)
+    let params = Params::new(65536, 3, 4, None).map_err(|e| format!("KDF params: {}", e))?;
     let mut key = [0u8; 32];
     let salt_arr: [u8; 16] = salt.try_into().map_err(|_| "invalid salt length")?;
-    Argon2::default()
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(password.as_bytes(), &salt_arr, &mut key)
         .map_err(|e| format!("KDF failed: {}", e))?;
 
     // Decrypt with AES-256-GCM
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("cipher init failed: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("cipher init failed: {}", e))?;
     let nonce = Nonce::from_slice(nonce_bytes);
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
@@ -1270,6 +1328,124 @@ pub fn import_backup_shard(encrypted_data: String, password: String) -> Result<b
     Ok(true)
 }
 
+/// PIN-encrypt the device shard (Party 0) for storage WITHOUT hardware-backed
+/// biometric protection. This is the "PIN-only" auth path: the shard is
+/// encrypted at the app layer with Argon2id + AES-256-GCM keyed by the user's
+/// PIN, and the resulting blob is stored in ordinary secure storage (no
+/// Secure Enclave / StrongBox auth-bound key, so no biometric prompt).
+///
+/// The blob covers the FULL device shard (`secret_share(32) || paillier_keypair`),
+/// not just the 32-byte scalar, so signing has the Paillier material after
+/// decrypt. Format: `version(1) || salt(16) || nonce(12) || ciphertext`.
+///
+/// Returns base64. Requires DKG to have populated Party 0 in memory.
+pub fn export_device_shard_encrypted(pin: String) -> Result<String, String> {
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    use argon2::{Algorithm, Argon2, Params, Version};
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use rand::RngCore;
+
+    if pin.len() < 4 {
+        return Err("pin must be at least 4 characters".into());
+    }
+
+    // Full device shard: secret_share(32) || optional paillier keypair.
+    let share = state::get_share(0).ok_or("device shard not loaded — DKG not complete")?;
+    let mut plaintext = share.secret_share.as_bytes().to_vec();
+    if let Some(kp) = &share.paillier_keypair {
+        plaintext.extend_from_slice(kp.as_bytes());
+    }
+
+    let mut salt = [0u8; BACKUP_SALT_LEN];
+    let mut nonce_bytes = [0u8; BACKUP_NONCE_LEN];
+    rand::thread_rng().fill_bytes(&mut salt);
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+
+    let params = Params::new(65536, 3, 4, None).map_err(|e| format!("KDF params: {}", e))?;
+    let mut key = [0u8; 32];
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(pin.as_bytes(), &salt, &mut key)
+        .map_err(|e| format!("KDF failed: {}", e))?;
+
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("cipher init failed: {}", e))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_slice())
+        .map_err(|e| format!("encryption failed: {}", e))?;
+
+    key.iter_mut().for_each(|b| *b = 0);
+
+    let mut blob = Vec::with_capacity(1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN + ciphertext.len());
+    blob.push(BACKUP_FORMAT_VERSION);
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&nonce_bytes);
+    blob.extend_from_slice(&ciphertext);
+
+    Ok(STANDARD.encode(&blob))
+}
+
+/// Decrypt a PIN-encrypted device shard produced by [export_device_shard_encrypted]
+/// and load it into memory as Party 0 (mirrors [import_device_shard]).
+///
+/// Returns `true` on success. Wrong PIN → decryption error.
+pub fn import_device_shard_encrypted(
+    encrypted_data: String,
+    pin: String,
+    public_key: Vec<u8>,
+) -> Result<bool, String> {
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    use argon2::{Algorithm, Argon2, Params, Version};
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    if pin.is_empty() {
+        return Err("pin cannot be empty".into());
+    }
+
+    let blob = STANDARD
+        .decode(encrypted_data.trim())
+        .map_err(|e| format!("invalid base64: {}", e))?;
+
+    let header = 1 + BACKUP_SALT_LEN + BACKUP_NONCE_LEN;
+    // version + salt + nonce + at least (32-byte scalar + 16-byte GCM tag)
+    if blob.len() < header + 32 + 16 {
+        return Err(format!("device shard blob too short: {}", blob.len()));
+    }
+    if blob[0] != BACKUP_FORMAT_VERSION {
+        return Err(format!("unsupported format version: {}", blob[0]));
+    }
+
+    let salt = &blob[1..1 + BACKUP_SALT_LEN];
+    let nonce_bytes = &blob[1 + BACKUP_SALT_LEN..header];
+    let ciphertext = &blob[header..];
+
+    let params = Params::new(65536, 3, 4, None).map_err(|e| format!("KDF params: {}", e))?;
+    let mut key = [0u8; 32];
+    let salt_arr: [u8; 16] = salt.try_into().map_err(|_| "invalid salt length")?;
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(pin.as_bytes(), &salt_arr, &mut key)
+        .map_err(|e| format!("KDF failed: {}", e))?;
+
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("cipher init failed: {}", e))?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| "decryption failed — wrong PIN or corrupted data".to_string())?;
+
+    key.iter_mut().for_each(|b| *b = 0);
+
+    // Reuse the same validation + Party-0 loading as the hardware path.
+    import_device_shard(plaintext, public_key)?;
+    Ok(true)
+}
+
 // ---------------------------------------------------------------------------
 // Legacy signing (for testing)
 // ---------------------------------------------------------------------------
@@ -1289,14 +1465,13 @@ pub fn sign_hash(msg_hash: Vec<u8>) -> Result<Vec<u8>, String> {
 
     let indices = vec![share0.party, share1.party];
 
-    let msg_arr: [u8; 32] = msg_hash.try_into().map_err(|_| "msg_hash must be 32 bytes")?;
+    let msg_arr: [u8; 32] = msg_hash
+        .try_into()
+        .map_err(|_| "msg_hash must be 32 bytes")?;
 
-    let (sig_bytes, recovery_id) = mpc_core::dkls23::protocol::threshold_sign(
-        &indices,
-        &[&share0, &share1],
-        &msg_arr,
-    )
-    .map_err(|e| e.to_string())?;
+    let (sig_bytes, recovery_id) =
+        mpc_core::dkls23::protocol::threshold_sign(&indices, &[&share0, &share1], &msg_arr)
+            .map_err(|e| e.to_string())?;
 
     let mut result = sig_bytes;
     result.push(recovery_id);
@@ -1355,9 +1530,7 @@ pub async fn query_token_balance(
 
     // Default to 6 decimals for USDC-style formatting
     let divisor = U256::from(1_000_000u64);
-    let display_value = balance
-        .checked_div(divisor)
-        .unwrap_or_default();
+    let display_value = balance.checked_div(divisor).unwrap_or_default();
     let formatted = format!("{} tokens", display_value);
 
     Ok(FfiBalance {
@@ -1418,8 +1591,11 @@ pub async fn send_eth(
     rpc_url: String,
 ) -> Result<FfiTxResult, String> {
     let shares = get_signing_shares()?;
-    let to_addr: Address = to.parse().map_err(|e| format!("Invalid to address: {}", e))?;
-    let value = U256::from_str_radix(&value_wei, 10).map_err(|e| format!("Invalid value: {}", e))?;
+    let to_addr: Address = to
+        .parse()
+        .map_err(|e| format!("Invalid to address: {}", e))?;
+    let value =
+        U256::from_str_radix(&value_wei, 10).map_err(|e| format!("Invalid value: {}", e))?;
     let eth_addr_bytes = shares[0].eth_address();
     let sender_addr = Address::from_slice(&eth_addr_bytes);
     let client = reqwest::Client::new();
@@ -1439,13 +1615,12 @@ pub async fn send_eth(
         nonce: Some(nonce),
     };
 
-    let signer = chain_evm::signer::MpcSigner::from_shares(
-        sender_addr, chain_id, vec![0, 1], shares,
-    );
+    let signer =
+        chain_evm::signer::MpcSigner::from_shares(sender_addr, chain_id, vec![0, 1], shares);
 
-    let (encoded, _) = chain_evm::transaction::sign_eip1559_tx(
-        &tx_request, &gas_estimate, nonce, &signer,
-    ).map_err(|e| format!("Signing failed: {:?}", e))?;
+    let (encoded, _) =
+        chain_evm::transaction::sign_eip1559_tx(&tx_request, &gas_estimate, nonce, &signer)
+            .map_err(|e| format!("Signing failed: {:?}", e))?;
 
     let tx_hash = chain_evm::transaction::broadcast_tx(&client, &rpc_url, &encoded)
         .await
@@ -1465,9 +1640,14 @@ pub async fn send_erc20(
     rpc_url: String,
 ) -> Result<FfiTxResult, String> {
     let shares = get_signing_shares()?;
-    let to_addr: Address = to.parse().map_err(|e| format!("Invalid to address: {}", e))?;
-    let contract_addr: Address = token_contract.parse().map_err(|e| format!("Invalid token contract: {}", e))?;
-    let amount = U256::from_str_radix(&amount_raw, 10).map_err(|e| format!("Invalid amount: {}", e))?;
+    let to_addr: Address = to
+        .parse()
+        .map_err(|e| format!("Invalid to address: {}", e))?;
+    let contract_addr: Address = token_contract
+        .parse()
+        .map_err(|e| format!("Invalid token contract: {}", e))?;
+    let amount =
+        U256::from_str_radix(&amount_raw, 10).map_err(|e| format!("Invalid amount: {}", e))?;
     let eth_addr_bytes = shares[0].eth_address();
     let sender_addr = Address::from_slice(&eth_addr_bytes);
     let client = reqwest::Client::new();
@@ -1481,7 +1661,11 @@ pub async fn send_erc20(
     calldata.extend_from_slice(&[0u8; 12]); // pad address to 32 bytes
     calldata.extend_from_slice(to_addr.as_slice());
     let mut amount_bytes = [0u8; 32];
-    amount.to_be_bytes::<32>().iter().enumerate().for_each(|(i, &b)| amount_bytes[i] = b);
+    amount
+        .to_be_bytes::<32>()
+        .iter()
+        .enumerate()
+        .for_each(|(i, &b)| amount_bytes[i] = b);
     calldata.extend_from_slice(&amount_bytes);
 
     let gas_estimate = default_gas_estimate(65000);
@@ -1495,13 +1679,12 @@ pub async fn send_erc20(
         nonce: Some(nonce),
     };
 
-    let signer = chain_evm::signer::MpcSigner::from_shares(
-        sender_addr, chain_id, vec![0, 1], shares,
-    );
+    let signer =
+        chain_evm::signer::MpcSigner::from_shares(sender_addr, chain_id, vec![0, 1], shares);
 
-    let (encoded, _) = chain_evm::transaction::sign_eip1559_tx(
-        &tx_request, &gas_estimate, nonce, &signer,
-    ).map_err(|e| format!("Signing failed: {:?}", e))?;
+    let (encoded, _) =
+        chain_evm::transaction::sign_eip1559_tx(&tx_request, &gas_estimate, nonce, &signer)
+            .map_err(|e| format!("Signing failed: {:?}", e))?;
 
     let tx_hash = chain_evm::transaction::broadcast_tx(&client, &rpc_url, &encoded)
         .await

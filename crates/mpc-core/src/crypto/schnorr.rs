@@ -8,10 +8,7 @@
 //! - Sign Round 1: prove knowledge of ephemeral secret k_i
 
 use k256::{
-    elliptic_curve::{
-        sec1::ToEncodedPoint,
-        Field, PrimeField,
-    },
+    elliptic_curve::{sec1::ToEncodedPoint, Field, PrimeField},
     AffinePoint, ProjectivePoint, Scalar,
 };
 use rand::rngs::OsRng;

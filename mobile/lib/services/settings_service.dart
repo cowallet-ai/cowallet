@@ -3,8 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum IntentMode { onEnter, whileTyping }
 
-enum AiModel { bedrock, deepseek }
-
 class SettingsService extends ChangeNotifier {
   static const _keyBiometric = 'settings_biometric_enabled';
   static const _keyVoiceInput = 'settings_voice_input_enabled';
@@ -12,7 +10,12 @@ class SettingsService extends ChangeNotifier {
   static const _keyLanguage = 'settings_language';
   static const _keyWeeklyReport = 'settings_weekly_report_enabled';
   static const _keyEmergencyFreeze = 'settings_emergency_freeze_active';
-  static const _keyAiModel = 'settings_ai_model';
+  // Whether the user has consented to sharing conversation context (message,
+  // wallet address, portfolio, contacts, etc.) with the third-party AI
+  // providers that power the assistant. Required before any AI request is made
+  // (App Store privacy requirement: disclose + obtain consent in-app, not only
+  // in the privacy policy).
+  static const _keyAiConsent = 'settings_ai_data_consent';
 
   late SharedPreferences _prefs;
 
@@ -22,7 +25,7 @@ class SettingsService extends ChangeNotifier {
   String _language = 'zh';
   bool _weeklyReportEnabled = false;
   bool _emergencyFreezeActive = false;
-  AiModel _aiModel = AiModel.bedrock;
+  bool _aiConsentGranted = false;
 
   // Getters
   bool get biometricEnabled => _biometricEnabled;
@@ -31,10 +34,7 @@ class SettingsService extends ChangeNotifier {
   String get language => _language;
   bool get weeklyReportEnabled => _weeklyReportEnabled;
   bool get emergencyFreezeActive => _emergencyFreezeActive;
-  AiModel get aiModel => _aiModel;
-
-  /// The model value string to send to the backend API.
-  String get aiModelValue => _aiModel == AiModel.bedrock ? 'bedrock' : 'deepseek';
+  bool get aiConsentGranted => _aiConsentGranted;
 
   /// Initialize the service by loading persisted settings.
   Future<void> init() async {
@@ -47,9 +47,7 @@ class SettingsService extends ChangeNotifier {
     _language = _prefs.getString(_keyLanguage) ?? 'zh';
     _weeklyReportEnabled = _prefs.getBool(_keyWeeklyReport) ?? false;
     _emergencyFreezeActive = _prefs.getBool(_keyEmergencyFreeze) ?? false;
-    _aiModel = _prefs.getString(_keyAiModel) == 'deepseek'
-        ? AiModel.deepseek
-        : AiModel.bedrock;
+    _aiConsentGranted = _prefs.getBool(_keyAiConsent) ?? false;
   }
 
   // Setters that persist and notify
@@ -96,10 +94,10 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setAiModel(AiModel value) async {
-    if (_aiModel == value) return;
-    _aiModel = value;
-    await _prefs.setString(_keyAiModel, value == AiModel.bedrock ? 'bedrock' : 'deepseek');
+  Future<void> setAiConsentGranted(bool value) async {
+    if (_aiConsentGranted == value) return;
+    _aiConsentGranted = value;
+    await _prefs.setBool(_keyAiConsent, value);
     notifyListeners();
   }
 }

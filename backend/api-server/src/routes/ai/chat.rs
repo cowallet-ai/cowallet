@@ -1,18 +1,20 @@
 use super::intent::{detect_threat, has_transfer_intent};
-use super::tools::{tool_kind, tool_widget_type, wallet_tools, wallet_tools_meta, ToolKind, SYSTEM_PROMPT};
+use super::tools::{
+    tool_kind, tool_widget_type, wallet_tools, wallet_tools_meta, ToolKind, SYSTEM_PROMPT,
+};
+use crate::middleware::auth::Claims;
 use crate::services::ai_executor::{ToolContext, ToolExecutionResult};
 use crate::services::ai_provider::{
-    ChatMessage, ChatRole, ToolDef,
-    ToolCallInfo as ProviderToolCallInfo, StreamEvent,
+    ChatMessage, ChatRole, StreamEvent, ToolCallInfo as ProviderToolCallInfo, ToolDef,
 };
 use crate::services::chat_store::ChatStore;
 use crate::state::AppState;
 use axum::{
-    Json,
     body::Body,
     extract::State,
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::Response,
+    Extension, Json,
 };
 use bytes::Bytes;
 use futures::StreamExt;
@@ -69,15 +71,26 @@ pub struct ToolCallInfo {
 
 pub(super) async fn chat_stream(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Json(req): Json<ChatRequest>,
 ) -> Response {
     let user_message = req.message.clone();
 
-    let user_uuid = req.user_id.as_deref()
-        .and_then(|id| Uuid::parse_str(id).ok())
-        .unwrap_or_else(Uuid::nil);
+    // Identity comes from the verified JWT, NOT the request body. Trusting
+    // body-supplied user_id/wallet_address was an IDOR: any authenticated user
+    // could read another user's sessions and run wallet tools under a foreign
+    // address. The body fields are ignored.
+    let auth_user_id = claims.sub.clone();
+    let user_uuid = match Uuid::parse_str(&auth_user_id) {
+        Ok(u) => u,
+        Err(_) => {
+            return sse_error_response("invalid authenticated user");
+        }
+    };
 
-    let session_id = req.session_id.as_deref()
+    let session_id = req
+        .session_id
+        .as_deref()
         .and_then(|s| Uuid::parse_str(s).ok());
 
     // Resolve session
@@ -85,7 +98,8 @@ pub(super) async fn chat_stream(
         if let Some(sid) = session_id {
             sid
         } else {
-            ChatStore::get_or_create_session(db, user_uuid).await
+            ChatStore::get_or_create_session(db, user_uuid)
+                .await
                 .map(|s| s.id)
                 .unwrap_or_else(|_| Uuid::new_v4())
         }
@@ -95,7 +109,8 @@ pub(super) async fn chat_stream(
 
     // Persist user message
     if let Some(db) = &state.db {
-        let _ = ChatStore::save_message(db, db_session_id, "user", Some(&user_message), None, None).await;
+        let _ = ChatStore::save_message(db, db_session_id, "user", Some(&user_message), None, None)
+            .await;
     }
 
     // Threat detection — block before calling AI
@@ -117,8 +132,8 @@ pub(super) async fn chat_stream(
         }
 
         let _ = req.model;
-        let ai = match state.ai_deepseek.as_ref() {
-            Some(c) => Arc::clone(c),
+        let ai = match state.select_ai_provider() {
+            Some(c) => c,
             None => {
                 yield sse_event("error", &serde_json::json!({"message": "AI 服务未配置"}));
                 yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
@@ -162,16 +177,28 @@ pub(super) async fn chat_stream(
             }
         }
 
-        // Inject portfolio and contacts context into user message if provided
+        // Inject portfolio and contacts context into user message if provided.
+        // SECURITY: this data is client-supplied and untrusted. It is sanitized
+        // (control chars stripped, length-capped) and wrapped in an explicit
+        // untrusted-data boundary so the model does not treat it as instructions
+        // (indirect prompt-injection defense).
         let mut user_content = user_message.clone();
         if let Some(portfolio) = &req.portfolio {
-            let portfolio_str = serde_json::to_string_pretty(portfolio).unwrap_or_default();
-            user_content = format!("{}\n\n[Portfolio Context]\n{}", user_content, portfolio_str);
+            let portfolio_str = serde_json::to_string(portfolio).unwrap_or_default();
+            let clean = sanitize_untrusted(&portfolio_str, 4000);
+            user_content = format!(
+                "{}\n\n<untrusted_data source=\"portfolio\">\n{}\n</untrusted_data>",
+                user_content, clean
+            );
         }
         if let Some(contacts) = &req.contacts {
             if !contacts.is_empty() {
                 let contacts_str = serde_json::to_string(contacts).unwrap_or_default();
-                user_content = format!("{}\n\n[Contacts]\n{}", user_content, contacts_str);
+                let clean = sanitize_untrusted(&contacts_str, 4000);
+                user_content = format!(
+                    "{}\n\n<untrusted_data source=\"contacts\">\n{}\n</untrusted_data>",
+                    user_content, clean
+                );
             }
         }
 
@@ -299,12 +326,33 @@ pub(super) async fn chat_stream(
             }
         }
 
-        // Execute tools based on kind
+        // Execute tools based on kind. Identity is the authenticated user, not
+        // the body. The body-supplied wallet_address is only honored if it
+        // actually belongs to this user (else dropped to None), so tools can't
+        // be driven against a wallet the caller doesn't own.
+        let verified_wallet_address = match (&state.db, req.wallet_address.as_deref()) {
+            (Some(db), Some(addr)) => {
+                let owned: Option<(Uuid,)> = sqlx::query_as(
+                    "SELECT id FROM wallets WHERE user_id = $1 AND lower(eth_address) = lower($2) LIMIT 1",
+                )
+                .bind(user_uuid)
+                .bind(addr)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten();
+                if owned.is_some() { Some(addr.to_string()) } else { None }
+            }
+            _ => None,
+        };
         let tool_ctx = ToolContext {
             app_state: state.clone(),
-            user_id: req.user_id.clone(),
-            wallet_address: req.wallet_address.clone(),
+            user_id: Some(auth_user_id.clone()),
+            wallet_address: verified_wallet_address,
             auth_method: req.auth_method.clone(),
+            // F-013: pass the user's ORIGINAL typed message (not the context-injected
+            // variant) so tools can cross-validate LLM-chosen recipient addresses.
+            user_message: Some(user_message.clone()),
         };
 
         let mut tool_results: Vec<ToolExecutionResult> = Vec::new();
@@ -578,6 +626,48 @@ pub(super) async fn chat_stream(
 
 fn sse_event(event: &str, data: &serde_json::Value) -> Result<Bytes, Infallible> {
     Ok(Bytes::from(format!("event: {}\ndata: {}\n\n", event, data)))
+}
+
+/// Build a one-shot SSE response carrying a single `error` event. Used for
+/// pre-stream failures (e.g. an unparseable authenticated user id).
+fn sse_error_response(message: &str) -> Response {
+    let body = format!(
+        "event: error\ndata: {}\n\n",
+        serde_json::json!({ "message": message })
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header("X-Accel-Buffering", "no")
+        .body(Body::from(body))
+        .unwrap()
+}
+
+/// Sanitize client-supplied, untrusted context (portfolio / contacts) before
+/// injecting it into the AI prompt. Strips control characters (which can be used
+/// to spoof role boundaries or smuggle hidden instructions), neutralizes literal
+/// untrusted-data boundary tags so the payload can't close its own wrapper, and
+/// caps length to bound the injection surface.
+fn sanitize_untrusted(input: &str, max_len: usize) -> String {
+    let mut out = String::with_capacity(input.len().min(max_len));
+    for c in input.chars() {
+        // Drop C0/C1 control chars except plain space; keep normal whitespace as space.
+        if c == '\t' || c == '\n' || c == '\r' {
+            out.push(' ');
+        } else if c.is_control() {
+            continue;
+        } else {
+            out.push(c);
+        }
+        if out.len() >= max_len {
+            out.push_str(" …(truncated)");
+            break;
+        }
+    }
+    // Prevent the payload from closing the wrapper element or forging a new one.
+    out.replace("<untrusted_data", "<_untrusted_data")
+        .replace("</untrusted_data", "</_untrusted_data")
 }
 
 #[cfg(test)]

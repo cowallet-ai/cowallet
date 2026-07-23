@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart';
 import '../platform/se_manager.dart';
 import '../platform/sb_manager.dart';
 import '../platform/cloud_backup.dart';
+import '../platform/secure_hardware.dart';
 import '../api/mpc_api.dart';
+import '../bridge/mpc_bridge.dart';
 import '../utils/secure_storage.dart';
 import 'backup_shard_service.dart';
+import 'locator.dart';
 
 enum KeyStatus { ok, warning, error, unknown }
 
@@ -146,48 +150,102 @@ class KeyHealthService {
     }
   }
 
+  List<int> _hexToBytes(String hex) {
+    final cleanHex = hex.startsWith('0x') ? hex.substring(2) : hex;
+    final bytes = <int>[];
+    for (int i = 0; i < cleanHex.length; i += 2) {
+      bytes.add(int.parse(cleanHex.substring(i, i + 2), radix: 16));
+    }
+    return bytes;
+  }
 
-  /// Verify the cloud backup is recoverable. Requires the user's backup
-  /// [password]: a successful Argon2id + AES-256-GCM decryption (which also
-  /// validates the shard is a well-formed secp256k1 scalar) proves the backup
-  /// is intact. The plaintext shard never crosses the FFI boundary into Dart.
-  Future<bool> testBackupKey(String password) async {
+  /// Verify backup shard using the appropriate method:
+  /// - Feldman (post-recovery): uses server_commitment stored during recovery
+  /// - Lagrange (original wallet): uses device_shard + backup_shard → public_key
+  Future<bool> _verifyBackupShard(List<int> backupBytes) async {
+    final commitmentHex = await SecureStorage.get('mpc_server_commitment');
+    final pubKeyHex = await SecureStorage.get('mpc_public_key');
+    if (pubKeyHex == null || pubKeyHex.isEmpty) {
+      throw Exception('Public key not found');
+    }
+    final publicKey = _hexToBytes(pubKeyHex);
+
+    List<int>? hwShard;
     try {
-      final encrypted = await _backupService.retrieveFromCloud();
-      if (encrypted == null || encrypted.isEmpty) {
-        print('[KeyHealth] cloud backup not available');
+      hwShard = (await SecureHardware.loadDeviceShard())?.toList();
+    } catch (_) {
+      hwShard = null;
+    }
+
+    if (commitmentHex != null && commitmentHex.isNotEmpty) {
+      final serverCommitment = _hexToBytes(commitmentHex);
+      return await MpcBridge.verifyBackupShardFeldman(
+        backupBytes: backupBytes,
+        serverCommitment: serverCommitment,
+        expectedPublicKey: publicKey,
+      );
+    }
+
+    // exportDeviceShard() returns `secret_share(32) || paillier_keypair`, so the
+    // stored blob is >32 bytes. verifyBackupShard needs only the 32-byte secret
+    // share (Party 0 scalar); take the first 32 bytes.
+    if (hwShard != null && hwShard.length >= 32) {
+      final secretShare = hwShard.sublist(0, 32);
+      return await MpcBridge.verifyBackupShard(
+        backupBytes: backupBytes,
+        deviceShardBytes: secretShare,
+        expectedPublicKey: publicKey,
+      );
+    }
+
+    // Hardware shard missing from the loaded bytes: load it into Rust memory
+    // (fires the native keystore prompt), then verify against the in-memory
+    // Party 0 (empty deviceShardBytes triggers the FFI in-memory fallback).
+    await Services.mpcWallet.ensureShardLoaded();
+    return await MpcBridge.verifyBackupShard(
+      backupBytes: backupBytes,
+      expectedPublicKey: publicKey,
+    );
+  }
+
+  Future<bool> testBackupKey() async {
+    try {
+      final shardBytes = await _backupService.retrieveFromCloud();
+      if (shardBytes == null || shardBytes.length != 32) {
+        debugPrint('[KeyHealth] cloud backup not available or invalid: ${shardBytes?.length}');
         return false;
       }
+      debugPrint('[KeyHealth] cloud parsed backup shard: ${shardBytes.length} bytes');
 
-      final valid = await _backupService.importEncrypted(encrypted, password);
-      print('[KeyHealth] cloud backup decrypt+validate result: $valid');
+      final valid = await _verifyBackupShard(shardBytes);
+      debugPrint('[KeyHealth] cloud verifyBackupShard result: $valid');
       if (!valid) return false;
 
       await SecureStorage.save(await _getBackupCheckedKey(), DateTime.now().toIso8601String());
       return true;
     } catch (e) {
-      print('[KeyHealth] testBackupKey (cloud) error: $e');
+      debugPrint('[KeyHealth] testBackupKey (cloud) error: $e');
       return false;
     }
   }
 
-  /// Verify a backup file is recoverable using the user's backup [password].
-  Future<bool> testBackupKeyWithFile(String fileContent, String password) async {
+  Future<bool> testBackupKeyWithFile(String fileContent) async {
     try {
-      final encrypted = _backupService.parseBackupFile(fileContent);
-      if (encrypted == null || encrypted.isEmpty) {
-        print('[KeyHealth] parseBackupFile failed: empty content');
+      final shardBytes = _backupService.parseBackupFile(fileContent);
+      if (shardBytes == null || shardBytes.length != 32) {
+        debugPrint('[KeyHealth] parseBackupFile failed: shardBytes=${shardBytes?.length}');
         return false;
       }
+      debugPrint('[KeyHealth] parsed backup shard: ${shardBytes.length} bytes');
 
-      final valid = await _backupService.importEncrypted(encrypted, password);
-      print('[KeyHealth] file backup decrypt+validate result: $valid');
+      final valid = await _verifyBackupShard(shardBytes);
+      debugPrint('[KeyHealth] verifyBackupShard result: $valid');
       if (!valid) return false;
 
       await SecureStorage.save(await _getBackupCheckedKey(), DateTime.now().toIso8601String());
       return true;
     } catch (e) {
-      print('[KeyHealth] testBackupKeyWithFile error: $e');
+      debugPrint('[KeyHealth] testBackupKeyWithFile error: $e');
       return false;
     }
   }

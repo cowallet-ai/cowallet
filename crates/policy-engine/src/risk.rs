@@ -85,11 +85,7 @@ mod tests {
         }
     }
 
-    fn test_tx(
-        value_eth: u64,
-        hour: u32,
-        is_contract: bool,
-    ) -> TransactionContext {
+    fn test_tx(value_eth: u64, hour: u32, is_contract: bool) -> TransactionContext {
         TransactionContext {
             user_id: "user-1".into(),
             from: Address::ZERO,
@@ -145,7 +141,10 @@ mod tests {
         let assessment = assess_risk(&tx, &history);
 
         assert!(assessment.score >= 15);
-        assert!(assessment.factors.iter().any(|f| f.contains("unusual hour")));
+        assert!(assessment
+            .factors
+            .iter()
+            .any(|f| f.contains("unusual hour")));
     }
 
     #[test]
@@ -235,7 +234,10 @@ mod tests {
             let assessment = assess_risk(&tx, &history);
 
             assert!(
-                assessment.factors.iter().any(|f| f.contains("unusual hour")),
+                assessment
+                    .factors
+                    .iter()
+                    .any(|f| f.contains("unusual hour")),
                 "hour {} should be flagged as unusual",
                 hour
             );

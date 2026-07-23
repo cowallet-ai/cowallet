@@ -5,13 +5,13 @@
 //! - Read endpoints: 100 requests/minute
 //! - Auth endpoints: 5 requests/minute (stricter)
 
+use axum::extract::Request;
 use axum::{
     body::Body,
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use axum::extract::Request;
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::Serialize;
@@ -24,7 +24,16 @@ pub struct RateLimit {
 }
 
 impl RateLimit {
-    /// Strict limit for MPC signing operations
+    // Production limits. The temporary ~100x widening (to unblock testing while
+    // rate-limit keying was being fixed) has been reverted now that F-011 keys
+    // authenticated routes by `user:<sub>` and unauthenticated routes by the
+    // real peer socket (ConnectInfo), not the spoofable XFF header.
+    //
+    // NOTE: if this service is deployed behind a reverse proxy that does NOT
+    // rewrite the source address, all unauthenticated callers share one
+    // `ip:<gateway>` bucket — configure the proxy to preserve the client IP (or
+    // add a vetted TRUSTED_PROXIES allowlist) before scaling public traffic.
+    /// Strict limit for MPC signing operations (protected → keyed per user)
     pub const fn strict() -> Self {
         Self {
             max_requests: 10,
@@ -32,7 +41,7 @@ impl RateLimit {
         }
     }
 
-    /// Standard limit for read endpoints
+    /// Standard limit for read endpoints (protected → keyed per user)
     pub const fn standard() -> Self {
         Self {
             max_requests: 100,
@@ -40,7 +49,9 @@ impl RateLimit {
         }
     }
 
-    /// Very strict limit for auth operations (login, register)
+    /// Very strict limit for auth operations (login, register, OTP send).
+    /// Brute force is further bounded by per-email hourly caps + OTP 5-attempt
+    /// lockout + Turnstile on the OTP endpoint.
     pub const fn auth() -> Self {
         Self {
             max_requests: 5,
@@ -156,7 +167,10 @@ impl RateLimiter for RedisRateLimiter {
                 // SECURITY (F-011): FAIL CLOSED on Redis connection failure.
                 // For a crypto wallet, allowing unlimited requests when the rate
                 // limiter backend is down enables OTP/auth brute force, so we deny.
-                tracing::error!("Rate limiter Redis connection failed, denying request: {}", e);
+                tracing::error!(
+                    "Rate limiter Redis connection failed, denying request: {}",
+                    e
+                );
                 return RateLimitStatus {
                     allowed: false,
                     remaining: 0,
@@ -168,6 +182,7 @@ impl RateLimiter for RedisRateLimiter {
         let result: Result<(usize,), redis::RedisError> = redis::pipe()
             .atomic()
             .zrembyscore(&redis_key, 0, window_start)
+            .ignore()
             .zadd(&redis_key, now, now)
             .ignore()
             .expire(&redis_key, limit.window_secs as i64)
@@ -235,7 +250,10 @@ impl RateLimiter for RedisRateLimiter {
             }
         };
 
-        let () = conn.zrembyscore(&redis_key, 0, window_start).await.unwrap_or(());
+        let () = conn
+            .zrembyscore(&redis_key, 0, window_start)
+            .await
+            .unwrap_or(());
         let count: usize = conn.zcard(&redis_key).await.unwrap_or(0);
 
         if count as u32 <= limit.max_requests {
@@ -269,7 +287,9 @@ impl RateLimiter for RedisRateLimiter {
 /// In-memory rate limiter (for development/standalone use)
 #[derive(Clone)]
 pub struct InMemoryRateLimiter {
-    limits: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<std::time::Instant>>>>,
+    limits: std::sync::Arc<
+        std::sync::Mutex<std::collections::HashMap<String, Vec<std::time::Instant>>>,
+    >,
 }
 
 impl InMemoryRateLimiter {
@@ -286,7 +306,11 @@ impl InMemoryRateLimiter {
         let now = std::time::Instant::now();
         let window_start = now - std::time::Duration::from_secs(limit.window_secs);
 
-        let remaining: Vec<_> = timestamps.iter().copied().filter(|t| t > &window_start).collect();
+        let remaining: Vec<_> = timestamps
+            .iter()
+            .copied()
+            .filter(|t| t > &window_start)
+            .collect();
         let count = remaining.len() as u32;
         if count < limit.max_requests {
             RateLimitStatus {
@@ -440,7 +464,12 @@ async fn apply_rate_limit(mut request: Request<Body>, next: Next, limit: RateLim
     let status = state.rate_limiter.check_and_record(&key, limit).await;
 
     if !status.allowed {
-        tracing::warn!("Rate limit exceeded for {}: {} requests/{}s", key, limit.max_requests, limit.window_secs);
+        tracing::warn!(
+            "Rate limit exceeded for {}: {} requests/{}s",
+            key,
+            limit.max_requests,
+            limit.window_secs
+        );
         return RateLimitRejection::RateLimited(status.retry_after).into_response();
     }
 
@@ -699,7 +728,12 @@ mod tests {
         for i in 0..5 {
             let status = limiter.check_and_record("accuracy_test", limit).await;
             assert!(status.allowed);
-            assert_eq!(status.remaining, 5 - i - 1, "Remaining count mismatch at iteration {}", i);
+            assert_eq!(
+                status.remaining,
+                5 - i - 1,
+                "Remaining count mismatch at iteration {}",
+                i
+            );
         }
 
         // Over limit should have 0 remaining

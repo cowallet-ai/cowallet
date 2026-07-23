@@ -312,7 +312,9 @@ impl fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+        self.source
+            .as_ref()
+            .map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
     }
 }
 
@@ -360,37 +362,79 @@ mod tests {
     #[test]
     fn test_api_error_status_codes() {
         // Authentication errors - 401 Unauthorized
-        assert_eq!(ApiError::auth_missing_token().status, StatusCode::UNAUTHORIZED);
-        assert_eq!(ApiError::auth_invalid_token("test").status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            ApiError::auth_missing_token().status,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            ApiError::auth_invalid_token("test").status,
+            StatusCode::UNAUTHORIZED
+        );
 
         // Forbidden - 403
-        assert_eq!(ApiError::auth_forbidden("test").status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            ApiError::auth_forbidden("test").status,
+            StatusCode::FORBIDDEN
+        );
 
         // Validation errors - 400 Bad Request
-        assert_eq!(ApiError::validation_failed("test").status, StatusCode::BAD_REQUEST);
-        assert_eq!(ApiError::invalid_address("0x123").status, StatusCode::BAD_REQUEST);
-        assert_eq!(ApiError::missing_param("user_id").status, StatusCode::BAD_REQUEST);
-        assert_eq!(ApiError::mpc_protocol_error("test").status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            ApiError::validation_failed("test").status,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ApiError::invalid_address("0x123").status,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ApiError::missing_param("user_id").status,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ApiError::mpc_protocol_error("test").status,
+            StatusCode::BAD_REQUEST
+        );
 
         // Rate limiting - 429 Too Many Requests
-        assert_eq!(ApiError::rate_limited(60).status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            ApiError::rate_limited(60).status,
+            StatusCode::TOO_MANY_REQUESTS
+        );
 
         // Not found - 404
-        assert_eq!(ApiError::not_found("User", "123").status, StatusCode::NOT_FOUND);
-        assert_eq!(ApiError::mpc_session_not_found("abc").status, StatusCode::NOT_FOUND);
+        assert_eq!(
+            ApiError::not_found("User", "123").status,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ApiError::mpc_session_not_found("abc").status,
+            StatusCode::NOT_FOUND
+        );
 
         // External service errors - 502 Bad Gateway
-        assert_eq!(ApiError::rpc_error("node down").status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            ApiError::rpc_error("node down").status,
+            StatusCode::BAD_GATEWAY
+        );
 
         // Database errors - 500 Internal Server Error
         let db_error = sqlx::Error::RowNotFound;
-        assert_eq!(ApiError::database_error(db_error).status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            ApiError::database_error(db_error).status,
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
 
         // Generic errors - 500 Internal Server Error
-        assert_eq!(ApiError::internal("test").status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            ApiError::internal("test").status,
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
 
         // Service unavailable - 503
-        assert_eq!(ApiError::service_unavailable("maintenance").status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            ApiError::service_unavailable("maintenance").status,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]
@@ -426,8 +470,7 @@ mod tests {
             "reason": "invalid format"
         });
 
-        let error = ApiError::validation_failed("Validation failed")
-            .with_details(details.clone());
+        let error = ApiError::validation_failed("Validation failed").with_details(details.clone());
 
         assert_eq!(error.details, Some(details));
     }
@@ -435,8 +478,8 @@ mod tests {
     #[test]
     fn test_error_with_request_id() {
         let request_id = "req_abc123xyz";
-        let error = ApiError::internal("Something went wrong")
-            .with_request_id(request_id.to_string());
+        let error =
+            ApiError::internal("Something went wrong").with_request_id(request_id.to_string());
 
         assert_eq!(error.request_id, Some(request_id.to_string()));
     }

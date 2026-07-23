@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'dart:io' show Platform;
 import '../../theme/colors.dart';
 import '../../l10n/s.dart';
 import '../../widgets/cw_orb.dart';
@@ -26,6 +29,8 @@ import 'widgets/clarify_widget.dart';
 import 'widgets/add_contact_widget.dart';
 import 'widgets/session_list_sheet.dart';
 import '../../models/contact.dart';
+import '../../widgets/ai_consent_sheet.dart';
+import '../../widgets/top_toast.dart';
 
 // ---------------------------------------------------------------------------
 // Message model
@@ -90,6 +95,11 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   bool _speechAvailable = false;
   String _voiceText = '';
   double _soundLevel = 0.0;
+  // Locale id the recognizer actually supports for the current app language.
+  // Resolved from the engine's own locale list after initialize(); null means
+  // "let the engine pick its default" — never force an unsupported locale, as
+  // that makes the recognizer return empty results silently.
+  String? _speechLocaleId;
 
   String? _sessionId;
   StreamSubscription? _streamSub;
@@ -151,28 +161,44 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   Future<void> _startListening() async {
     if (!_speechAvailable) {
-      _speechAvailable = await _speech.initialize(
-        onError: (error) {
-          if (!mounted) return;
-          setState(() {
-            _isListening = false;
-            _soundLevel = 0.0;
-          });
-          _showVoiceError(S.voiceErrorHint);
-        },
-        onStatus: (status) {
-          // Speech engine ends the session itself on a long pause or timeout.
-          if ((status == 'done' || status == 'notListening') &&
-              _isListening) {
-            _finishListening();
-          }
-        },
-      );
+      try {
+        _speechAvailable = await _speech.initialize(
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _isListening = false;
+              _soundLevel = 0.0;
+            });
+            // Surface the engine's own error id (e.g. error_no_match,
+            // error_language_unavailable) so voice failures are diagnosable
+            // rather than a generic "please retry".
+            _showVoiceError('${S.voiceErrorHint} (${error.errorMsg})');
+          },
+          onStatus: (status) {
+            // Speech engine ends the session itself on a long pause or timeout.
+            if ((status == 'done' || status == 'notListening') &&
+                _isListening) {
+              _finishListening();
+            }
+          },
+        );
+      } catch (_) {
+        // Some devices have no speech recognition engine at all (e.g. Chinese
+        // ROMs with no system SpeechRecognizer); initialize() throws
+        // PlatformException(recognizerNotAvailable) instead of returning false.
+        // Treat any failure as "unavailable" rather than crashing.
+        _speechAvailable = false;
+      }
       if (!_speechAvailable) {
         if (!mounted) return;
-        _showVoiceError(S.voiceUnavailable);
+        _showSpeechUnavailableGuide();
         return;
       }
+      // Resolve a locale the recognizer actually supports. Forcing a locale
+      // the engine hasn't downloaded (e.g. 'zh_CN') makes it return empty
+      // results with no error, so match against the engine's real list and
+      // fall back to null (engine default) when nothing matches.
+      _speechLocaleId = await _resolveSpeechLocale();
     }
 
     _voiceText = '';
@@ -191,13 +217,32 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       },
       listenOptions: stt.SpeechListenOptions(
         listenMode: stt.ListenMode.dictation,
-        localeId: S.lang == Lang.zh ? 'zh_CN' : 'en_US',
+        localeId: _speechLocaleId,
         partialResults: true,
         cancelOnError: true,
         listenFor: const Duration(minutes: 1),
         pauseFor: const Duration(seconds: 4),
       ),
     );
+  }
+
+  /// Pick a locale id the recognizer actually supports for the current app
+  /// language. Returns null when no match is found so the engine uses its own
+  /// default rather than an unsupported locale (which yields empty results).
+  Future<String?> _resolveSpeechLocale() async {
+    try {
+      final locales = await _speech.locales();
+      if (locales.isEmpty) return null;
+      final prefix = S.lang == Lang.zh ? 'zh' : 'en';
+      for (final l in locales) {
+        final id = l.localeId.replaceAll('-', '_').toLowerCase();
+        if (id.startsWith(prefix)) return l.localeId;
+      }
+      // No locale for the app language — let the engine decide.
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Stop listening and keep the transcript — fill it into the composer.
@@ -238,6 +283,63 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
+  }
+
+  /// Shown when the device has no usable system speech-recognition engine.
+  ///
+  /// iOS ships a built-in recognizer (SFSpeechRecognizer) and has nothing for
+  /// the user to install, so we only surface a plain, platform-neutral notice.
+  /// The actionable "enable a speech service" flow is Android-only (some ROMs
+  /// ship without a system recognizer) and is gated behind [Platform.isAndroid]
+  /// so no third-party platform guidance ever reaches iOS.
+  Future<void> _showSpeechUnavailableGuide() async {
+    if (!mounted) return;
+
+    if (!Platform.isAndroid) {
+      _showVoiceError(S.voiceUnavailable);
+      return;
+    }
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.voiceEngineMissingTitle),
+        content: Text(S.voiceEngineMissingBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(S.voiceEngineInstall),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return;
+
+    // Android only: help the user obtain a system speech-recognition service.
+    // Force the primary app store (com.android.vending) explicitly — otherwise
+    // `market://` is intercepted by some vendor stores that do not carry it.
+    // Fall back to the web store URL if that store app is absent.
+    const pkg = 'com.google.android.tts';
+    final webUri =
+        Uri.parse('https://play.google.com/store/apps/details?id=$pkg');
+    try {
+      final intent = AndroidIntent(
+        action: 'action_view',
+        data: 'market://details?id=$pkg',
+        package: 'com.android.vending',
+      );
+      try {
+        await intent.launch();
+      } catch (_) {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      if (mounted) _showVoiceError(S.voiceUnavailable);
+    }
   }
 
   void sendMessage(String message) {
@@ -351,6 +453,34 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     final text = (override ?? _controller.text).trim();
     if (text.isEmpty) return;
 
+    // Gate every AI request behind explicit data-sharing consent. The message
+    // is only dispatched once consent is granted; declining leaves the input
+    // untouched so nothing is sent to the third-party AI providers.
+    if (!Services.settings.aiConsentGranted) {
+      _requestAiConsentThenSend(text, fromController: override == null);
+      return;
+    }
+
+    _dispatch(text);
+  }
+
+  /// Shows the consent sheet, and on approval sends [text]. When the text came
+  /// from the composer ([fromController]), it is preserved on decline so the
+  /// user does not lose what they typed.
+  Future<void> _requestAiConsentThenSend(String text, {required bool fromController}) async {
+    final granted = await AiConsentSheet.show(context);
+    if (!mounted) return;
+    if (!granted) {
+      showTopToast(context, S.aiConsentRequiredToast, backgroundColor: CwColors.ink3);
+      return;
+    }
+    await Services.settings.setAiConsentGranted(true);
+    if (!mounted) return;
+    _dispatch(text);
+  }
+
+  /// Appends the user message + AI placeholder and kicks off the stream.
+  void _dispatch(String text) {
     setState(() {
       _messages.add(ChatMsg(kind: ChatMsgKind.user, text: text));
       _controller.clear();
@@ -364,8 +494,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     _doStream(text, aiMsgIndex);
   }
 
-  Future<void> _doStream(String text, int _initialAiMsgIndex) async {
-    var aiMsgIndex = _initialAiMsgIndex;
+  Future<void> _doStream(String text, int initialAiMsgIndex) async {
+    var aiMsgIndex = initialAiMsgIndex;
     final walletAddress = CowalletApp.of(context).walletAddress;
     final userId = await SecureStorage.getUserId();
 
@@ -418,7 +548,6 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       contacts: contactsList,
       authMethod: authMethod,
       lang: S.lang == Lang.zh ? 'zh' : 'en',
-      model: Services.settings.aiModelValue,
     );
 
     _streamSub?.cancel();
@@ -620,7 +749,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             }
 
             // Read tools: render widget based on widget_type
-            void _insertWidget(ChatMsg widget) {
+            void insertWidget(ChatMsg widget) {
               setState(() {
                 // If current AI message is empty, remove it before widget
                 if (_messages[aiMsgIndex].text.isEmpty) {
@@ -637,7 +766,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             switch (widgetType ?? toolName) {
               case 'balance':
               case 'get_balance':
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.balance,
                   widgetData: result,
@@ -648,7 +777,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 final addr = result['address'] as String? ??
                     CowalletApp.of(context).walletAddress;
                 if (addr.isNotEmpty) {
-                  _insertWidget(ChatMsg(
+                  insertWidget(ChatMsg(
                     kind: ChatMsgKind.widget,
                     widgetType: WidgetType.receive,
                     widgetData: {'address': addr},
@@ -659,7 +788,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
               case 'get_transaction_history':
                 final transactions = (result['transactions'] as List<dynamic>?) ?? [];
                 final total = result['total'] as int? ?? transactions.length;
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.history,
                   widgetData: {'transactions': transactions, 'total': total},
@@ -667,7 +796,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 break;
               case 'audit':
               case 'security_audit':
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.audit,
                   widgetData: result,
@@ -675,7 +804,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 break;
               case 'token_info':
               case 'get_token_info':
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.tokenInfo,
                   widgetData: result,
@@ -1722,7 +1851,7 @@ class _ThinkingDotsState extends State<_ThinkingDots>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) {
+      builder: (_, _) {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [

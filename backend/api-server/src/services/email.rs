@@ -53,11 +53,7 @@ impl EmailService {
             .client
             .send_email()
             .from_email_address(&self.inner.from_address)
-            .destination(
-                Destination::builder()
-                    .to_addresses(to_email)
-                    .build(),
-            )
+            .destination(Destination::builder().to_addresses(to_email).build())
             .content(
                 EmailContent::builder()
                     .simple(

@@ -3,6 +3,7 @@ name = "policy-engine"
 description = "Transaction policy engine — limits, M-of-N approval, risk control"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 alloy-primitives = { workspace = true }

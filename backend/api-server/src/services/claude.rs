@@ -1,6 +1,6 @@
 use crate::services::ai_provider::*;
 use futures::StreamExt;
-use reqwest::{Client, header};
+use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -104,14 +104,16 @@ impl ChatMessage {
             content: self.content.clone(),
             reasoning_content: None,
             tool_calls: self.tool_calls.as_ref().map(|tcs| {
-                tcs.iter().map(|tc| ToolCall {
-                    id: tc.id.clone(),
-                    call_type: "function".into(),
-                    function: FunctionCall {
-                        name: tc.name.clone(),
-                        arguments: tc.arguments.clone(),
-                    },
-                }).collect()
+                tcs.iter()
+                    .map(|tc| ToolCall {
+                        id: tc.id.clone(),
+                        call_type: "function".into(),
+                        function: FunctionCall {
+                            name: tc.name.clone(),
+                            arguments: tc.arguments.clone(),
+                        },
+                    })
+                    .collect()
             }),
             tool_call_id: self.tool_call_id.clone(),
         }
@@ -184,14 +186,23 @@ impl AiProvider for AiClient {
         let request = ChatCompletionRequest {
             model: &self.model,
             messages: &oai_msgs,
-            tools: if oai_tools.is_empty() { None } else { Some(&oai_tools) },
-            tool_choice: if oai_tools.is_empty() { None } else { Some("auto") },
+            tools: if oai_tools.is_empty() {
+                None
+            } else {
+                Some(&oai_tools)
+            },
+            tool_choice: if oai_tools.is_empty() {
+                None
+            } else {
+                Some("auto")
+            },
             temperature: Some(temperature.unwrap_or(0.7)),
             max_tokens: Some(4096),
             stream: None,
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(header::AUTHORIZATION, format!("Bearer {}", self.api_key))
             .header(header::CONTENT_TYPE, "application/json")
@@ -234,14 +245,23 @@ impl AiProvider for AiClient {
         let request = ChatCompletionRequest {
             model: &self.model,
             messages: &oai_msgs,
-            tools: if oai_tools.is_empty() { None } else { Some(&oai_tools) },
-            tool_choice: if oai_tools.is_empty() { None } else { Some("auto") },
+            tools: if oai_tools.is_empty() {
+                None
+            } else {
+                Some(&oai_tools)
+            },
+            tool_choice: if oai_tools.is_empty() {
+                None
+            } else {
+                Some("auto")
+            },
             temperature: Some(temperature.unwrap_or(0.7)),
             max_tokens: Some(4096),
             stream: Some(true),
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(header::AUTHORIZATION, format!("Bearer {}", self.api_key))
             .header(header::CONTENT_TYPE, "application/json")

@@ -1,9 +1,12 @@
 use axum::{
-    Router,
-    extract::{Path, Query, State, WebSocketUpgrade, ws::{Message, WebSocket}},
+    extract::{
+        ws::{Message, WebSocket},
+        Path, Query, State, WebSocketUpgrade,
+    },
     http::StatusCode,
     response::IntoResponse,
     routing::get,
+    Router,
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -35,8 +38,7 @@ pub struct WsMessage {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/api/v1/mpc/session/{id}/ws", get(ws_handler))
+    Router::new().route("/api/v1/mpc/session/{id}/ws", get(ws_handler))
 }
 
 /// Handle WebSocket upgrade: validate JWT and party membership, then upgrade.
@@ -47,7 +49,9 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
     // Verify the session exists and the party belongs to it
-    let db = state.require_db().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let db = state
+        .require_db()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
     // F-010: consume a single-use WS ticket instead of a raw JWT in the query
     // string. The ticket was issued from a JWT that already passed the blacklist
@@ -55,7 +59,7 @@ async fn ws_handler(
     let ticket_row: Option<(Uuid,)> = sqlx::query_as(
         "UPDATE ws_tickets SET used = TRUE
          WHERE ticket = $1 AND NOT used AND expires_at > NOW()
-         RETURNING user_id"
+         RETURNING user_id",
     )
     .bind(&query.ticket)
     .fetch_optional(db)
@@ -64,13 +68,12 @@ async fn ws_handler(
 
     let ticket_user_id = ticket_row.ok_or(StatusCode::UNAUTHORIZED)?.0;
 
-    let session: (String, Vec<i16>, Uuid) = sqlx::query_as(
-        "SELECT status, parties, user_id FROM mpc_sessions WHERE id = $1"
-    )
-    .bind(session_id)
-    .fetch_one(db)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    let session: (String, Vec<i16>, Uuid) =
+        sqlx::query_as("SELECT status, parties, user_id FROM mpc_sessions WHERE id = $1")
+            .bind(session_id)
+            .fetch_one(db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let (status, parties, session_user_id) = session;
 
@@ -101,9 +104,7 @@ async fn ws_handler(
 
     let party_index = query.party;
 
-    Ok(ws.on_upgrade(move |socket| {
-        handle_ws_connection(socket, state, session_id, party_index)
-    }))
+    Ok(ws.on_upgrade(move |socket| handle_ws_connection(socket, state, session_id, party_index)))
 }
 
 /// Main WebSocket connection handler.
@@ -120,13 +121,55 @@ async fn handle_ws_connection(
     // Channel for pushing messages to the WS client
     let (tx, mut rx) = mpsc::channel::<WsMessage>(64);
 
+    // Establish the NATS subscription BEFORE the DB catch-up.
+    //
+    // Ordering matters: the client sends its protocol messages over HTTP
+    // (POST /msg), and the server publishes each response to NATS. If we did
+    // catch-up first and subscribed second (the previous order), a response
+    // published in that gap had no subscriber and was silently dropped by NATS
+    // (it is not persistent), while the WS path never re-reads the DB when NATS
+    // is up. The client then waited out the full 45s WS timeout every round and
+    // only recovered via its slow HTTP poll fallback — ~100s per signature.
+    //
+    // Subscribing first closes the race: async-nats buffers messages that
+    // arrive after `subscribe()` returns, so any response published once the
+    // client starts sending is captured live. The catch-up that runs afterward
+    // sweeps up anything already persisted before the subscription. A message
+    // that lands in both just yields a harmless duplicate — the client keys on
+    // round and completes once it has the expected count.
+    let mut subscriber = match &state.nats {
+        Some(nats) => {
+            let nats_subject = format!("cowallet.mpc.{}.{}", session_id, party_index);
+            match nats.subscribe(nats_subject.clone()).await {
+                Ok(sub) => {
+                    tracing::info!(
+                        "WS party {} subscribed to NATS subject: {} (session {})",
+                        party_index,
+                        nats_subject,
+                        session_id
+                    );
+                    Some(sub)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "NATS subscribe failed for {}: {} — falling back to DB polling",
+                        nats_subject,
+                        e
+                    );
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
     // Send any messages that arrived before this WS connection (catch-up from DB)
     if let Some(db) = &state.db {
         let catchup_messages: Result<Vec<(i64, i16, i16, i16, Vec<u8>)>, _> = sqlx::query_as(
             "SELECT id, from_party, to_party, round, payload
              FROM mpc_messages
              WHERE session_id = $1 AND (to_party = $2 OR to_party = -1)
-             ORDER BY round ASC, created_at ASC"
+             ORDER BY round ASC, created_at ASC",
         )
         .bind(session_id)
         .bind(party_index)
@@ -163,37 +206,44 @@ async fn handle_ws_connection(
         }
     });
 
-    // Spawn task: subscribe to NATS or poll DB for new messages destined to this party
+    // Spawn task: drain the pre-established NATS subscription, or poll DB when
+    // NATS is unavailable / the subscription could not be created.
     let tx_clone = tx.clone();
     let state_clone = state.clone();
     let inbound_task = tokio::spawn(async move {
-        let nats_subject = format!("cowallet.mpc.{}.{}", session_id, party_index);
-
-        if let Some(nats) = &state_clone.nats {
-            // NATS-based real-time subscription
-            match nats.subscribe(nats_subject.clone()).await {
-                Ok(mut subscriber) => {
-                    tracing::debug!(
-                        "WS party {} subscribed to NATS subject: {}",
-                        party_index, nats_subject
-                    );
-                    while let Some(nats_msg) = subscriber.next().await {
-                        if let Ok(ws_msg) = serde_json::from_slice::<WsMessage>(&nats_msg.payload) {
-                            if tx_clone.send(ws_msg).await.is_err() {
-                                break; // Channel closed, WS disconnected
-                            }
+        if let Some(subscriber) = subscriber.as_mut() {
+            tracing::info!(
+                "WS inbound_task draining NATS for session {} party {}",
+                session_id,
+                party_index
+            );
+            while let Some(nats_msg) = subscriber.next().await {
+                match serde_json::from_slice::<WsMessage>(&nats_msg.payload) {
+                    Ok(ws_msg) => {
+                        tracing::info!(
+                            "WS inbound: NATS→client session {} round={} to_party={} len={}",
+                            session_id,
+                            ws_msg.round,
+                            ws_msg.to_party,
+                            ws_msg.payload.len()
+                        );
+                        if tx_clone.send(ws_msg).await.is_err() {
+                            break; // Channel closed, WS disconnected
                         }
                     }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "NATS subscribe failed for {}: {} — falling back to DB polling",
-                        nats_subject, e
-                    );
-                    // Fall through to DB polling
-                    db_poll_loop(&state_clone, session_id, party_index, &tx_clone).await;
+                    Err(e) => {
+                        tracing::warn!(
+                            "WS inbound: failed to deserialize NATS payload ({} bytes) for session {}: {}",
+                            nats_msg.payload.len(), session_id, e
+                        );
+                    }
                 }
             }
+            tracing::info!(
+                "WS inbound_task NATS stream ended for session {} party {}",
+                session_id,
+                party_index
+            );
         } else {
             // No NATS available: fall back to DB polling
             db_poll_loop(&state_clone, session_id, party_index, &tx_clone).await;
@@ -205,7 +255,12 @@ async fn handle_ws_connection(
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                tracing::debug!("WS recv error for session {} party {}: {}", session_id, party_index, e);
+                tracing::debug!(
+                    "WS recv error for session {} party {}: {}",
+                    session_id,
+                    party_index,
+                    e
+                );
                 break;
             }
         };
@@ -221,10 +276,17 @@ async fn handle_ws_connection(
                         handle_client_message(&state, session_id, party_index, ws_msg).await;
                     }
                     Err(e) => {
+                        // Truncate on a char boundary — slicing &text[..200] can
+                        // panic mid-multibyte-char and abort before session cleanup.
+                        let preview_end = text
+                            .char_indices()
+                            .map(|(i, _)| i)
+                            .nth(200)
+                            .unwrap_or(text.len());
                         tracing::warn!(
                             "WS text deserialization failed for session {} party {}: {} (first 200 chars: {})",
                             session_id, party_index, e,
-                            &text[..text.len().min(200)]
+                            &text[..preview_end]
                         );
                     }
                 }
@@ -248,13 +310,17 @@ async fn handle_ws_connection(
     }
 
     // Client disconnected: mark session as interrupted if still active
-    tracing::info!("WS disconnected: session {} party {}", session_id, party_index);
+    tracing::info!(
+        "WS disconnected: session {} party {}",
+        session_id,
+        party_index
+    );
 
     if let Some(db) = &state.db {
         // Mark session as interrupted so the client can resume later
         let _ = sqlx::query(
             "UPDATE mpc_sessions SET status = 'interrupted', last_activity = NOW()
-             WHERE id = $1 AND status = 'active'"
+             WHERE id = $1 AND status = 'active'",
         )
         .bind(session_id)
         .execute(db)
@@ -276,14 +342,19 @@ async fn handle_client_message(
 ) {
     tracing::info!(
         "WS received: session {} from_party={} to_party={} round={} payload_len={}",
-        session_id, ws_msg.from_party, ws_msg.to_party, ws_msg.round, ws_msg.payload.len()
+        session_id,
+        ws_msg.from_party,
+        ws_msg.to_party,
+        ws_msg.round,
+        ws_msg.payload.len()
     );
 
     // Validate that from_party matches the authenticated party
     if ws_msg.from_party != from_party {
         tracing::warn!(
             "WS message from_party mismatch: claimed {} but authenticated as {}",
-            ws_msg.from_party, from_party
+            ws_msg.from_party,
+            from_party
         );
         return;
     }
@@ -292,7 +363,7 @@ async fn handle_client_message(
     if let Some(db) = &state.db {
         let store_result = sqlx::query(
             "INSERT INTO mpc_messages (session_id, from_party, to_party, round, payload, verified)
-             VALUES ($1, $2, $3, $4, $5, false)"
+             VALUES ($1, $2, $3, $4, $5, false)",
         )
         .bind(session_id)
         .bind(ws_msg.from_party)
@@ -343,13 +414,18 @@ async fn handle_client_message(
 
     // If addressed to server (Party 1), trigger the MPC participant
     if ws_msg.to_party == 1 {
+        // NOTE (F-004): unlike the HTTP /msg path, WS messages are NOT HMAC-checked.
+        // The WS connection is authenticated at upgrade by a single-use ws_ticket
+        // bound to the session owner (ticket_user_id == session_user_id) plus a
+        // party-membership check, so the transport itself already proves the
+        // sender is the authenticated owner. The per-session HMAC exists to
+        // authenticate the stateless HTTP path; it is intentionally not required
+        // here. If the WS auth model changes, revisit this.
         if let Some(participant) = &state.mpc_participant {
-            match participant.on_message_received(
-                session_id,
-                ws_msg.from_party,
-                ws_msg.round,
-                &ws_msg.payload,
-            ).await {
+            match participant
+                .on_message_received(session_id, ws_msg.from_party, ws_msg.round, &ws_msg.payload)
+                .await
+            {
                 Ok(responses) => {
                     // Publish server responses via NATS for the requesting party
                     for (from, to, msg_round, payload) in responses {
@@ -377,7 +453,9 @@ async fn handle_client_message(
                 Err(e) => {
                     tracing::error!(
                         "MPC participant error for session {} round {}: {}",
-                        session_id, ws_msg.round, e
+                        session_id,
+                        ws_msg.round,
+                        e
                     );
                     // Mark session as failed so the client stops waiting
                     if let Some(db) = &state.db {
@@ -418,7 +496,7 @@ async fn db_poll_loop(
              FROM mpc_messages
              WHERE session_id = $1 AND id > $2 AND (to_party = $3 OR to_party = -1)
              ORDER BY id ASC
-             LIMIT 50"
+             LIMIT 50",
         )
         .bind(session_id)
         .bind(last_id)
@@ -442,21 +520,25 @@ async fn db_poll_loop(
                 }
             }
             Err(e) => {
-                tracing::warn!("DB poll error for session {} party {}: {}", session_id, party_index, e);
+                tracing::warn!(
+                    "DB poll error for session {} party {}: {}",
+                    session_id,
+                    party_index,
+                    e
+                );
             }
         }
 
         // Check if session is still active
-        let status: Result<Option<String>, _> = sqlx::query_scalar(
-            "SELECT status FROM mpc_sessions WHERE id = $1"
-        )
-        .bind(session_id)
-        .fetch_optional(db)
-        .await;
+        let status: Result<Option<String>, _> =
+            sqlx::query_scalar("SELECT status FROM mpc_sessions WHERE id = $1")
+                .bind(session_id)
+                .fetch_optional(db)
+                .await;
 
         match status {
             Ok(Some(s)) if s == "active" => {} // continue polling
-            _ => return, // session ended or error
+            _ => return,                       // session ended or error
         }
     }
 }

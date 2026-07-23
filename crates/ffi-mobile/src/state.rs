@@ -23,7 +23,12 @@ pub fn store_shares(shares: Vec<KeyShare>) {
 }
 
 pub fn get_share(party: PartyIndex) -> Option<KeyShare> {
-    SHARDS.lock().unwrap_or_else(|e| e.into_inner()).as_ref()?.get(&party).cloned()
+    SHARDS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()?
+        .get(&party)
+        .cloned()
 }
 
 /// Store a single share without replacing others (upsert into the map).
@@ -40,7 +45,7 @@ pub fn clear_shares() {
 pub fn has_shares() -> bool {
     SHARDS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .as_ref()
         .is_some_and(|m| !m.is_empty())
 }
@@ -51,19 +56,25 @@ pub fn has_shares() -> bool {
 
 pub fn create_dkg_session(session_id: String, dkg: DkgSession) {
     let arc_dkg = Arc::new(Mutex::new(dkg));
-    DKG_SESSIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id, arc_dkg);
+    DKG_SESSIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(session_id, arc_dkg);
 }
 
 pub fn get_dkg_session_arc(session_id: &str) -> Option<Arc<Mutex<DkgSession>>> {
     DKG_SESSIONS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(session_id)
         .map(Arc::clone)
 }
 
 pub fn delete_dkg_session(session_id: &str) {
-    DKG_SESSIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(session_id);
+    DKG_SESSIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(session_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -72,19 +83,25 @@ pub fn delete_dkg_session(session_id: &str) {
 
 pub fn create_sign_session(session_id: String, session: SignSession) {
     let arc_session = Arc::new(Mutex::new(session));
-    SIGN_SESSIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id, arc_session);
+    SIGN_SESSIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(session_id, arc_session);
 }
 
 pub fn get_sign_session_arc(session_id: &str) -> Option<Arc<Mutex<SignSession>>> {
     SIGN_SESSIONS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(session_id)
         .map(Arc::clone)
 }
 
 pub fn delete_sign_session(session_id: &str) {
-    SIGN_SESSIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(session_id);
+    SIGN_SESSIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(session_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -93,19 +110,25 @@ pub fn delete_sign_session(session_id: &str) {
 
 pub fn create_reshare_session(session_id: String, session: ReshareSession) {
     let arc_session = Arc::new(Mutex::new(session));
-    RESHARE_SESSIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id, arc_session);
+    RESHARE_SESSIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(session_id, arc_session);
 }
 
 pub fn get_reshare_session_arc(session_id: &str) -> Option<Arc<Mutex<ReshareSession>>> {
     RESHARE_SESSIONS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(session_id)
         .map(Arc::clone)
 }
 
 pub fn delete_reshare_session(session_id: &str) {
-    RESHARE_SESSIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(session_id);
+    RESHARE_SESSIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(session_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -115,13 +138,20 @@ pub fn delete_reshare_session(session_id: &str) {
 static RECOVERY_BACKUP_SHARD: Mutex<Option<KeyShare>> = Mutex::new(None);
 
 pub fn store_recovery_backup_shard(shard: KeyShare) {
-    *RECOVERY_BACKUP_SHARD.lock().unwrap_or_else(|e| e.into_inner()) = Some(shard);
+    *RECOVERY_BACKUP_SHARD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(shard);
 }
 
 pub fn get_recovery_backup_shard() -> Option<KeyShare> {
-    RECOVERY_BACKUP_SHARD.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    RECOVERY_BACKUP_SHARD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 pub fn clear_recovery_backup_shard() {
-    *RECOVERY_BACKUP_SHARD.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *RECOVERY_BACKUP_SHARD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
 }

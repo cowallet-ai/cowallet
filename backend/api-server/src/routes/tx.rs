@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -51,26 +51,35 @@ async fn submit(
         .sub
         .parse()
         .map_err(|_| rpc_error("invalid user id in token"))?;
-    let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
+    let chain_id = body
+        .chain_id
+        .ok_or_else(|| rpc_error("chain_id is required"))?;
 
     tracing::info!(
         "[tx.submit] chain_id={} from={:?} to={:?} value={:?} token={:?}",
         chain_id,
-        body.from_addr, body.to_addr, body.value, body.token
+        body.from_addr,
+        body.to_addr,
+        body.value,
+        body.token
     );
 
     // Check wallet freeze status before broadcasting — a client holding a valid
     // pre-freeze signature must not be able to submit it after the wallet is frozen.
-    let from_addr = body.from_addr.as_deref().ok_or_else(|| (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse { error: "from_addr is required".into() }),
-    ))?;
+    let from_addr = body.from_addr.as_deref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "from_addr is required".into(),
+            }),
+        )
+    })?;
     if let Some(db) = &state.db {
-        let addr_bytes = hex::decode(from_addr.strip_prefix("0x").unwrap_or(from_addr))
-            .unwrap_or_default();
+        let addr_bytes =
+            hex::decode(from_addr.strip_prefix("0x").unwrap_or(from_addr)).unwrap_or_default();
         if !addr_bytes.is_empty() {
             let wallet_status: Option<String> = sqlx::query_scalar(
-                "SELECT status FROM wallets WHERE eth_address = $1 AND user_id = $2"
+                "SELECT status FROM wallets WHERE eth_address = $1 AND user_id = $2",
             )
             .bind(&addr_bytes)
             .bind(user_id)
@@ -81,7 +90,9 @@ async fn submit(
             if wallet_status.as_deref() == Some("frozen") {
                 return Err((
                     StatusCode::FORBIDDEN,
-                    Json(ErrorResponse { error: "wallet is frozen".into() }),
+                    Json(ErrorResponse {
+                        error: "wallet is frozen".into(),
+                    }),
                 ));
             }
         }
@@ -138,7 +149,10 @@ async fn submit(
         rpc_error(&format!("RPC request failed: {e}"))
     })?;
 
-    tracing::info!("[tx.submit] eth_sendRawTransaction response: {:?}", rpc_resp);
+    tracing::info!(
+        "[tx.submit] eth_sendRawTransaction response: {:?}",
+        rpc_resp
+    );
 
     if let Some(err) = rpc_resp.get("error") {
         let msg = err
@@ -173,7 +187,10 @@ async fn submit(
         .to_string();
 
     // Validate tx_hash format (0x + 64 hex chars = 66 total)
-    if tx_hash.len() != 66 || !tx_hash.starts_with("0x") || !tx_hash[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+    if tx_hash.len() != 66
+        || !tx_hash.starts_with("0x")
+        || !tx_hash[2..].chars().all(|c| c.is_ascii_hexdigit())
+    {
         let msg = "RPC returned invalid tx_hash";
         tracing::error!("{}: {:?}", msg, tx_hash);
         return Err(rpc_error(msg));
@@ -200,8 +217,8 @@ async fn submit(
             .as_ref()
             .map(|d| d.value.to_string())
             .unwrap_or_else(|| body.value.clone().unwrap_or_else(|| "0".into()));
-        let hash_bytes = hex::decode(tx_hash.strip_prefix("0x").unwrap_or(&tx_hash))
-            .unwrap_or_default();
+        let hash_bytes =
+            hex::decode(tx_hash.strip_prefix("0x").unwrap_or(&tx_hash)).unwrap_or_default();
 
         if let Err(e) = sqlx::query(
             "INSERT INTO transactions (user_id, chain_id, from_addr, to_addr, value, token, tx_hash, status)
@@ -223,13 +240,11 @@ async fn submit(
         // Link transaction hash back to MPC session if session_id was provided
         if let Some(ref mpc_sid) = body.mpc_session_id {
             if let Ok(sid) = uuid::Uuid::parse_str(mpc_sid) {
-                if let Err(e) = sqlx::query(
-                    "UPDATE mpc_sessions SET tx_hash = $1 WHERE id = $2"
-                )
-                .bind(&hash_bytes)
-                .bind(sid)
-                .execute(db)
-                .await
+                if let Err(e) = sqlx::query("UPDATE mpc_sessions SET tx_hash = $1 WHERE id = $2")
+                    .bind(&hash_bytes)
+                    .bind(sid)
+                    .execute(db)
+                    .await
                 {
                     tracing::warn!("failed to link tx_hash to mpc_session {}: {}", sid, e);
                 } else {
@@ -278,31 +293,47 @@ async fn tx_status(
     Path(tx_hash): Path<String>,
 ) -> Result<Json<TxStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.require_db().map_err(|_| db_unavailable())?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| rpc_error("invalid user id in token"))?;
 
     let hash_str = tx_hash.strip_prefix("0x").unwrap_or(&tx_hash);
-    let hash_bytes = hex::decode(hash_str)
-        .map_err(|_| rpc_error("invalid tx_hash hex"))?;
+    let hash_bytes = hex::decode(hash_str).map_err(|_| rpc_error("invalid tx_hash hex"))?;
 
-    let row: Option<(String, Option<i64>, Option<i64>, Option<chrono::DateTime<chrono::Utc>>, i64, Vec<u8>, Vec<u8>)> =
-        sqlx::query_as(
-            "SELECT status, block_number, gas_used, confirmed_at, chain_id, from_addr, to_addr
+    let row: Option<(
+        String,
+        Option<i64>,
+        Option<i64>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        i64,
+        Vec<u8>,
+        Vec<u8>,
+    )> = sqlx::query_as(
+        "SELECT status, block_number, gas_used, confirmed_at, chain_id, from_addr, to_addr
              FROM transactions
-             WHERE tx_hash = $1"
-        )
-        .bind(&hash_bytes)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| db_error(&e.to_string()))?;
+             WHERE tx_hash = $1",
+    )
+    .bind(&hash_bytes)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| db_error(&e.to_string()))?;
 
     let (status, block_number, gas_used, confirmed_at, chain_id, from_addr, to_addr) = row
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "transaction not found".into() })))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "transaction not found".into(),
+                }),
+            )
+        })?;
 
     // The caller must own one side of the tx (F-008). Return NOT_FOUND on a
     // non-owned hash so existence isn't leaked.
     let owned: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM wallets WHERE eth_address IN ($1, $2) AND user_id = $3 LIMIT 1"
+        "SELECT 1::int8 FROM wallets WHERE eth_address IN ($1, $2) AND user_id = $3 LIMIT 1",
     )
     .bind(&from_addr)
     .bind(&to_addr)
@@ -311,7 +342,12 @@ async fn tx_status(
     .await
     .map_err(|e| db_error(&e.to_string()))?;
     if owned.is_none() {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { error: "transaction not found".into() })));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "transaction not found".into(),
+            }),
+        ));
     }
 
     // Calculate confirmations if confirmed
@@ -325,9 +361,9 @@ async fn tx_status(
         match state.rpc_call(chain_id as u64, &body).await {
             Ok(resp) => {
                 let block_hex = resp.get("result").and_then(|r| r.as_str()).unwrap_or("0x0");
-                let current = i64::from_str_radix(
-                    block_hex.strip_prefix("0x").unwrap_or(block_hex), 16
-                ).unwrap_or(0);
+                let current =
+                    i64::from_str_radix(block_hex.strip_prefix("0x").unwrap_or(block_hex), 16)
+                        .unwrap_or(0);
                 Some(current - block_num)
             }
             Err(_) => Some(0),
@@ -345,7 +381,6 @@ async fn tx_status(
         confirmed_at: confirmed_at.map(|t| t.to_rfc3339()),
     }))
 }
-
 
 #[derive(Deserialize)]
 struct SummaryQuery {
@@ -374,10 +409,11 @@ async fn spending_summary(
     claims: axum::Extension<Claims>,
     Query(q): Query<SummaryQuery>,
 ) -> Result<Json<SpendingSummaryResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let db = state
-        .require_db()
-        .map_err(|_| db_unavailable())?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let db = state.require_db().map_err(|_| db_unavailable())?;
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| db_error("invalid user id in token"))?;
     let days = q.days.unwrap_or(30).max(1);
 
@@ -440,7 +476,9 @@ async fn simulate(
     State(state): State<AppState>,
     Json(body): Json<SimulateRequest>,
 ) -> Result<Json<SimulateResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
+    let chain_id = body
+        .chain_id
+        .ok_or_else(|| rpc_error("chain_id is required"))?;
 
     let mut call_obj = serde_json::json!({
         "to": body.to,
@@ -462,7 +500,9 @@ async fn simulate(
         "id": 1
     });
 
-    let rpc_resp = state.rpc_call(chain_id, &rpc_body).await
+    let rpc_resp = state
+        .rpc_call(chain_id, &rpc_body)
+        .await
         .map_err(|e| rpc_error(&format!("RPC request failed: {e}")))?;
 
     if let Some(err) = rpc_resp.get("error") {
@@ -517,7 +557,9 @@ async fn estimate_gas(
     State(state): State<AppState>,
     Json(body): Json<EstimateGasRequest>,
 ) -> Result<Json<EstimateGasResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
+    let chain_id = body
+        .chain_id
+        .ok_or_else(|| rpc_error("chain_id is required"))?;
 
     // Build the transaction object for eth_estimateGas
     let mut tx_obj = serde_json::json!({
@@ -537,8 +579,11 @@ async fn estimate_gas(
                         Ok(eth_amount) => {
                             // Use integer arithmetic to avoid float truncation at large values
                             let whole = eth_amount.trunc() as u128;
-                            let frac = ((eth_amount.fract().abs()) * 1_000_000_000_000_000_000.0) as u128;
-                            let wei = whole.saturating_mul(1_000_000_000_000_000_000).saturating_add(frac);
+                            let frac =
+                                ((eth_amount.fract().abs()) * 1_000_000_000_000_000_000.0) as u128;
+                            let wei = whole
+                                .saturating_mul(1_000_000_000_000_000_000)
+                                .saturating_add(frac);
                             format!("0x{:x}", wei)
                         }
                         Err(_) => "0x0".to_string(),
@@ -569,26 +614,25 @@ async fn estimate_gas(
         state.rpc_call(chain_id, &gas_price_body),
     );
 
-    let estimate_json = estimate_result
-        .map_err(|e| rpc_error(&format!("eth_estimateGas failed: {e}")))?;
-    let price_json = price_result
-        .map_err(|e| rpc_error(&format!("eth_gasPrice failed: {e}")))?;
+    let estimate_json =
+        estimate_result.map_err(|e| rpc_error(&format!("eth_estimateGas failed: {e}")))?;
+    let price_json = price_result.map_err(|e| rpc_error(&format!("eth_gasPrice failed: {e}")))?;
 
     // Parse gas units from hex
     let gas_hex = estimate_json
         .get("result")
         .and_then(|r| r.as_str())
         .unwrap_or("0x5208"); // default 21000 for simple transfer
-    let gas_units = u64::from_str_radix(gas_hex.strip_prefix("0x").unwrap_or(gas_hex), 16)
-        .unwrap_or(21000);
+    let gas_units =
+        u64::from_str_radix(gas_hex.strip_prefix("0x").unwrap_or(gas_hex), 16).unwrap_or(21000);
 
     // Parse gas price from hex (in wei)
     let price_hex = price_json
         .get("result")
         .and_then(|r| r.as_str())
         .unwrap_or("0x0");
-    let gas_price_wei = u128::from_str_radix(price_hex.strip_prefix("0x").unwrap_or(price_hex), 16)
-        .unwrap_or(0);
+    let gas_price_wei =
+        u128::from_str_radix(price_hex.strip_prefix("0x").unwrap_or(price_hex), 16).unwrap_or(0);
 
     // Calculate estimated cost
     let gas_price_gwei = gas_price_wei as f64 / 1e9;
@@ -648,12 +692,13 @@ async fn submit_userop(
         .parse()
         .map_err(|_| rpc_error("invalid user id in token"))?;
 
-    let chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
+    let chain_id = body
+        .chain_id
+        .ok_or_else(|| rpc_error("chain_id is required"))?;
 
     // Parse sender address
     let sender_str = body.sender.strip_prefix("0x").unwrap_or(&body.sender);
-    let sender_bytes = hex::decode(sender_str)
-        .map_err(|_| rpc_error("invalid sender address"))?;
+    let sender_bytes = hex::decode(sender_str).map_err(|_| rpc_error("invalid sender address"))?;
     if sender_bytes.len() != 20 {
         return Err(rpc_error("sender address must be 20 bytes"));
     }
@@ -666,23 +711,24 @@ async fn submit_userop(
 
     // Parse call_data
     let call_data_str = body.call_data.strip_prefix("0x").unwrap_or(&body.call_data);
-    let call_data_bytes = hex::decode(call_data_str)
-        .map_err(|_| rpc_error("invalid call_data hex"))?;
+    let call_data_bytes =
+        hex::decode(call_data_str).map_err(|_| rpc_error("invalid call_data hex"))?;
 
     // Check wallet freeze status before creating an MPC signing session.
-    let wallet_status: Option<String> = sqlx::query_scalar(
-        "SELECT status FROM wallets WHERE eth_address = $1 AND user_id = $2"
-    )
-    .bind(&sender_bytes)
-    .bind(user_id)
-    .fetch_optional(db)
-    .await
-    .unwrap_or(None);
+    let wallet_status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM wallets WHERE eth_address = $1 AND user_id = $2")
+            .bind(&sender_bytes)
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None);
 
     if wallet_status.as_deref() == Some("frozen") {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(ErrorResponse { error: "wallet is frozen".into() }),
+            Json(ErrorResponse {
+                error: "wallet is frozen".into(),
+            }),
         ));
     }
 
@@ -694,7 +740,9 @@ async fn submit_userop(
     );
 
     // Parse entry point
-    let ep_str = DEFAULT_ENTRY_POINT.strip_prefix("0x").unwrap_or(DEFAULT_ENTRY_POINT);
+    let ep_str = DEFAULT_ENTRY_POINT
+        .strip_prefix("0x")
+        .unwrap_or(DEFAULT_ENTRY_POINT);
     let ep_bytes = hex::decode(ep_str).expect("default entry point is valid hex");
     let entry_point = alloy_primitives::Address::from_slice(&ep_bytes);
 
@@ -767,39 +815,53 @@ async fn submit_signed_userop(
     claims: axum::Extension<Claims>,
     Json(body): Json<SubmitSignedUserOpRequest>,
 ) -> Result<Json<SubmitSignedUserOpResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let _chain_id = body.chain_id.ok_or_else(|| rpc_error("chain_id is required"))?;
+    let _chain_id = body
+        .chain_id
+        .ok_or_else(|| rpc_error("chain_id is required"))?;
     let db = state.require_db().map_err(|_| db_unavailable())?;
-    let user_id: uuid::Uuid = claims.0.sub.parse()
+    let user_id: uuid::Uuid = claims
+        .0
+        .sub
+        .parse()
         .map_err(|_| rpc_error("invalid user id in token"))?;
 
     // Parse the UserOperation from the JSON value
     let op = &body.user_op;
 
-    let parse_address = |field: &str| -> Result<alloy_primitives::Address, (StatusCode, Json<ErrorResponse>)> {
-        let val = op.get(field).and_then(|v| v.as_str())
-            .ok_or_else(|| rpc_error(&format!("missing field: {}", field)))?;
-        let s = val.strip_prefix("0x").unwrap_or(val);
-        let bytes = hex::decode(s).map_err(|_| rpc_error(&format!("invalid hex for {}", field)))?;
-        if bytes.len() != 20 {
-            return Err(rpc_error(&format!("{} must be 20 bytes", field)));
-        }
-        Ok(alloy_primitives::Address::from_slice(&bytes))
-    };
+    let parse_address =
+        |field: &str| -> Result<alloy_primitives::Address, (StatusCode, Json<ErrorResponse>)> {
+            let val = op
+                .get(field)
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_error(&format!("missing field: {}", field)))?;
+            let s = val.strip_prefix("0x").unwrap_or(val);
+            let bytes =
+                hex::decode(s).map_err(|_| rpc_error(&format!("invalid hex for {}", field)))?;
+            if bytes.len() != 20 {
+                return Err(rpc_error(&format!("{} must be 20 bytes", field)));
+            }
+            Ok(alloy_primitives::Address::from_slice(&bytes))
+        };
 
-    let parse_u256 = |field: &str| -> Result<alloy_primitives::U256, (StatusCode, Json<ErrorResponse>)> {
-        let val = op.get(field).and_then(|v| v.as_str())
-            .ok_or_else(|| rpc_error(&format!("missing field: {}", field)))?;
-        let s = val.strip_prefix("0x").unwrap_or(val);
-        alloy_primitives::U256::from_str_radix(s, 16)
-            .map_err(|_| rpc_error(&format!("invalid hex U256 for {}", field)))
-    };
+    let parse_u256 =
+        |field: &str| -> Result<alloy_primitives::U256, (StatusCode, Json<ErrorResponse>)> {
+            let val = op
+                .get(field)
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| rpc_error(&format!("missing field: {}", field)))?;
+            let s = val.strip_prefix("0x").unwrap_or(val);
+            alloy_primitives::U256::from_str_radix(s, 16)
+                .map_err(|_| rpc_error(&format!("invalid hex U256 for {}", field)))
+        };
 
-    let parse_bytes = |field: &str| -> Result<alloy_primitives::Bytes, (StatusCode, Json<ErrorResponse>)> {
-        let val = op.get(field).and_then(|v| v.as_str()).unwrap_or("0x");
-        let s = val.strip_prefix("0x").unwrap_or(val);
-        let bytes = hex::decode(s).map_err(|_| rpc_error(&format!("invalid hex for {}", field)))?;
-        Ok(alloy_primitives::Bytes::from(bytes))
-    };
+    let parse_bytes =
+        |field: &str| -> Result<alloy_primitives::Bytes, (StatusCode, Json<ErrorResponse>)> {
+            let val = op.get(field).and_then(|v| v.as_str()).unwrap_or("0x");
+            let s = val.strip_prefix("0x").unwrap_or(val);
+            let bytes =
+                hex::decode(s).map_err(|_| rpc_error(&format!("invalid hex for {}", field)))?;
+            Ok(alloy_primitives::Bytes::from(bytes))
+        };
 
     let sender = parse_address("sender")?;
 
@@ -811,13 +873,12 @@ async fn submit_signed_userop(
         .parse()
         .map_err(|_| rpc_error("invalid user id in token"))?;
     let sender_bytes = sender.as_slice().to_vec();
-    let wallet: Option<(uuid::Uuid, String)> = sqlx::query_as(
-        "SELECT user_id, status FROM wallets WHERE eth_address = $1",
-    )
-    .bind(&sender_bytes)
-    .fetch_optional(db)
-    .await
-    .map_err(|_| rpc_error("wallet lookup failed"))?;
+    let wallet: Option<(uuid::Uuid, String)> =
+        sqlx::query_as("SELECT user_id, status FROM wallets WHERE eth_address = $1")
+            .bind(&sender_bytes)
+            .fetch_optional(db)
+            .await
+            .map_err(|_| rpc_error("wallet lookup failed"))?;
     match wallet {
         Some((owner, status)) => {
             if owner != caller_id {
@@ -885,7 +946,9 @@ async fn submit_signed_userop(
         .ok_or_else(|| rpc_error("no bundler URL configured"))?;
 
     // Parse entry point
-    let ep_str = DEFAULT_ENTRY_POINT.strip_prefix("0x").unwrap_or(DEFAULT_ENTRY_POINT);
+    let ep_str = DEFAULT_ENTRY_POINT
+        .strip_prefix("0x")
+        .unwrap_or(DEFAULT_ENTRY_POINT);
     let ep_bytes = hex::decode(ep_str).expect("default entry point is valid hex");
     let entry_point = alloy_primitives::Address::from_slice(&ep_bytes);
 

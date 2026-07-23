@@ -4,7 +4,7 @@ use crate::errors::{MpcError, Result};
 use k256::{
     elliptic_curve::{
         sec1::{FromEncodedPoint, ToEncodedPoint},
-        PrimeField, Field,
+        Field, PrimeField,
     },
     AffinePoint, ProjectivePoint, Scalar,
 };
@@ -178,7 +178,10 @@ impl DkgSession {
             }
 
             // Verify Schnorr proof of knowledge of a_0
-            if !round1.schnorr_proof.verify(&round1.commitments[0], b"DKG-Round1") {
+            if !round1
+                .schnorr_proof
+                .verify(&round1.commitments[0], b"DKG-Round1")
+            {
                 return Err(MpcError::DkgFailed(format!(
                     "party {} failed Schnorr proof of knowledge",
                     round1.party_index
@@ -188,8 +191,16 @@ impl DkgSession {
             self.round1_messages.push(round1);
         }
 
-        // Check if we have commitments from all parties
-        if self.round1_messages.len() >= self.config.total_parties as usize {
+        // Round 1 completes once every *contributing* party has broadcast its
+        // commitment. Only the online signing parties (device=0, server=1)
+        // contribute polynomials to the joint secret F = f_0 + f_1; the offline
+        // backup share is a derived point F(3), not a polynomial contributor, so
+        // it never broadcasts a round-1 commitment. Expected commitment count is
+        // therefore `threshold`, matching the round-2 gate below (which already
+        // uses `threshold` and works in production). Using `total_parties` here
+        // was the sole inconsistency and left round1 permanently incomplete in
+        // the 2-online-party runtime.
+        if self.round1_messages.len() >= self.config.threshold as usize {
             self.state = DkgState::Round1Done;
         }
 
@@ -209,7 +220,9 @@ impl DkgSession {
         let my_idx = self.config.party_index as usize;
 
         // Use the stored polynomial from Round 1 (ensures consistency with commitments)
-        let coeffs = self.my_polynomial.as_ref()
+        let coeffs = self
+            .my_polynomial
+            .as_ref()
             .ok_or_else(|| MpcError::DkgFailed("polynomial not stored from round 1".into()))?
             .clone();
 
@@ -343,7 +356,11 @@ impl DkgSession {
                 if c0_bytes.len() >= 33 {
                     key_bytes.copy_from_slice(&c0_bytes[..33]);
                 }
-                if let Ok(encoded) = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(&key_bytes[..]) {
+                if let Ok(encoded) =
+                    k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+                        &key_bytes[..],
+                    )
+                {
                     let ct_point = AffinePoint::from_encoded_point(&encoded);
                     if ct_point.is_some().into() {
                         pubkey_point += ProjectivePoint::from(ct_point.unwrap());
@@ -428,7 +445,9 @@ impl DkgSession {
                                 bytes.copy_from_slice(&share_bytes[..32]);
                             }
                             let s = Option::<Scalar>::from(Scalar::from_repr(bytes.into()))
-                                .ok_or_else(|| MpcError::DkgFailed("invalid backup share value".into()))?;
+                                .ok_or_else(|| {
+                                    MpcError::DkgFailed("invalid backup share value".into())
+                                })?;
                             backup_scalar += s;
                         }
                     }
@@ -446,7 +465,8 @@ impl DkgSession {
                         }
                     } else {
                         return Err(MpcError::DkgFailed(
-                            "no evaluations found for backup party and polynomial unavailable".into(),
+                            "no evaluations found for backup party and polynomial unavailable"
+                                .into(),
                         ));
                     }
                 }
@@ -475,7 +495,11 @@ impl DkgSession {
     ///
     /// Checks: share * G == C_0 + x*C_1 + x^2*C_2 + ... + x^{t-1}*C_{t-1}
     /// where x = recipient_index + 1 (1-indexed evaluation points for Shamir)
-    pub(crate) fn verify_feldman_share(share: &Scalar, recipient_index: u16, commitments: &[Vec<u8>]) -> Result<()> {
+    pub(crate) fn verify_feldman_share(
+        share: &Scalar,
+        recipient_index: u16,
+        commitments: &[Vec<u8>],
+    ) -> Result<()> {
         let x = Scalar::from((recipient_index + 1) as u64);
 
         // LHS: share * G
@@ -493,8 +517,10 @@ impl DkgSession {
             let mut key_bytes = [0u8; 33];
             key_bytes.copy_from_slice(&c_bytes[..33]);
 
-            let encoded = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(&key_bytes[..])
-                .map_err(|_| MpcError::DkgFailed("invalid commitment encoding".into()))?;
+            let encoded = k256::elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+                &key_bytes[..],
+            )
+            .map_err(|_| MpcError::DkgFailed("invalid commitment encoding".into()))?;
             let ct_point = AffinePoint::from_encoded_point(&encoded);
             if bool::from(ct_point.is_none()) {
                 return Err(MpcError::DkgFailed("invalid commitment point".into()));
@@ -506,7 +532,9 @@ impl DkgSession {
         }
 
         if share_point != expected {
-            return Err(MpcError::DkgFailed("Feldman VSS verification failed: share inconsistent with commitments".into()));
+            return Err(MpcError::DkgFailed(
+                "Feldman VSS verification failed: share inconsistent with commitments".into(),
+            ));
         }
 
         Ok(())
@@ -551,6 +579,37 @@ mod tests {
         assert!(matches!(session.state, DkgState::Initialized));
     }
 
+    /// Regression (production 2-online-party DKG): device (party 0) and server
+    /// (party 1) are the only online polynomial contributors; the backup share
+    /// is derived, never broadcasting a round-1 commitment. With config
+    /// total_parties=3, round1 must still complete after the device has its own
+    /// commitment (from generate_round1) plus the server's — i.e. `threshold`
+    /// commitments, not `total_parties`. Previously this gated on total_parties
+    /// and left round1 permanently incomplete, so generate_round2 failed with
+    /// "must complete round 1 first".
+    #[test]
+    fn test_round1_completes_with_two_online_parties() {
+        let mut device = DkgSession::new(test_config(0));
+        let mut server = DkgSession::new(test_config(1));
+
+        // Each contributor generates its own round-1 (self-stored internally).
+        let _device_r1 = device.generate_round1().unwrap();
+        let server_r1 = server.generate_round1().unwrap();
+
+        // Device processes ONLY the server's round-1 (no live backup party).
+        device.process_round1(vec![server_r1]).unwrap();
+
+        // Round1 must be complete (2 commitments == threshold), and round2 must
+        // generate without the "must complete round 1 first" error.
+        assert!(
+            matches!(device.state, DkgState::Round1Done),
+            "round1 should complete with device+server commitments (threshold=2)"
+        );
+        device
+            .generate_round2()
+            .expect("round2 must generate after 2-party round1 completes");
+    }
+
     #[test]
     fn test_local_dkg_produces_consistent_shares() {
         let mut session = DkgSession::new(test_config(0));
@@ -592,20 +651,51 @@ mod tests {
         assert_eq!(shares.len(), 3, "should generate 3 shares");
 
         // All shares have same public key
-        assert_eq!(shares[0].public_key, shares[1].public_key, "shares 0 and 1 should have same public key");
-        assert_eq!(shares[1].public_key, shares[2].public_key, "shares 1 and 2 should have same public key");
+        assert_eq!(
+            shares[0].public_key, shares[1].public_key,
+            "shares 0 and 1 should have same public key"
+        );
+        assert_eq!(
+            shares[1].public_key, shares[2].public_key,
+            "shares 1 and 2 should have same public key"
+        );
 
         // Different secret shares
-        assert_ne!(shares[0].secret_share.as_bytes(), shares[1].secret_share.as_bytes(), "shares 0 and 1 should have different secrets");
-        assert_ne!(shares[1].secret_share.as_bytes(), shares[2].secret_share.as_bytes(), "shares 1 and 2 should have different secrets");
-        assert_ne!(shares[0].secret_share.as_bytes(), shares[2].secret_share.as_bytes(), "shares 0 and 2 should have different secrets");
+        assert_ne!(
+            shares[0].secret_share.as_bytes(),
+            shares[1].secret_share.as_bytes(),
+            "shares 0 and 1 should have different secrets"
+        );
+        assert_ne!(
+            shares[1].secret_share.as_bytes(),
+            shares[2].secret_share.as_bytes(),
+            "shares 1 and 2 should have different secrets"
+        );
+        assert_ne!(
+            shares[0].secret_share.as_bytes(),
+            shares[2].secret_share.as_bytes(),
+            "shares 0 and 2 should have different secrets"
+        );
 
         // Verify each share has correct parameters
         for (i, share) in shares.iter().enumerate() {
-            assert_eq!(share.party, i as u16, "share {} should have party index {}", i, i);
+            assert_eq!(
+                share.party, i as u16,
+                "share {} should have party index {}",
+                i, i
+            );
             assert_eq!(share.threshold, 2, "share {} should have threshold 2", i);
-            assert_eq!(share.total_parties, 3, "share {} should have total_parties 3", i);
-            assert_eq!(share.secret_share.len(), 32, "share {} should have 32-byte secret", i);
+            assert_eq!(
+                share.total_parties, 3,
+                "share {} should have total_parties 3",
+                i
+            );
+            assert_eq!(
+                share.secret_share.len(),
+                32,
+                "share {} should have 32-byte secret",
+                i
+            );
         }
     }
 
@@ -619,8 +709,14 @@ mod tests {
         let addr1 = shares[1].eth_address();
         let addr2 = shares[2].eth_address();
 
-        assert_eq!(addr0, addr1, "shares 0 and 1 should produce same eth address");
-        assert_eq!(addr1, addr2, "shares 1 and 2 should produce same eth address");
+        assert_eq!(
+            addr0, addr1,
+            "shares 0 and 1 should produce same eth address"
+        );
+        assert_eq!(
+            addr1, addr2,
+            "shares 1 and 2 should produce same eth address"
+        );
 
         // Address should be 20 bytes
         assert_eq!(addr0.len(), 20, "eth address should be 20 bytes");

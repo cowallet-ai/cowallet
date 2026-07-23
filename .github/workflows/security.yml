@@ -1,0 +1,40 @@
+# 密钥扫描 — gitleaks CLI.
+#
+# PR: 只扫 PR 引入的新提交(不因历史债务变红)。
+# Push to main: 全量扫描,历史中的已知误报见 .gitleaks.toml allowlist。
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 全历史,让 PR 模式也能 --log-opts
+
+      - name: Install gitleaks
+        run: |
+          VERSION=8.18.4
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan (PR — new commits only)
+        if: github.event_name == 'pull_request'
+        run: |
+          gitleaks detect --source . --config .gitleaks.toml \
+            --log-opts "origin/${{ github.base_ref }}..HEAD" \
+            --redact --verbose --exit-code 1
+
+      - name: Scan (push — full history, informational)
+        if: github.event_name == 'push'
+        run: |
+          gitleaks detect --source . --config .gitleaks.toml \
+            --redact --verbose --exit-code 1

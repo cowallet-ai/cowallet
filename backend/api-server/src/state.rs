@@ -1,6 +1,6 @@
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use sqlx::PgPool;
 
 use crate::middleware::audit::AuditLogger;
 use crate::middleware::metrics::MetricsStore;
@@ -24,6 +24,7 @@ pub struct AppState {
     pub price_cache: PriceCache,
     pub yield_cache: YieldCache,
     pub http: reqwest::Client,
+    pub ai_bedrock: Option<Arc<dyn AiProvider>>,
     pub ai_deepseek: Option<Arc<dyn AiProvider>>,
     pub nats: Option<async_nats::Client>,
     pub rate_limiter: AnyRateLimiter,
@@ -42,7 +43,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new(database_url: &str, rpc_url: String, rpc_urls: HashMap<u64, String>, chain_rpcs: HashMap<u64, Vec<String>>) -> Result<Self, sqlx::Error> {
+    pub async fn new(
+        database_url: &str,
+        rpc_url: String,
+        rpc_urls: HashMap<u64, String>,
+        chain_rpcs: HashMap<u64, Vec<String>>,
+    ) -> Result<Self, sqlx::Error> {
         // Configure production-grade connection pool
         let pool_options = sqlx::postgres::PgPoolOptions::new()
             .max_connections(
@@ -81,25 +87,37 @@ impl AppState {
 
         // Initialize NATS client if URL is available
         let nats = match std::env::var("NATS_URL") {
-            Ok(url) => {
-                match async_nats::connect(&url).await {
-                    Ok(client) => {
-                        tracing::info!("Connected to NATS at {}", url);
-                        Some(client)
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to connect to NATS at {}: {} — WS will fall back to DB polling", url, e);
-                        None
-                    }
+            Ok(url) => match async_nats::connect(&url).await {
+                Ok(client) => {
+                    tracing::info!("Connected to NATS at {}", url);
+                    Some(client)
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to connect to NATS at {}: {} — WS will fall back to DB polling",
+                        url,
+                        e
+                    );
+                    None
+                }
+            },
             Err(_) => {
                 tracing::info!("NATS_URL not set — MPC WebSocket will use DB polling fallback");
                 None
             }
         };
 
-        // Initialize AI provider (DeepSeek)
+        // Initialize AI providers. Bedrock is the default engine; DeepSeek is the
+        // fallback (see `select_ai_provider`). Both are optional — a provider that
+        // fails to configure simply stays None.
+        let ai_bedrock: Option<Arc<dyn AiProvider>> =
+            match crate::services::bedrock_provider::BedrockProvider::from_env().await {
+                Ok(provider) => Some(Arc::new(provider)),
+                Err(e) => {
+                    tracing::warn!("Bedrock AI provider not configured: {}", e);
+                    None
+                }
+            };
         let ai_deepseek: Option<Arc<dyn AiProvider>> =
             match crate::services::claude::AiClient::from_env() {
                 Ok(client) => Some(Arc::new(client)),
@@ -109,10 +127,14 @@ impl AppState {
                 }
             };
 
-        // Initialize MPC participant with encryption service (ENCRYPTION_KEY validated in main)
-        let encryption_key = hex::decode(
-            std::env::var("ENCRYPTION_KEY").expect("ENCRYPTION_KEY must be set")
-        ).expect("ENCRYPTION_KEY must be valid hex");
+        // Decode + validate ENCRYPTION_KEY. This is the root key for every
+        // server shard and presignature, so reject weak/low-entropy keys here
+        // (this runs before main.rs's own check).
+        let encryption_key =
+            hex::decode(std::env::var("ENCRYPTION_KEY").expect("ENCRYPTION_KEY must be set"))
+                .expect("ENCRYPTION_KEY must be valid hex");
+        crate::services::crypto::validate_encryption_key(&encryption_key)
+            .expect("ENCRYPTION_KEY rejected");
         let mut key_array = [0u8; 32];
         key_array.copy_from_slice(&encryption_key);
         let encryption = crate::services::crypto::EncryptionService::new(&key_array, "server-mpc");
@@ -141,13 +163,11 @@ impl AppState {
             tracing::warn!("OKX_* credentials not fully set — balance and tx-history endpoints will return 503");
         }
 
-        let bridgers_source_flag = std::env::var("BRIDGERS_SOURCE_FLAG")
-            .unwrap_or_else(|_| "cowallet".to_string());
+        let bridgers_source_flag =
+            std::env::var("BRIDGERS_SOURCE_FLAG").unwrap_or_else(|_| "cowallet".to_string());
         tracing::info!("Bridgers source_flag: {}", bridgers_source_flag);
 
-        let bundler_url = std::env::var("BUNDLER_URL")
-            .ok()
-            .filter(|s| !s.is_empty());
+        let bundler_url = std::env::var("BUNDLER_URL").ok().filter(|s| !s.is_empty());
         if let Some(ref url) = bundler_url {
             tracing::info!("Bundler configured at {}", url);
         } else {
@@ -184,9 +204,11 @@ impl AppState {
             price_cache: PriceCache::new(),
             yield_cache: YieldCache::new(),
             http: http_client,
+            ai_bedrock,
             ai_deepseek,
             nats,
-            rate_limiter: AnyRateLimiter::from_env().unwrap_or_else(|_| AnyRateLimiter::in_memory()),
+            rate_limiter: AnyRateLimiter::from_env()
+                .unwrap_or_else(|_| AnyRateLimiter::in_memory()),
             rpc_circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig::default()),
             defi_circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig::default()),
             metrics: MetricsStore::new(),
@@ -208,10 +230,13 @@ impl AppState {
     }
 
     /// Send a JSON-RPC call with automatic multi-RPC fallback.
-    pub async fn rpc_call(&self, chain_id: u64, body: &serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn rpc_call(
+        &self,
+        chain_id: u64,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         self.rpc.rpc_call(chain_id, body).await
     }
-
 
     /// Create a production-grade HTTP client with reasonable defaults
     fn create_http_client() -> reqwest::Client {
@@ -229,5 +254,15 @@ impl AppState {
         self.db
             .as_ref()
             .ok_or_else(|| crate::errors::ApiError::service_unavailable("Database unavailable"))
+    }
+
+    /// Select the AI provider to serve a request. Bedrock is the default engine;
+    /// DeepSeek is the fallback when Bedrock is not configured. Returns None only
+    /// if neither provider is available.
+    pub fn select_ai_provider(&self) -> Option<Arc<dyn AiProvider>> {
+        self.ai_bedrock
+            .as_ref()
+            .or(self.ai_deepseek.as_ref())
+            .map(Arc::clone)
     }
 }

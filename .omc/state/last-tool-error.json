@@ -1,7 +1,0 @@
-{
-  "tool_name": "WebFetch",
-  "tool_input_preview": "{\"url\":\"https://web3.okx.com/onchainos/dev-docs/home/api-access-and-usage\",\"prompt\":\"Describe exactly how to authenticate: list the required headers (OK-ACCESS-KEY, OK-ACCESS-SIGN, OK-ACCESS-TIMESTAMP...",
-  "error": "Unable to verify if domain web3.okx.com is safe to fetch. This may be due to network restrictions or enterprise security policies blocking claude.ai.",
-  "timestamp": "2026-06-30T08:41:36.821Z",
-  "retry_count": 2
-}

@@ -1,11 +1,7 @@
 use super::intent::detect_threat;
 use crate::services::ai_provider::{ChatMessage, ChatRole};
 use crate::state::AppState;
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -54,7 +50,7 @@ pub(super) async fn ai_action(
     State(state): State<AppState>,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<ActionResponse>, (StatusCode, Json<serde_json::Value>)> {
-    use ai_bridge::intent::{classify, IntentKind, EntityKind};
+    use ai_bridge::intent::{classify, EntityKind, IntentKind};
 
     // First, check for threats
     if let Some(warning) = detect_threat(&req.message) {
@@ -76,19 +72,27 @@ pub(super) async fn ai_action(
             }
             IntentKind::Transfer => {
                 // Extract entities
-                let amount = intent.entities.iter()
+                let amount = intent
+                    .entities
+                    .iter()
                     .find(|e| e.kind == EntityKind::Amount)
                     .map(|e| e.value.clone());
 
-                let token = intent.entities.iter()
+                let token = intent
+                    .entities
+                    .iter()
                     .find(|e| e.kind == EntityKind::Token)
                     .map(|e| e.value.clone());
 
-                let to = intent.entities.iter()
+                let to = intent
+                    .entities
+                    .iter()
                     .find(|e| e.kind == EntityKind::Address)
                     .map(|e| e.value.clone())
                     .or_else(|| {
-                        intent.entities.iter()
+                        intent
+                            .entities
+                            .iter()
                             .find(|e| e.kind == EntityKind::Contact)
                             .map(|e| e.value.clone())
                     });
@@ -122,8 +126,7 @@ pub(super) async fn ai_action(
     }
 
     // Fall back to AI chat if confidence is low or entities insufficient
-    let ai = state.ai_deepseek.as_ref()
-        .ok_or_else(|| {
+    let ai = state.select_ai_provider().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({"error": "AI service not configured"})),

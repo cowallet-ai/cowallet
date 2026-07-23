@@ -62,7 +62,7 @@ class ChatHistoryWidget extends StatelessWidget {
               ),
             )
           else
-            ...transactions.take(5).map((tx) => _buildTxRow(context, tx)).toList(),
+            ...transactions.take(5).map((tx) => _buildTxRow(context, tx)),
           if (transactions.length > 5)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -158,11 +158,17 @@ class ChatHistoryWidget extends StatelessWidget {
                 ],
               ),
             ),
-            Column(
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '-$value $token',
+                  '-${_formatValue(value, token)} $token',
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
                     fontFamily: CwTypography.monoFamily,
@@ -180,11 +186,31 @@ class ChatHistoryWidget extends StatelessWidget {
                   ),
                 ),
               ],
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// Format a wei-denominated value string into a human decimal amount.
+  /// Mirrors the logic in tx_detail_widget so the chat history row and the
+  /// detail sheet agree. USDC/USDT use 6 decimals, everything else 18.
+  String _formatValue(String value, String token) {
+    try {
+      final val = BigInt.parse(value);
+      final decimals = (token == 'USDC' || token == 'USDT') ? 6 : 18;
+      final divisor = BigInt.from(10).pow(decimals);
+      final whole = val ~/ divisor;
+      final frac = val.remainder(divisor).abs();
+      final fracStr = frac.toString().padLeft(decimals, '0');
+      final trimmed = fracStr.substring(0, 6).replaceAll(RegExp(r'0+$'), '');
+      if (trimmed.isEmpty) return whole.toString();
+      return '$whole.$trimmed';
+    } catch (_) {
+      return value;
+    }
   }
 
   String _formatDate(String raw) {

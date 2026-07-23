@@ -1,5 +1,3 @@
-import 'dart:ui';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,9 +8,11 @@ import 'package:cowallet/state/app_state.dart';
 import 'package:cowallet/services/locator.dart';
 import 'package:cowallet/services/push_service.dart';
 import 'package:cowallet/api/auth_api.dart';
-import 'package:cowallet/utils/secure_storage.dart';
+import 'package:cowallet/network/dio_client.dart';
+import 'package:cowallet/services/version_check.dart';
 import 'package:cowallet/l10n/app_localizations.dart';
 import 'package:cowallet/l10n/s.dart';
+import 'package:cowallet/views/settings/mandatory_backup_export_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,16 +20,47 @@ void main() async {
     DeviceOrientation.portraitUp,
   ]);
 
+  // Wire the 401 interceptor to the single-flight session recoverer so a token
+  // expiry mid-session self-heals (refresh → challenge-response re-login)
+  // instead of dumping the user. Shares one in-flight recovery with startup.
+  DioClient.sessionRecoverer = AuthApi.recoverSession;
+
+  // Server-side upgrade gate: any protected request from a stale build returns
+  // 426. Route to the blocking upgrade screen (idempotent) so a client that
+  // bypassed the startup check still can't proceed.
+  DioClient.onUpgradeRequired = (body) {
+    _navigateToForceUpgrade(
+      iosUrl: (body['ios_store_url'] as String?) ?? '',
+      androidUrl: (body['android_store_url'] as String?) ?? '',
+    );
+  };
+
   // 🔥 INSTANT FIRST PAINT - Native splash shows immediately
   runApp(const CowalletApp());
 
   // Start initialization in background
-  print('[main] Starting background initialization...');
+  debugPrint('[main] Starting background initialization...');
   Services.initAll().then((_) {
-    print('[main] All services initialized');
+    debugPrint('[main] All services initialized');
     // Remove native splash when app is ready
     FlutterNativeSplash.remove();
   });
+}
+
+/// Whether the blocking upgrade screen is already showing — prevents stacking
+/// duplicate screens when multiple in-flight requests each return 426.
+bool _forceUpgradeShown = false;
+
+/// Replace the whole stack with the non-dismissible upgrade screen. Safe to call
+/// from anywhere (startup check or the 426 interceptor); no-ops if already shown.
+void _navigateToForceUpgrade({required String iosUrl, required String androidUrl}) {
+  if (_forceUpgradeShown) return;
+  _forceUpgradeShown = true;
+  Services.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+    AppRouter.forceUpgrade,
+    (route) => false,
+    arguments: {'ios': iosUrl, 'android': androidUrl},
+  );
 }
 
 class CowalletApp extends StatefulWidget {
@@ -63,7 +94,7 @@ class _CowalletAppState extends State<CowalletApp> {
 
   /// Initialize locale: check saved preference or auto-detect from system
   Future<void> _initLocale() async {
-    final savedLang = await Services.settings.language;
+    final savedLang = Services.settings.language;
     if (savedLang == 'zh' || savedLang == 'en') {
       setState(() => _locale = Locale(savedLang));
     } else {
@@ -101,6 +132,19 @@ class _CowalletAppState extends State<CowalletApp> {
     await Services.initEssential();
     _setupPushNotificationHandlers();
 
+    // Forced-upgrade gate (client half). If this build is below the server's
+    // min_build, show the blocking screen and stop — do NOT route into the
+    // wallet, since signing would fail on the incompatible v1.0.1 MPC protocol.
+    // Fail-open: a network/parse error returns ok, so the app still starts.
+    final version = await VersionCheck.check();
+    if (version.mustUpgrade) {
+      _navigateToForceUpgrade(
+        iosUrl: version.iosStoreUrl,
+        androidUrl: version.androidStoreUrl,
+      );
+      return;
+    }
+
     // Check wallet status and navigate accordingly
     _checkWalletState();
   }
@@ -126,6 +170,11 @@ class _CowalletAppState extends State<CowalletApp> {
       appState.setWalletAddress(addr);
       appState.completeOnboarding();
 
+      // If a key rotation left an un-exported backup (offline-file users), the
+      // refreshed shard was staged durably. Force the user back to the blocking
+      // backup screen — skipping it means backup+server recovery would fail.
+      await _enforcePendingBackupReExport();
+
       // Background tasks
       _refreshSessionInBackground();
       Services.push.reregisterToken();
@@ -134,15 +183,33 @@ class _CowalletAppState extends State<CowalletApp> {
     // If no wallet, we stay on onboarding (initialRoute)
   }
 
+  /// Force the mandatory backup re-export screen if a prior key rotation left
+  /// the refreshed backup shard un-exported (durably flagged). Blocks until the
+  /// user completes the export. Idempotent — safe to call on every launch.
+  Future<void> _enforcePendingBackupReExport() async {
+    try {
+      final pending = await Services.mpcWallet.isBackupReExportPending();
+      if (!pending) return;
+      final ctx = _navigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      await Navigator.of(ctx).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const MandatoryBackupExportView(),
+        ),
+      );
+    } catch (_) {
+      // Never let this block app startup; the flag persists for the next launch.
+    }
+  }
+
   Future<void> _refreshSessionInBackground() async {
     try {
-      final tokenValid = await AuthApi.isLoggedIn();
-      if (tokenValid) return;
-
-      final refreshed = await AuthApi.refreshToken();
-      if (!refreshed) {
-        await AuthApi.login(deviceId: (await SecureStorage.getDeviceId()) ?? '');
-      }
+      if (await AuthApi.isLoggedIn()) return;
+      // Single-flight recovery shared with the 401 interceptor: refresh first,
+      // then challenge-response re-login. Prevents startup and an early 401
+      // from racing over the one-time-use refresh token.
+      await AuthApi.recoverSession();
     } catch (_) {}
   }
 

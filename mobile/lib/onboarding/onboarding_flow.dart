@@ -1,13 +1,16 @@
 import 'package:cowallet/theme/typography.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:pointycastle/digests/sha256.dart';
 import 'package:convert/convert.dart' as convert;
 import '../theme/colors.dart';
 import '../widgets/cw_orb.dart';
 import '../widgets/top_toast.dart';
+import '../widgets/turnstile_gate.dart';
 import '../l10n/strings.dart';
 import '../main.dart';
 import '../services/locator.dart';
@@ -24,7 +27,7 @@ import '../platform/cloud_backup.dart';
 import '../router/app_router.dart';
 
 /// The onboarding stages of cowallet.
-enum _Stage { hero, intro, email, emailOtp, creating, bio, pin, name, backup, ready, persona }
+enum _Stage { hero, intro, email, emailOtp, creating, bio, name, backup, ready, persona }
 
 class OnboardingFlow extends StatefulWidget {
   const OnboardingFlow({super.key});
@@ -49,7 +52,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // --- Bio stage state ---
   bool _bioAuthenticating = false;
   bool _bioDone = false;
-  bool _bioError = false;
 
   // --- Email stage state ---
   final _emailCtrl = TextEditingController();
@@ -71,12 +73,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // --- Persona stage state ---
   String? _selectedPersona;
-
-  // --- PIN stage state ---
-  String _pinInput = '';
-  String? _pinFirst; // first entry, waiting for confirm
-  bool _pinMismatch = false;
-  bool _pinDone = false;
 
   // --- Backup stage state ---
   bool _backupSkipped = false;
@@ -105,7 +101,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
     if (mounted) {
       // Build history so back button works from restored stage
-      final stageOrder = [_Stage.hero, _Stage.intro, _Stage.email, _Stage.emailOtp, _Stage.creating, _Stage.bio, _Stage.pin, _Stage.name, _Stage.backup, _Stage.ready, _Stage.persona];
+      final stageOrder = [_Stage.hero, _Stage.intro, _Stage.email, _Stage.emailOtp, _Stage.creating, _Stage.bio, _Stage.name, _Stage.backup, _Stage.ready, _Stage.persona];
       final targetIdx = stageOrder.indexOf(stage);
       setState(() {
         _history.clear();
@@ -159,7 +155,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final canResume = await sessionManager.canResume();
     if (canResume && mounted) {
       setState(() => _isResuming = true);
-      print('[OnboardingFlow] Found resumable session, attempting recovery...');
+      debugPrint('[OnboardingFlow] Found resumable session, attempting recovery...');
     }
 
     bool authDone = false;
@@ -170,10 +166,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     String? generatedAddress;
 
     void maybeAdvance() {
-      print('[OnboardingFlow] maybeAdvance: auth=$authDone mpcSession=$mpcSessionDone mpcProto=$mpcProtocolDone wallet=$walletDone anim=$animDone mounted=$mounted addr=$generatedAddress');
+      debugPrint('[OnboardingFlow] maybeAdvance: auth=$authDone mpcSession=$mpcSessionDone mpcProto=$mpcProtocolDone wallet=$walletDone anim=$animDone mounted=$mounted addr=$generatedAddress');
       if (!authDone || !mpcSessionDone || !mpcProtocolDone || !walletDone || !animDone || !mounted) return;
       if (generatedAddress == null) return;
-      print('[OnboardingFlow] All conditions met, advancing to backup stage');
+      debugPrint('[OnboardingFlow] All conditions met, advancing to backup stage');
       try {
         CowalletApp.of(context).setWalletAddress(generatedAddress!);
       } catch (_) {}
@@ -243,99 +239,79 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     });
   }
 
-  // ---- Real biometric authentication ----
+  // ---- Biometric setup ----
+  // The user reaches this screen AFTER DKG (the device shard is still only in
+  // Rust memory — runDkg no longer auto-persists it). When the user opts into
+  // biometric protection here, we persist the shard under the hardware-backed
+  // auth-bound key, which triggers the biometric/device-credential prompt now —
+  // as a result of the user's explicit choice, not automatically mid-DKG.
   Future<void> _startBioScan() async {
+    // Reentrancy guard: this runs several async steps (availability checks,
+    // keystore init, shard persistence + native prompt). Without this a rapid
+    // double-tap — or a tap during the gap before the first setState rebuilds —
+    // would fire it concurrently, repeating initializeWallet/persistDeviceShard
+    // and causing the "hangs and stays tappable" behaviour. Bail if already
+    // running or done.
+    if (_bioAuthenticating || _bioDone) return;
+
     // Immediately update UI before any async work
     setState(() {
       _bioAuthenticating = true;
-      _bioError = false;
     });
 
     try {
-      final available = await Services.biometrics.isAvailable();
+      // The device shard is hardware-backed and its key is bound to device
+      // auth. If the device has NO lock at all (no biometric, no passcode),
+      // there is nothing to bind to — guide the user to set one up in system
+      // settings, then let them retry. We do NOT proceed without a lock.
+      final supported = await Services.biometrics.isDeviceSupported();
       if (!mounted) return;
-
-      if (!available) {
-        await Services.biometrics.setEnabled(false);
+      if (!supported) {
         setState(() => _bioAuthenticating = false);
-        _goTo(_Stage.name);
+        await Services.promptDeviceSecuritySetup();
         return;
       }
 
-      final hasEnrolled = await Services.biometrics.hasEnrolledBiometrics();
-      if (!hasEnrolled) {
-        await Services.biometrics.setEnabled(false);
-        setState(() => _bioAuthenticating = false);
-        _goTo(_Stage.name);
-        return;
-      }
+      // Keep _bioAuthenticating = true through the slow steps below (keystore
+      // init + shard persistence, which run BEFORE the native prompt appears).
+      // Previously this was reset to false here, so the spinner vanished and the
+      // button reappeared — letting the user tap again during the wait and
+      // defeating the reentrancy guard.
 
-      final authenticated = await Services.biometrics.authenticate(
-        reason: 'Enable biometric protection for your wallet',
-      );
+      // Mark device-auth protection as enabled and initialize the
+      // hardware-backed key store. The native prompt (biometric, with device
+      // passcode fallback) fires during persistDeviceShard below.
+      await Services.biometrics.setEnabled(true);
 
-      if (!mounted) return;
-      setState(() => _bioAuthenticating = false);
-
-      if (authenticated) {
-        // Save biometric enabled status
-        await Services.biometrics.setEnabled(true);
-
-        // Initialize hardware-backed key store (required for secure signing)
-        final seManager = SecureEnclaveManager();
-        final sbManager = StrongBoxManager();
-        if (await seManager.isAvailable()) {
-          await seManager.initializeWallet('onboarding');
-        } else if (await sbManager.isAvailable()) {
-          await sbManager.initializeWallet('onboarding');
-        } else {
-          setState(() => _bioError = true);
-          return;
-        }
-
-        setState(() => _bioDone = true);
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted) _goTo(_Stage.name);
-        });
+      final seManager = SecureEnclaveManager();
+      final sbManager = StrongBoxManager();
+      if (await seManager.isAvailable()) {
+        await seManager.initializeWallet('onboarding');
+      } else if (await sbManager.isAvailable()) {
+        await sbManager.initializeWallet('onboarding');
       } else {
-        setState(() => _bioError = true);
-        // Show retry option with skip button
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Authentication Failed'),
-            content: const Text('Biometric authentication helps secure your wallet. You can enable it later in Settings.'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _skipBio();
-                },
-                child: const Text('Skip for now'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  setState(() => _bioError = false);
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        );
+        setState(() {
+          _bioAuthenticating = false;
+        });
+        return;
       }
+
+      // Persist the device shard now — this fires the biometric prompt as a
+      // direct result of the user enabling protection here.
+      final walletService = Services.wallet as MpcWalletService;
+      await walletService.persistDeviceShard();
+
+      if (!mounted) return;
+      setState(() => _bioDone = true);
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _goTo(_Stage.name);
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _bioAuthenticating = false;
-        _bioError = true;
       });
     }
-  }
-
-  void _skipBio() {
-    Services.biometrics.setEnabled(false);
-    _goTo(_Stage.pin);
   }
 
   // ---- Name ----
@@ -347,82 +323,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _goTo(_Stage.ready);
   }
 
-  /// Prompt the user for a backup-encryption password (min 8 chars, confirmed).
-  /// Returns null if cancelled. The password is used to encrypt the backup
-  /// shard via the Rust Argon2id + AES-256-GCM export path.
-  Future<String?> _promptBackupPassword() async {
-    final pwCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    String? error;
-
-    final result = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          backgroundColor: CwColors.bgCard,
-          title: Text(
-            S.backupPasswordHint,
-            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: pwCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: S.backupPasswordHint),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmCtrl,
-                obscureText: true,
-                decoration: InputDecoration(labelText: S.backupPasswordConfirmHint),
-              ),
-              if (error != null) ...[
-                const SizedBox(height: 8),
-                Text(error!, style: TextStyle(color: CwColors.danger, fontSize: 12)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(S.cancel, style: TextStyle(color: CwColors.ink3)),
-            ),
-            TextButton(
-              onPressed: () {
-                final pw = pwCtrl.text;
-                if (pw.length < 8) {
-                  setLocal(() => error = S.backupPasswordTooShort);
-                  return;
-                }
-                if (pw != confirmCtrl.text) {
-                  setLocal(() => error = S.backupPasswordMismatch);
-                  return;
-                }
-                Navigator.pop(ctx, pw);
-              },
-              child: Text(S.backupExport, style: TextStyle(color: CwColors.accent)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    pwCtrl.dispose();
-    confirmCtrl.dispose();
-    return result;
-  }
-
   // ---- Backup: store 3rd shard ----
   Future<void> _saveBackup({required bool useCloud}) async {
-    // SECURITY (F-002): the backup shard must be encrypted with a user password
-    // before it is uploaded to the cloud or written to disk. Collect that
-    // password up front; without it we never serialize the shard.
-    final password = await _promptBackupPassword();
-    if (password == null) return; // user cancelled
-
     setState(() => _backupSaving = true);
     try {
       final walletService = Services.wallet as MpcWalletService;
@@ -433,7 +335,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         final pendingShard = await SecureStorage.get(SecureStorage.keyPendingBackupShard);
         if (pendingShard != null && pendingShard.isNotEmpty) {
           backupBytes = base64Decode(pendingShard);
-          print('[OnboardingFlow] Loaded backup shard from pending storage');
+          debugPrint('[OnboardingFlow] Loaded backup shard from pending storage');
         }
       }
 
@@ -444,34 +346,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       final result = await walletService.storeBackupShard(
         backupBytes,
         useCloud: useCloud,
-        password: password,
       );
 
       // Delete pending backup shard after successful backup
       await SecureStorage.delete(SecureStorage.keyPendingBackupShard);
       await SecureStorage.delete(SecureStorage.keyPendingBackupCreatedAt);
-      print('[OnboardingFlow] Deleted pending backup shard after successful backup');
+      debugPrint('[OnboardingFlow] Deleted pending backup shard after successful backup');
 
-      // Store SHA-256 of the stored ciphertext blob on the server for future
-      // force re-register verification. We hash the ciphertext (not the
-      // plaintext shard) so verification works without ever decrypting; the
-      // stored blob is byte-stable, so re-register hashing the retrieved blob
-      // produces the same digest (see _verifyBackupShardForReRegister).
-      if (result.method == BackupMethod.cloud) {
-        final storedBlob = await walletService.retrieveBackupBlob();
-        if (storedBlob != null && storedBlob.isNotEmpty) {
-          final digest = SHA256Digest();
-          final hash = digest.process(Uint8List.fromList(utf8.encode(storedBlob)));
-          final hashHex = convert.hex.encode(hash);
-          final hashResult = await ShardsApi.storeBackupHash(backupShardHashHex: hashHex);
-          if (hashResult.isSuccess) {
-            print('[OnboardingFlow] Stored backup shard hash on server');
-          } else {
-            // Non-fatal: save hash locally for retry later
-            await SecureStorage.save('pending_backup_hash', hashHex);
-            print('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
-          }
-        }
+      // Store SHA-256(backup_shard) on server for future force re-register verification.
+      final digest = SHA256Digest();
+      final hash = digest.process(Uint8List.fromList(backupBytes));
+      final hashHex = convert.hex.encode(hash);
+      final hashResult = await ShardsApi.storeBackupHash(backupShardHashHex: hashHex);
+      if (hashResult.isSuccess) {
+        debugPrint('[OnboardingFlow] Stored backup shard hash on server');
+      } else {
+        // Non-fatal: save hash locally for retry later
+        await SecureStorage.save('pending_backup_hash', hashHex);
+        debugPrint('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
       }
 
       if (!mounted) return;
@@ -490,8 +382,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         if (mounted) _goTo(_Stage.bio);
       });
     } catch (e, st) {
-      print('[OnboardingBackup] Error: $e');
-      print('[OnboardingBackup] StackTrace: $st');
+      debugPrint('[OnboardingBackup] Error: $e');
+      debugPrint('[OnboardingBackup] StackTrace: $st');
       if (!mounted) return;
       setState(() => _backupSaving = false);
       final errMsg = switch (e) {
@@ -525,6 +417,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final appState = CowalletApp.of(context);
     appState.completeOnboarding();
     final addr = appState.walletAddress;
+    final navigator = Navigator.of(context);
 
     // Clear persisted onboarding step
     await SecureStorage.delete(SecureStorage.keyOnboardingStep);
@@ -537,7 +430,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (addr.isNotEmpty) {
       Services.balance.refresh(addr);
     }
-    Navigator.pushReplacementNamed(context, '/');
+    navigator.pushReplacementNamed('/');
   }
 
   // ======================= BUILD =======================
@@ -561,7 +454,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               fit: StackFit.expand,
               children: [
                 ...previousChildren,
-                if (currentChild != null) currentChild,
+                ?currentChild,
               ],
             );
           },
@@ -584,8 +477,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         return _creatingStage();
       case _Stage.bio:
         return _bioStage();
-      case _Stage.pin:
-        return _pinStage();
       case _Stage.name:
         return _nameStage();
       case _Stage.backup:
@@ -884,13 +775,23 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       setState(() => _emailError = S.invalidEmail);
       return;
     }
+    // Human check before sending. Returns '' in compat mode (not configured),
+    // a token on success, or null if the user dismissed / it errored.
+    final turnstileToken = await TurnstileGate.getToken(context);
+    if (turnstileToken == null) {
+      if (!mounted) return;
+      setState(() => _emailError = S.emailSendFailed);
+      return;
+    }
+
     setState(() {
       _emailError = null;
       _emailSending = true;
     });
 
     try {
-      final result = await AuthApi.sendEmailOtp(email: email);
+      final result =
+          await AuthApi.sendEmailOtp(email: email, turnstileToken: turnstileToken);
       if (!mounted) return;
       if (result.isSuccess) {
         final isRegistered = result.data?["is_registered"] == true;
@@ -1031,25 +932,74 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _verifyBackupShardForReRegister() async {
     final backupService = BackupShardService(PlatformCloudBackup());
-    // The cloud now holds the encrypted ciphertext blob (F-002). We prove the
-    // user controls the backup by hashing the ciphertext blob; the matching
-    // hash is registered server-side at backup time (see _saveBackup).
-    final encryptedBlob = await backupService.retrieveFromCloud();
+    final shardBytes = await backupService.retrieveFromCloud();
     if (!mounted) return;
 
-    if (encryptedBlob == null || encryptedBlob.isEmpty) {
-      showTopToast(context, S.backupShardRequired, backgroundColor: CwColors.danger);
+    // Cloud backup found — proceed directly.
+    if (shardBytes != null && shardBytes.isNotEmpty) {
+      await _continueReRegisterWithShard(shardBytes);
       return;
     }
 
+    // No cloud backup: the shard may have been saved to a local file. Let the
+    // user pick their backup file instead of dead-ending on "backup required".
+    await _pickLocalBackupForReRegister(backupService);
+  }
+
+  /// Prompt the user to select their local backup file, parse the shard from
+  /// it, and continue re-registration. Used when no cloud backup is present.
+  Future<void> _pickLocalBackupForReRegister(
+    BackupShardService backupService,
+  ) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (!mounted) return;
+      if (result == null || result.files.isEmpty) return; // user cancelled
+
+      final filePath = result.files.single.path;
+      if (filePath == null) {
+        showTopToast(context, S.backupShardRequired, backgroundColor: CwColors.danger);
+        return;
+      }
+
+      final content = await File(filePath).readAsString();
+      final shardBytes = backupService.parseBackupFile(content);
+      if (!mounted) return;
+
+      if (shardBytes == null || shardBytes.isEmpty) {
+        showTopToast(context, S.backupFormatInvalid, backgroundColor: CwColors.danger);
+        return;
+      }
+      await _continueReRegisterWithShard(shardBytes);
+    } catch (_) {
+      if (!mounted) return;
+      showTopToast(context, S.backupFormatInvalid, backgroundColor: CwColors.danger);
+    }
+  }
+
+  /// Shared tail of re-registration: hash the backup shard, re-send the OTP
+  /// with the force flag, and advance to the OTP stage.
+  Future<void> _continueReRegisterWithShard(List<int> shardBytes) async {
     final digest = SHA256Digest();
-    final hash = digest.process(Uint8List.fromList(utf8.encode(encryptedBlob)));
+    final hash = digest.process(Uint8List.fromList(shardBytes));
     _backupShardHash = convert.hex.encode(hash);
+
+    // Human check before the forced re-send.
+    final turnstileToken = await TurnstileGate.getToken(context);
+    if (turnstileToken == null) {
+      if (!mounted) return;
+      showTopToast(context, S.emailSendFailed, backgroundColor: CwColors.danger);
+      return;
+    }
 
     // Re-send OTP with force flag since the initial send was blocked
     final result = await AuthApi.sendEmailOtp(
       email: _emailCtrl.text.trim(),
       force: true,
+      turnstileToken: turnstileToken,
     );
     if (!mounted) return;
 
@@ -1077,13 +1027,35 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
     try {
       final deviceId = await DeviceIdGenerator.getOrGenerate();
-      final result = await AuthApi.register(
+      var result = await AuthApi.register(
         deviceId: deviceId,
         email: _emailCtrl.text.trim(),
         otp: _otpCtrl.text.trim(),
         force: _forceRegister,
         backupShardHash: _backupShardHash,
       );
+
+      // 428 on a force re-register means the server has no backup_shard_hash on
+      // record for this account (e.g. registered before the hash mechanism, or
+      // the hash was never uploaded). We already proved possession of the backup
+      // shard by loading it in _verifyBackupShardForReRegister, so back-fill the
+      // hash and retry once.
+      if (!result.isSuccess &&
+          result.errorCode == 428 &&
+          _forceRegister &&
+          _backupShardHash != null) {
+        final backfill =
+            await ShardsApi.storeBackupHash(backupShardHashHex: _backupShardHash!);
+        if (backfill.isSuccess) {
+          result = await AuthApi.register(
+            deviceId: deviceId,
+            email: _emailCtrl.text.trim(),
+            otp: _otpCtrl.text.trim(),
+            force: _forceRegister,
+            backupShardHash: _backupShardHash,
+          );
+        }
+      }
       if (!mounted) return;
 
       if (result.isSuccess) {
@@ -1108,7 +1080,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _resendOtp() async {
     _otpCtrl.clear();
-    final result = await AuthApi.sendEmailOtp(email: _emailCtrl.text.trim());
+    final turnstileToken = await TurnstileGate.getToken(context);
+    if (turnstileToken == null) {
+      if (!mounted) return;
+      setState(() => _otpError = S.emailSendFailed);
+      return;
+    }
+    final result = await AuthApi.sendEmailOtp(
+        email: _emailCtrl.text.trim(), turnstileToken: turnstileToken);
     if (!mounted) return;
     if (!result.isSuccess) {
       setState(() => _otpError = S.emailSendFailed);
@@ -1408,8 +1387,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 40),
                 if (!_bioDone && !_bioAuthenticating) ...[
                   _primaryButton(S.bioActivate, _startBioScan),
-                  const SizedBox(height: 12),
-                  _secondaryLink(S.bioSkip, _skipBio),
+                  // Device auth (biometric + system passcode fallback) is the
+                  // only protection path. If the device has no lock configured,
+                  // _startBioScan guides the user to system settings.
                 ],
                 if (_bioAuthenticating) ...[
                   const SizedBox(
@@ -1428,160 +1408,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ],
       ),
-    );
-  }
-
-  // ===================== STAGE 5b: PIN =====================
-
-  void _onPinDigit(String digit) {
-    if (_pinInput.length >= 6) return;
-    setState(() {
-      _pinInput += digit;
-      _pinMismatch = false;
-    });
-    if (_pinInput.length == 6) {
-      _onPinComplete(_pinInput);
-    }
-  }
-
-  void _onPinBackspace() {
-    if (_pinInput.isEmpty) return;
-    setState(() {
-      _pinInput = _pinInput.substring(0, _pinInput.length - 1);
-      _pinMismatch = false;
-    });
-  }
-
-  Future<void> _onPinComplete(String pin) async {
-    if (_pinFirst == null) {
-      setState(() {
-        _pinFirst = pin;
-        _pinInput = '';
-      });
-    } else {
-      if (pin == _pinFirst) {
-        await SecureStorage.save('wallet_pin', pin);
-        setState(() {
-          _pinDone = true;
-          _pinFirst = null;
-          _pinInput = '';
-        });
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted) _goTo(_Stage.name);
-        });
-      } else {
-        setState(() {
-          _pinMismatch = true;
-          _pinInput = '';
-          _pinFirst = null;
-        });
-      }
-    }
-  }
-
-  Widget _pinStage() {
-    final isConfirm = _pinFirst != null && !_pinDone;
-    return SingleChildScrollView(
-      key: const ValueKey('pin'),
-      child: Column(
-        children: [
-          _topBar(step: 2, total: 3),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-                Icon(
-                  _pinDone ? Icons.check_circle : Icons.lock_outline,
-                  size: 56,
-                  color: _pinDone ? CwColors.success : CwColors.accent,
-                ),
-                const SizedBox(height: 32),
-                _heading(_pinDone ? S.pinDone : (isConfirm ? S.pinConfirmH1 : S.pinH1)),
-                const SizedBox(height: 8),
-                _subtitle(isConfirm ? S.pinConfirmSub : S.pinSub),
-                const SizedBox(height: 32),
-                if (_pinMismatch)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Text(
-                      S.pinMismatch,
-                      style: TextStyle(color: CwColors.danger, fontSize: 14),
-                    ),
-                  ),
-                if (!_pinDone) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(6, (i) {
-                      final filled = i < _pinInput.length;
-                      return Container(
-                        width: 16,
-                        height: 16,
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: filled ? CwColors.accent : Colors.transparent,
-                          border: Border.all(
-                            color: filled ? CwColors.accent : CwColors.ink4,
-                            width: 2,
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 40),
-                  _buildNumPad(),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNumPad() {
-    return Column(
-      children: [
-        for (final row in [['1','2','3'], ['4','5','6'], ['7','8','9'], ['','0','⌫']])
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: row.map((key) {
-                if (key.isEmpty) return const SizedBox(width: 72, height: 56);
-                return GestureDetector(
-                  onTap: () {
-                    if (key == '⌫') {
-                      _onPinBackspace();
-                    } else {
-                      _onPinDigit(key);
-                    }
-                  },
-                  child: Container(
-                    width: 72,
-                    height: 56,
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: CwColors.bgCard,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: CwColors.line),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      key,
-                      style: TextStyle(
-                        fontSize: key == '⌫' ? 20 : 24,
-                        fontWeight: FontWeight.w500,
-                        color: CwColors.ink1,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-      ],
     );
   }
 

@@ -23,6 +23,15 @@ class ApiConfig {
 
   // 健康检查接口
   static const String healthCheck = "$baseUrl/health";
+
+  /// Cloudflare Turnstile site key (public — it is embedded in every client
+  /// build, so hardcoding it here is not a secret leak). Baked in as the
+  /// default so that Xcode Archive builds (which bypass --dart-define) still
+  /// pick it up. Override at build time with --dart-define=TURNSTILE_SITE_KEY=...
+  static const String turnstileSiteKey = String.fromEnvironment(
+    'TURNSTILE_SITE_KEY',
+    defaultValue: '0x4AAAAAADwZ4E_eMbcQb-Yh',
+  );
 }
 
 /// Supported blockchain networks configuration

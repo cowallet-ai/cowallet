@@ -5,14 +5,13 @@ set -e
 
 echo "🔧 Generating flutter_rust_bridge bindings..."
 
-# Change to mobile directory
-cd "$(dirname "$0")/mobile"
+# Change to the mobile directory (script lives in scripts/, so go up one level).
+cd "$(dirname "$0")/../mobile"
 
-# Run code generation
-flutter_rust_bridge_codegen generate \
-    --rust-root ../crates/ffi-mobile \
-    --dart-root lib/bridge \
-    --c-output ios/Runner \
-    --dart-decl-output lib/bridge/ffi.dart.generated.dart
+# Run code generation. Paths come from mobile/flutter_rust_bridge.yaml
+# (rust_input: crate::api, rust_root: ../crates/ffi-mobile/,
+#  dart_output: lib/bridge/frb_generated/), so invoking with no path flags uses
+# that config — the same one that produced the committed bindings.
+flutter_rust_bridge_codegen generate
 
 echo "✅ Bindings generated successfully!"

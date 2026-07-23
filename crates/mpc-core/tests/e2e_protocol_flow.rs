@@ -7,12 +7,8 @@
 /// - test_full_dkg_then_sign: Complete DKG with round message exchange, then distributed signing
 /// - test_dkg_then_reshare_then_sign: DKG → Reshare → Sign with new shares
 /// - test_sign_with_wrong_share_fails: Security validation that corrupted shares are rejected
-
 use mpc_core::dkls23::{
-    dkg::DkgSession,
-    reshare::ReshareSession,
-    sign::SignSession,
-    ProtocolMessage, SessionConfig,
+    dkg::DkgSession, reshare::ReshareSession, sign::SignSession, ProtocolMessage, SessionConfig,
 };
 use sha3::Digest;
 
@@ -153,8 +149,12 @@ fn test_full_dkg_then_sign() {
         SignSession::new_distributed(make_config(session_id, 1), server_share.clone(), msg_hash);
 
     // Signing Round 1: Exchange ephemeral public keys
-    let sign_r1_device = sign_device.generate_round1().expect("device sign round1 failed");
-    let sign_r1_server = sign_server.generate_round1().expect("server sign round1 failed");
+    let sign_r1_device = sign_device
+        .generate_round1()
+        .expect("device sign round1 failed");
+    let sign_r1_server = sign_server
+        .generate_round1()
+        .expect("server sign round1 failed");
 
     sign_device
         .process_round1(vec![sign_r1_server])
@@ -164,7 +164,9 @@ fn test_full_dkg_then_sign() {
         .expect("server sign process_round1 failed");
 
     // Signing Round 2: Device (lower index) sends Paillier MtA request
-    let sign_r2_device = sign_device.generate_round2().expect("device sign round2 failed");
+    let sign_r2_device = sign_device
+        .generate_round2()
+        .expect("device sign round2 failed");
 
     // Server processes MtA request and computes encrypted signature
     let _sig_server = sign_server
@@ -221,10 +223,16 @@ fn test_full_dkg_then_sign() {
         SignSession::new_distributed(make_config(session_id, 1), server_share.clone(), msg_hash2);
     let r1d = sign_device2.generate_round1().expect("device r1 #2");
     let r1s = sign_server2.generate_round1().expect("server r1 #2");
-    sign_device2.process_round1(vec![r1s]).expect("device pr1 #2");
-    sign_server2.process_round1(vec![r1d]).expect("server pr1 #2");
+    sign_device2
+        .process_round1(vec![r1s])
+        .expect("device pr1 #2");
+    sign_server2
+        .process_round1(vec![r1d])
+        .expect("server pr1 #2");
     let r2d = sign_device2.generate_round2().expect("device r2 #2");
-    sign_server2.process_round2(vec![r2d]).expect("server pr2 #2");
+    sign_server2
+        .process_round2(vec![r2d])
+        .expect("server pr2 #2");
     let resp2 = sign_server2.get_server_response().expect("server resp #2");
     let final_sig2 = sign_device2
         .process_round2(vec![ProtocolMessage {
@@ -250,8 +258,10 @@ fn test_full_dkg_then_sign() {
 /// After reshare, old shares are invalidated — attackers with old shares cannot combine
 /// them with new shares to sign.
 ///
-/// Note: Reshare implementation needs refinement. Marked as #[ignore] pending fix.
-/// Also uses slow Paillier operations.
+/// Note: Reshare itself is correct (see the fast `test_dkg_reshare_protocol_flow`
+/// and `test_recovery_reshare_2_of_3`, which run by default). This variant stays
+/// #[ignore] only because the distributed sign afterward uses slow Paillier MtA
+/// (~60-120s). Run with: cargo test test_dkg_then_reshare_then_sign -- --ignored
 #[test]
 #[ignore]
 fn test_dkg_then_reshare_then_sign() {
@@ -266,9 +276,15 @@ fn test_dkg_then_reshare_then_sign() {
     let r1_device = dkg_device.generate_round1().unwrap();
     let r1_server = dkg_server.generate_round1().unwrap();
     let r1_backup = dkg_backup.generate_round1().unwrap();
-    dkg_device.process_round1(vec![r1_server.clone(), r1_backup.clone()]).unwrap();
-    dkg_server.process_round1(vec![r1_device.clone(), r1_backup.clone()]).unwrap();
-    dkg_backup.process_round1(vec![r1_device.clone(), r1_server.clone()]).unwrap();
+    dkg_device
+        .process_round1(vec![r1_server.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_server
+        .process_round1(vec![r1_device.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_backup
+        .process_round1(vec![r1_device.clone(), r1_server.clone()])
+        .unwrap();
 
     // Round 2
     let r2_device = dkg_device.generate_round2().unwrap();
@@ -387,7 +403,9 @@ fn test_dkg_then_reshare_then_sign() {
         payload: server_response,
     };
 
-    let final_sig = sign_device.process_round2(vec![server_response_msg]).unwrap();
+    let final_sig = sign_device
+        .process_round2(vec![server_response_msg])
+        .unwrap();
 
     // Verify signature with original public key
     assert!(
@@ -419,9 +437,15 @@ fn test_sign_with_wrong_share_fails() {
     let r1_device = dkg_device.generate_round1().unwrap();
     let r1_server = dkg_server.generate_round1().unwrap();
     let r1_backup = dkg_backup.generate_round1().unwrap();
-    dkg_device.process_round1(vec![r1_server.clone(), r1_backup.clone()]).unwrap();
-    dkg_server.process_round1(vec![r1_device.clone(), r1_backup.clone()]).unwrap();
-    dkg_backup.process_round1(vec![r1_device.clone(), r1_server.clone()]).unwrap();
+    dkg_device
+        .process_round1(vec![r1_server.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_server
+        .process_round1(vec![r1_device.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_backup
+        .process_round1(vec![r1_device.clone(), r1_server.clone()])
+        .unwrap();
 
     let r2_device = dkg_device.generate_round2().unwrap();
     let r2_server = dkg_server.generate_round2().unwrap();
@@ -464,11 +488,8 @@ fn test_sign_with_wrong_share_fails() {
     let message = b"Malicious transaction";
     let msg_hash: [u8; 32] = sha3::Keccak256::digest(message).into();
 
-    let mut sign_device = SignSession::new_distributed(
-        make_config(session_id, 0),
-        corrupted_device_share,
-        msg_hash,
-    );
+    let mut sign_device =
+        SignSession::new_distributed(make_config(session_id, 0), corrupted_device_share, msg_hash);
     let mut sign_server =
         SignSession::new_distributed(make_config(session_id, 1), valid_server_share, msg_hash);
 
@@ -490,7 +511,9 @@ fn test_sign_with_wrong_share_fails() {
         payload: server_response,
     };
 
-    let corrupted_sig = sign_device.process_round2(vec![server_response_msg]).unwrap();
+    let corrupted_sig = sign_device
+        .process_round2(vec![server_response_msg])
+        .unwrap();
 
     // Verify: Signature should NOT validate with the correct public key
     let verification_result = corrupted_sig.verify(&msg_hash, &public_key).unwrap();
@@ -530,9 +553,15 @@ fn test_all_party_pairs_can_dkg_and_sign() {
         let r1_0 = dkg_0.generate_round1().unwrap();
         let r1_1 = dkg_1.generate_round1().unwrap();
         let r1_2 = dkg_2.generate_round1().unwrap();
-        dkg_0.process_round1(vec![r1_1.clone(), r1_2.clone()]).unwrap();
-        dkg_1.process_round1(vec![r1_0.clone(), r1_2.clone()]).unwrap();
-        dkg_2.process_round1(vec![r1_0.clone(), r1_1.clone()]).unwrap();
+        dkg_0
+            .process_round1(vec![r1_1.clone(), r1_2.clone()])
+            .unwrap();
+        dkg_1
+            .process_round1(vec![r1_0.clone(), r1_2.clone()])
+            .unwrap();
+        dkg_2
+            .process_round1(vec![r1_0.clone(), r1_1.clone()])
+            .unwrap();
 
         let r2_0 = dkg_0.generate_round2().unwrap();
         let r2_1 = dkg_1.generate_round2().unwrap();
@@ -608,7 +637,9 @@ fn test_all_party_pairs_can_dkg_and_sign() {
             payload: server_response,
         };
 
-        let final_sig = sign_device.process_round2(vec![server_response_msg]).unwrap();
+        let final_sig = sign_device
+            .process_round2(vec![server_response_msg])
+            .unwrap();
 
         assert!(
             final_sig.verify(&msg_hash, &share_a.public_key).unwrap(),
@@ -630,8 +661,9 @@ fn test_all_party_pairs_can_dkg_and_sign() {
 /// DKG → Reshare1 → Reshare2 → Reshare3 → Sign
 /// Public key must remain constant across all reshares.
 ///
-/// Note: Reshare implementation needs refinement. Marked as #[ignore] pending fix.
-/// Also uses slow Paillier operations.
+/// Note: Reshare itself is correct (proven by the fast reshare tests that run
+/// by default). This variant stays #[ignore] only because it performs 3 reshares
+/// plus a distributed sign using slow Paillier MtA (~250s).
 #[test]
 #[ignore]
 fn test_multiple_sequential_reshares() {
@@ -645,9 +677,15 @@ fn test_multiple_sequential_reshares() {
     let r1_device = dkg_device.generate_round1().unwrap();
     let r1_server = dkg_server.generate_round1().unwrap();
     let r1_backup = dkg_backup.generate_round1().unwrap();
-    dkg_device.process_round1(vec![r1_server.clone(), r1_backup.clone()]).unwrap();
-    dkg_server.process_round1(vec![r1_device.clone(), r1_backup.clone()]).unwrap();
-    dkg_backup.process_round1(vec![r1_device.clone(), r1_server.clone()]).unwrap();
+    dkg_device
+        .process_round1(vec![r1_server.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_server
+        .process_round1(vec![r1_device.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_backup
+        .process_round1(vec![r1_device.clone(), r1_server.clone()])
+        .unwrap();
 
     let r2_device = dkg_device.generate_round2().unwrap();
     let r2_server = dkg_server.generate_round2().unwrap();
@@ -670,8 +708,10 @@ fn test_multiple_sequential_reshares() {
     let original_pubkey = share_device.public_key.clone();
     println!("✓ Initial DKG complete");
 
-    // Get initial backup share
-    let backup_r2_msgs: Vec<_> = vec![&r2_device, &r2_backup]
+    // Get initial backup share. Backup is party 2, so it must collect the
+    // Round-2 evaluations addressed to it from the OTHER two parties (device
+    // and server) — a party never emits a share addressed to itself.
+    let backup_r2_msgs: Vec<_> = vec![&r2_device, &r2_server]
         .into_iter()
         .flat_map(|msgs| msgs.iter().filter(|m| m.to == 2))
         .cloned()
@@ -754,7 +794,9 @@ fn test_multiple_sequential_reshares() {
         payload: server_response,
     };
 
-    let final_sig = sign_device.process_round2(vec![server_response_msg]).unwrap();
+    let final_sig = sign_device
+        .process_round2(vec![server_response_msg])
+        .unwrap();
 
     assert!(
         final_sig.verify(&msg_hash, &original_pubkey).unwrap(),
@@ -859,7 +901,9 @@ fn test_dkg_protocol_with_local_sign() {
 
     // Verify signature
     assert!(
-        signature.verify(&msg_hash, &device_share.public_key).unwrap(),
+        signature
+            .verify(&msg_hash, &device_share.public_key)
+            .unwrap(),
         "signature verification failed"
     );
 
@@ -875,9 +919,8 @@ fn test_dkg_protocol_with_local_sign() {
 /// 4. Verify shares are different (refreshed)
 /// 5. Sign with new shares using local signing (fast)
 ///
-/// Note: Reshare implementation needs refinement. Marked as #[ignore] pending fix.
+/// Fast (~10s, no Paillier), so it runs by default and guards reshare correctness.
 #[test]
-#[ignore]
 fn test_dkg_reshare_protocol_flow() {
     let dkg_session_id = "e2e-fast-reshare";
 
@@ -890,9 +933,15 @@ fn test_dkg_reshare_protocol_flow() {
     let r1_device = dkg_device.generate_round1().unwrap();
     let r1_server = dkg_server.generate_round1().unwrap();
     let r1_backup = dkg_backup.generate_round1().unwrap();
-    dkg_device.process_round1(vec![r1_server.clone(), r1_backup.clone()]).unwrap();
-    dkg_server.process_round1(vec![r1_device.clone(), r1_backup.clone()]).unwrap();
-    dkg_backup.process_round1(vec![r1_device.clone(), r1_server.clone()]).unwrap();
+    dkg_device
+        .process_round1(vec![r1_server.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_server
+        .process_round1(vec![r1_device.clone(), r1_backup.clone()])
+        .unwrap();
+    dkg_backup
+        .process_round1(vec![r1_device.clone(), r1_server.clone()])
+        .unwrap();
 
     // Round 2
     let r2_device = dkg_device.generate_round2().unwrap();

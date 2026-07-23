@@ -152,13 +152,19 @@ impl NoiseChannel {
         let (peer_pub, final_msg) = {
             let handshake = match &mut self.state {
                 ChannelState::HandshakeInitiator(h) => h,
-                _ => return Err(MpcError::Transport("not in initiator handshake state".into())),
+                _ => {
+                    return Err(MpcError::Transport(
+                        "not in initiator handshake state".into(),
+                    ))
+                }
             };
 
             // Process responder's message: <- e, ee, s, es
             handshake
                 .read_message(responder_msg, &mut [])
-                .map_err(|e| MpcError::Transport(format!("failed to read responder message: {}", e)))?;
+                .map_err(|e| {
+                    MpcError::Transport(format!("failed to read responder message: {}", e))
+                })?;
 
             // Get peer's static public key from handshake
             let pubkey = handshake
@@ -187,7 +193,11 @@ impl NoiseChannel {
         // Now transition to transport mode
         let handshake = match std::mem::replace(&mut self.state, ChannelState::Temporary) {
             ChannelState::HandshakeInitiator(h) => h,
-            _ => return Err(MpcError::Transport("not in initiator handshake state".into())),
+            _ => {
+                return Err(MpcError::Transport(
+                    "not in initiator handshake state".into(),
+                ))
+            }
         };
 
         let transport = handshake
@@ -206,7 +216,11 @@ impl NoiseChannel {
         let peer_pub = {
             let handshake = match &mut self.state {
                 ChannelState::HandshakeResponder(h) => h,
-                _ => return Err(MpcError::Transport("not in responder handshake state".into())),
+                _ => {
+                    return Err(MpcError::Transport(
+                        "not in responder handshake state".into(),
+                    ))
+                }
             };
 
             // Process initiator's final message: -> s, se
@@ -232,7 +246,11 @@ impl NoiseChannel {
         // Now transition to transport mode
         let handshake = match std::mem::replace(&mut self.state, ChannelState::Temporary) {
             ChannelState::HandshakeResponder(h) => h,
-            _ => return Err(MpcError::Transport("not in responder handshake state".into())),
+            _ => {
+                return Err(MpcError::Transport(
+                    "not in responder handshake state".into(),
+                ))
+            }
         };
 
         let transport = handshake

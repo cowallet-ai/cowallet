@@ -9,10 +9,12 @@ import '../../widgets/loading_overlay.dart';
 import '../../main.dart';
 import '../../services/locator.dart';
 import '../../services/settings_service.dart';
-import '../../widgets/pin_verify_dialog.dart';
 import '../../services/key_health_service.dart';
 import '../../utils/secure_storage.dart';
 import '../../api/wallet_api.dart';
+import '../../api/auth_api.dart';
+import '../../widgets/ai_consent_sheet.dart';
+import 'mandatory_backup_export_view.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -22,10 +24,6 @@ class SettingsView extends StatefulWidget {
 }
 
 class _SettingsViewState extends State<SettingsView> {
-  bool _biometricEnabled = false;
-  bool _biometricAvailable = false;
-  bool _hasEnrolledBiometrics = false;
-  String _biometricType = 'Biometric';
   String? _lastRotationDate;
 
   KeyStatus _phoneStatus = KeyStatus.unknown;
@@ -37,7 +35,6 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   void initState() {
     super.initState();
-    _loadBiometricStatus();
     _loadKeySecuritySettings();
     _loadKeyHealth();
     _settings.addListener(_onSettingsChanged);
@@ -83,60 +80,6 @@ class _SettingsViewState extends State<SettingsView> {
   KeyStatus _parseStatus(String? value) {
     if (value == null) return KeyStatus.unknown;
     return KeyStatus.values.where((e) => e.name == value).firstOrNull ?? KeyStatus.unknown;
-  }
-
-  Future<void> _loadBiometricStatus() async {
-    final available = await Services.biometrics.isAvailable();
-    final enabled = await Services.biometrics.isEnabled();
-    final hasEnrolled = await Services.biometrics.hasEnrolledBiometrics();
-    final bioType = await Services.biometrics.getPrimaryBiometricType();
-    print('[Settings] biometric available=$available, enabled=$enabled, hasEnrolled=$hasEnrolled, type=$bioType');
-
-    if (mounted) {
-      setState(() {
-        _biometricAvailable = available;
-        _biometricEnabled = enabled;
-        _hasEnrolledBiometrics = hasEnrolled;
-        _biometricType = bioType;
-      });
-    }
-  }
-
-  String _getBiometricSubtitle() {
-    if (!_biometricAvailable) {
-      return S.biometricNotAvailable;
-    }
-    if (!_hasEnrolledBiometrics) {
-      return 'Please set up $_biometricType in your device settings first';
-    }
-    return 'Use $_biometricType to verify sensitive operations';
-  }
-
-  Future<void> _toggleBiometric(bool value) async {
-    if (!_biometricAvailable) return;
-
-    if (value) {
-      final ctx = Services.navigatorKey.currentContext;
-      if (ctx == null) return;
-      final pinOk = await PinVerifyDialog.show(ctx, reason: S.biometricAuthReason);
-      if (!pinOk) return;
-
-      final bioOk = await Services.biometrics.authenticate(
-        reason: S.biometricAuthReason,
-      );
-      if (!bioOk) return;
-    } else {
-      final authenticated = await Services.authenticate(reason: S.biometricAuthReason);
-      if (!authenticated) return;
-    }
-
-    if (!mounted) return;
-    LoadingOverlay.show(context);
-    await Services.biometrics.setEnabled(value);
-    LoadingOverlay.dismiss();
-    if (mounted) {
-      setState(() => _biometricEnabled = value);
-    }
   }
 
   Future<void> _toggleEmergencyFreeze() async {
@@ -203,43 +146,39 @@ class _SettingsViewState extends State<SettingsView> {
     _settings.setVoiceInputEnabled(!_settings.voiceInputEnabled);
   }
 
-  void _showAiModelPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: CwColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 16),
-            Text(S.aiModel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            _modelOption(ctx, AiModel.bedrock, 'Claude (Bedrock)', 'Anthropic Claude via AWS Bedrock'),
-            _modelOption(ctx, AiModel.deepseek, 'DeepSeek', 'DeepSeek AI'),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
+  /// AI data-sharing consent management.
+  /// - Not yet granted: show the disclosure sheet; persist if the user agrees.
+  /// - Already granted: offer to withdraw consent (disables the AI assistant).
+  Future<void> _handleAiDataSharing() async {
+    if (!_settings.aiConsentGranted) {
+      final granted = await AiConsentSheet.show(context);
+      if (granted) {
+        await _settings.setAiConsentGranted(true);
+      }
+      return;
+    }
 
-  Widget _modelOption(BuildContext ctx, AiModel model, String title, String subtitle) {
-    final selected = _settings.aiModel == model;
-    return ListTile(
-      leading: Icon(
-        selected ? Icons.radio_button_checked : Icons.radio_button_off,
-        color: selected ? CwColors.accent : CwColors.ink4,
+    final revoke = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.aiConsentRevokeTitle),
+        content: Text(S.aiConsentRevokeBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: CwColors.danger),
+            child: Text(S.aiConsentRevokeConfirm),
+          ),
+        ],
       ),
-      title: Text(title),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: CwColors.ink4)),
-      onTap: () {
-        _settings.setAiModel(model);
-        Navigator.pop(ctx);
-      },
     );
+    if (revoke == true) {
+      await _settings.setAiConsentGranted(false);
+    }
   }
 
   void _toggleWeeklyReport() {
@@ -254,11 +193,17 @@ class _SettingsViewState extends State<SettingsView> {
     _settings.setWeeklyReportEnabled(!_settings.weeklyReportEnabled);
   }
 
-  Future<void> _handleResetOnboarding() async {
+  /// Permanent account deletion (App Store Guideline 5.1.1(v)).
+  ///
+  /// Flow: check balance (warn if funds remain, but do NOT block — Apple
+  /// requires deletion always be available) → final irreversible-confirm dialog
+  /// → biometric/PIN auth → call backend DELETE /account → wipe local storage →
+  /// return to onboarding.
+  Future<void> _handleDeleteAccount() async {
     final balanceService = Services.balance;
     final address = CowalletApp.of(context).walletAddress;
 
-    // Show loading while refreshing balance
+    // Refresh balance so the warning reflects current funds.
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -276,46 +221,44 @@ class _SettingsViewState extends State<SettingsView> {
       ),
     );
 
-    await balanceService.refresh(address);
+    if (address.isNotEmpty) {
+      await balanceService.refresh(address);
+    }
     if (!mounted) return;
     Navigator.pop(context); // dismiss loading
 
     final totalUsd = double.tryParse(balanceService.portfolioTotalUsd) ?? 0.0;
 
+    // If funds remain, warn but still allow deletion (Apple 5.1.1(v)).
     if (totalUsd > 0) {
-      // Wallet has assets — warn user to transfer first
-      if (!mounted) return;
-      showDialog(
+      final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(S.resetWalletTitle),
-          content: Text(S.resetWalletHasBalance),
+          content: Text(S.deleteAccountHasBalance),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: () => Navigator.pop(ctx, false),
               child: Text(S.cancel),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (_) => false);
-              },
-              child: Text(S.resetWalletGoTransfer),
+              style: FilledButton.styleFrom(backgroundColor: CwColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(S.deleteAccountConfirm),
             ),
           ],
         ),
       );
-      return;
+      if (proceed != true) return;
     }
 
-    // Balance is zero — show final confirmation
+    // Final irreversible confirmation.
     if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(S.resetWalletConfirmTitle),
-        content: Text(S.resetWalletConfirmBody),
+        title: Text(S.deleteAccountConfirmTitle),
+        content: Text(S.deleteAccountConfirmBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -324,16 +267,30 @@ class _SettingsViewState extends State<SettingsView> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: CwColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(S.resetWalletConfirm),
+            child: Text(S.deleteAccountConfirm),
           ),
         ],
       ),
     );
+    if (confirmed != true) return;
 
-    if (confirmed == true && mounted) {
+    // Require device auth before an irreversible destructive action.
+    final authed = await Services.authenticate(reason: S.biometricAuthReason);
+    if (!authed || !mounted) return;
+
+    LoadingOverlay.show(context);
+    final result = await AuthApi.deleteAccount();
+    LoadingOverlay.dismiss();
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      // Backend wiped the account; AuthApi.deleteAccount already cleared local
+      // secure storage. Reset in-memory onboarding state and return to start.
       CowalletApp.of(context).resetOnboarding();
-      Navigator.pushNamedAndRemoveUntil(
-          context, '/onboarding', (_) => false);
+      showTopToast(context, S.deleteAccountSuccess, backgroundColor: CwColors.success);
+      Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (_) => false);
+    } else {
+      showTopToast(context, S.deleteAccountFailed, backgroundColor: CwColors.danger);
     }
   }
 
@@ -352,9 +309,6 @@ class _SettingsViewState extends State<SettingsView> {
   String _formatLastRotation() {
     if (_lastRotationDate == null) return S.never;
 
-    final locale = Localizations.localeOf(context);
-    final isZh = locale.languageCode == 'zh';
-
     try {
       final date = DateTime.parse(_lastRotationDate!);
       final now = DateTime.now();
@@ -372,6 +326,69 @@ class _SettingsViewState extends State<SettingsView> {
       }
     } catch (e) {
       return S.never;
+    }
+  }
+
+  Future<void> _handleRotateKeyShares() async {
+    // Confirm before running — reshare touches all three shards.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(S.rotateKeyShares),
+        content: Text(S.rotateConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(S.confirm),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    // Require auth — resharing rewrites the device shard. Shard-op variant:
+    // biometric users authenticate once via the native keystore prompt during
+    // shard decryption (no double prompt); PIN users authenticate here.
+    final authed = await Services.authenticateForShardOp(reason: S.biometricAuthReason);
+    if (!authed) return;
+
+    if (!mounted) return;
+    LoadingOverlay.show(context);
+    try {
+      final address = await SecureStorage.get('mpc_address');
+      await Services.mpcWallet.runReshare(walletId: address);
+      LoadingOverlay.dismiss();
+      await _loadKeySecuritySettings();
+      if (mounted) {
+        // If the backup shard was refreshed automatically (cloud), a toast is
+        // enough. Otherwise the offline backup file no longer matches the
+        // rotated shards and MUST be re-exported — force the user through a
+        // blocking backup screen that cannot be dismissed until done.
+        if (Services.mpcWallet.backupNeedsReExport) {
+          showTopToast(context, S.rotationSuccess,
+              backgroundColor: CwColors.success);
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (_) => const MandatoryBackupExportView(),
+            ),
+          );
+          if (mounted) await _loadKeySecuritySettings();
+        } else {
+          showTopToast(context, S.rotationSuccessCloudBackup,
+              backgroundColor: CwColors.success);
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[Rotate] runReshare failed: $e\n$st');
+      LoadingOverlay.dismiss();
+      if (mounted) {
+        showTopToast(context, S.rotationFailed, backgroundColor: CwColors.danger);
+      }
     }
   }
 
@@ -614,20 +631,6 @@ class _SettingsViewState extends State<SettingsView> {
       children: [
         _settingRow(
           context,
-          icon: Icons.fingerprint,
-          iconColor: CwColors.accent,
-          iconBg: CwColors.accentSoft,
-          title: S.biometricAuth,
-          subtitle: _getBiometricSubtitle(),
-          trailing: Switch(
-            value: _biometricEnabled,
-            onChanged: _biometricAvailable ? _toggleBiometric : null,
-            activeThumbColor: CwColors.accent,
-          ),
-        ),
-        const Divider(indent: 52, height: 1),
-        _settingRow(
-          context,
           icon: Icons.error_outline,
           iconColor: CwColors.danger,
           iconBg: CwColors.dangerSoft,
@@ -687,23 +690,16 @@ class _SettingsViewState extends State<SettingsView> {
         const Divider(indent: 52, height: 1),
         _settingRow(
           context,
-          icon: Icons.auto_awesome_outlined,
+          icon: Icons.privacy_tip_outlined,
           iconColor: CwColors.ink3,
           iconBg: CwColors.bgSubtle,
-          title: S.aiModel,
-          subtitle: S.aiModelSub,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _settings.aiModel == AiModel.bedrock ? 'Claude' : 'DeepSeek',
-                style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
-            ],
+          title: S.aiDataSharing,
+          subtitle: S.aiDataSharingSub,
+          trailing: CwChip(
+            label: _settings.aiConsentGranted ? S.aiConsentStatusOn : S.aiConsentStatusOff,
+            variant: _settings.aiConsentGranted ? ChipVariant.green : ChipVariant.neutral,
           ),
-          onTap: _showAiModelPicker,
+          onTap: _handleAiDataSharing,
         ),
       ],
     );
@@ -742,16 +738,13 @@ class _SettingsViewState extends State<SettingsView> {
         const Divider(indent: 52, height: 1),
         _settingRow(
           context,
-          icon: Icons.restart_alt,
-          iconColor: CwColors.ink3,
-          iconBg: CwColors.bgSubtle,
-          title: S.redoOnboarding,
-          subtitle: S.redoOnboardingSub,
-          trailing: Text(
-            '↻',
-            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 16, color: CwColors.ink3),
-          ),
-          onTap: () => _handleResetOnboarding(),
+          icon: Icons.delete_forever,
+          iconColor: CwColors.danger,
+          iconBg: CwColors.dangerSoft,
+          title: S.deleteAccount,
+          subtitle: S.deleteAccountSub,
+          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          onTap: () => _handleDeleteAccount(),
         ),
       ],
     );
@@ -781,11 +774,7 @@ class _SettingsViewState extends State<SettingsView> {
           title: S.rotateKeyShares,
           subtitle: '${S.lastRotation}: ${_formatLastRotation()}',
           trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
-          onTap: () => showTopToast(
-            context,
-            S.comingSoon,
-            backgroundColor: CwColors.ink3,
-          ),
+          onTap: _handleRotateKeyShares,
         ),
         const Divider(indent: 52, height: 1),
         _settingRow(

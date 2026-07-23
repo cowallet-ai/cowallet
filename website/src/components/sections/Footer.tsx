@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useLang } from "@/context/LangContext";
 import { LangToggle } from "@/components/ui/LangToggle";
 
@@ -19,12 +20,12 @@ export function Footer() {
         </div>
 
         <div className="flex items-center gap-6">
-          <a href="#" className="text-[12px] text-ink-3 hover:text-ink-1 transition-colors">
+          <Link href="/privacy" className="text-[12px] text-ink-3 hover:text-ink-1 transition-colors">
             {t("footer.privacy")}
-          </a>
-          <a href="#" className="text-[12px] text-ink-3 hover:text-ink-1 transition-colors">
+          </Link>
+          <Link href="/terms" className="text-[12px] text-ink-3 hover:text-ink-1 transition-colors">
             {t("footer.terms")}
-          </a>
+          </Link>
           <a href="#" className="text-[12px] text-ink-3 hover:text-ink-1 transition-colors">
             GitHub
           </a>

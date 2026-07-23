@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -85,6 +86,36 @@ class MpcWebSocket {
     return _messageController!.stream;
   }
 
+  /// Buffer of server messages received from the raw socket. Because
+  /// [messages] is a broadcast stream, any message that arrives before a
+  /// consumer calls `.listen()` is silently dropped. The MPC flow sends its
+  /// request over HTTP and only then subscribes to await the reply — and the
+  /// server pushes that reply back over the socket within ~1ms, well before
+  /// the subscription is established. Buffering every inbound message here lets
+  /// [takeBuffered] recover the ones that arrived in that window, instead of
+  /// waiting out the 45s socket timeout and falling back to slow HTTP polling.
+  final List<MpcMessage> _buffer = [];
+  static const int _maxBuffer = 100;
+
+  /// Remove and return buffered messages matching [fromParty] (and [round] when
+  /// given). Consumed messages are dropped from the buffer so a later wait for a
+  /// different round does not re-read them.
+  List<MpcMessage> takeBuffered({required int fromParty, int? round}) {
+    final matched = <MpcMessage>[];
+    _buffer.removeWhere((m) {
+      final hit = m.fromParty == fromParty && (round == null || m.round == round);
+      if (hit) matched.add(m);
+      return hit;
+    });
+    return matched;
+  }
+
+  /// Drop a message from the buffer (used after it is delivered live via the
+  /// stream, so it is not also returned by a later [takeBuffered]).
+  void dropBuffered(MpcMessage message) {
+    _buffer.remove(message);
+  }
+
   /// 构建WebSocket URL
   /// 将HTTP URL转换为WS URL，并附加session/party/ticket参数。
   /// 每次连接(含重连)都换取一张新的一次性票据——票据30秒有效且仅可用一次。
@@ -121,7 +152,7 @@ class MpcWebSocket {
 
     try {
       Uri uri = await _buildWsUri();
-      print('[MpcWebSocket] Connecting to: $uri');
+      debugPrint('[MpcWebSocket] Connecting to: $uri');
 
       _channel = WebSocketChannel.connect(uri);
 
@@ -132,7 +163,7 @@ class MpcWebSocket {
 
       _state = MpcWebSocketState.connected;
       _reconnectAttempts = 0;
-      print('[MpcWebSocket] Connected successfully');
+      debugPrint('[MpcWebSocket] Connected successfully');
 
       // 监听消息
       _subscription = _channel!.stream.listen(
@@ -145,7 +176,7 @@ class MpcWebSocket {
       _startHeartbeat();
     } catch (e) {
       if (_disposed) return;
-      print('[MpcWebSocket] Connection failed: $e');
+      debugPrint('[MpcWebSocket] Connection failed: $e');
       _state = MpcWebSocketState.disconnected;
       _scheduleReconnect();
     }
@@ -169,7 +200,7 @@ class MpcWebSocket {
     _channel = null;
 
     _state = MpcWebSocketState.disconnected;
-    print('[MpcWebSocket] Disconnected');
+    debugPrint('[MpcWebSocket] Disconnected');
 
     await _messageController?.close();
     _messageController = null;
@@ -179,7 +210,7 @@ class MpcWebSocket {
   /// [message] 要发送的MPC消息
   void send(MpcMessage message) {
     if (_state != MpcWebSocketState.connected || _channel == null) {
-      print('[MpcWebSocket] Cannot send: not connected');
+      debugPrint('[MpcWebSocket] Cannot send: not connected');
       return;
     }
 
@@ -219,15 +250,22 @@ class MpcWebSocket {
       }
 
       MpcMessage message = MpcMessage.fromJson(json);
+      // Buffer first (bounded), then broadcast. A consumer that has not yet
+      // subscribed recovers this message via takeBuffered(); one already
+      // listening gets it live and calls dropBuffered() to avoid a re-read.
+      _buffer.add(message);
+      if (_buffer.length > _maxBuffer) {
+        _buffer.removeAt(0);
+      }
       _messageController?.add(message);
     } catch (e) {
-      print('[MpcWebSocket] Error parsing message: $e');
+      debugPrint('[MpcWebSocket] Error parsing message: $e');
     }
   }
 
   /// 处理连接错误
   void _onError(dynamic error) {
-    print('[MpcWebSocket] Error: $error');
+    debugPrint('[MpcWebSocket] Error: $error');
     _state = MpcWebSocketState.disconnected;
     _heartbeatTimer?.cancel();
     onUnexpectedDisconnect?.call();
@@ -236,7 +274,7 @@ class MpcWebSocket {
 
   /// 处理连接关闭
   void _onDone() {
-    print('[MpcWebSocket] Connection closed');
+    debugPrint('[MpcWebSocket] Connection closed');
     final wasConnected = _state == MpcWebSocketState.connected;
     _state = MpcWebSocketState.disconnected;
     _heartbeatTimer?.cancel();
@@ -260,7 +298,7 @@ class MpcWebSocket {
   void _scheduleReconnect() {
     if (_disposed) return;
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-      print('[MpcWebSocket] Max reconnect attempts reached');
+      debugPrint('[MpcWebSocket] Max reconnect attempts reached');
       _messageController?.addError(
         Exception('WebSocket connection failed after $_maxReconnectAttempts attempts'),
       );
@@ -271,7 +309,7 @@ class MpcWebSocket {
     int delaySeconds = 1 << _reconnectAttempts; // 1, 2, 4, 8, 16
     _reconnectAttempts++;
 
-    print('[MpcWebSocket] Reconnecting in ${delaySeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
+    debugPrint('[MpcWebSocket] Reconnecting in ${delaySeconds}s (attempt $_reconnectAttempts/$_maxReconnectAttempts)');
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: delaySeconds), () async {

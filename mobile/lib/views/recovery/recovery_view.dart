@@ -39,7 +39,6 @@ class _RecoveryViewState extends State<RecoveryView> {
   // controllers
   final _emailCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
-  final _backupPasswordCtrl = TextEditingController();
 
   // state
   BackupShardSource? _backupSource;
@@ -60,7 +59,6 @@ class _RecoveryViewState extends State<RecoveryView> {
   void dispose() {
     _emailCtrl.dispose();
     _otpCtrl.dispose();
-    _backupPasswordCtrl.dispose();
     _recoveryService.clearRecoveryState();
     super.dispose();
   }
@@ -141,10 +139,6 @@ class _RecoveryViewState extends State<RecoveryView> {
   }
 
   Future<void> _importFromCloud() async {
-    if (_backupPasswordCtrl.text.isEmpty) {
-      setState(() => _error = S.backupPasswordTooShort);
-      return;
-    }
     setState(() {
       _loading = true;
       _error = null;
@@ -152,7 +146,6 @@ class _RecoveryViewState extends State<RecoveryView> {
 
     try {
       await _recoveryService.importBackupShard(
-        password: _backupPasswordCtrl.text,
         source: BackupShardSource.cloud,
       );
       _backupSource = BackupShardSource.cloud;
@@ -174,10 +167,6 @@ class _RecoveryViewState extends State<RecoveryView> {
   }
 
   Future<void> _importFromFile() async {
-    if (_backupPasswordCtrl.text.isEmpty) {
-      setState(() => _error = S.backupPasswordTooShort);
-      return;
-    }
     setState(() {
       _error = null;
     });
@@ -196,7 +185,6 @@ class _RecoveryViewState extends State<RecoveryView> {
       setState(() => _loading = true);
 
       await _recoveryService.importBackupShard(
-        password: _backupPasswordCtrl.text,
         source: BackupShardSource.file,
         fileContent: content,
       );
@@ -586,18 +574,6 @@ class _RecoveryViewState extends State<RecoveryView> {
                     style: TextStyle(color: CwColors.ink3),
                   ),
                 ] else ...[
-                  // Backup password: required to decrypt the encrypted backup
-                  // shard (F-002). The same password used when the backup was
-                  // created must be entered here.
-                  TextField(
-                    controller: _backupPasswordCtrl,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: S.backupPasswordHint,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
                   _backupOptionCard(
                     icon: Icons.cloud_download_outlined,
                     title: S.recoveryFromCloud,

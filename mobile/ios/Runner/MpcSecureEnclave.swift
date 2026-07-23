@@ -51,40 +51,65 @@ public class MpcSecureEnclaveHandler: NSObject, FlutterPlugin {
     }
 
     do {
+      // Secure Enclave P-256 signing key. Only the opaque, non-exportable
+      // dataRepresentation blob is persisted; the raw private key never leaves
+      // the SE. This blob is NOT a raw EC key — it MUST be reconstructed via
+      // CryptoKit (see loadSigningKey). Storing it as kSecAttrKeyTypeECSECPrime‐
+      // Random and reading it back as a SecKey ref (the previous bug) fails at
+      // sign time and silently aborts challenge-response login.
       let privateKey = try SecureEnclave.P256.Signing.PrivateKey()
-      let publicKey = privateKey.publicKey
 
-      // Store key in keychain with tag
       let keyTag = "com.cowallet.se.\(keyId)".data(using: .utf8)!
-      let privKeyData = privateKey.dataRepresentation
-
-      let query: [String: Any] = [
+      let addQuery: [String: Any] = [
         kSecClass as String: kSecClassKey,
         kSecAttrApplicationTag as String: keyTag,
-        kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-        kSecAttrKeySizeInBits as String: 256,
-        kSecValueData as String: privKeyData,
+        kSecValueData as String: privateKey.dataRepresentation,
         kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+        kSecAttrSynchronizable as String: false,
       ]
 
-      SecItemDelete(query as CFDictionary)
-      let status = SecItemAdd(query as CFDictionary, nil)
-
+      SecItemDelete(addQuery as CFDictionary)
+      let status = SecItemAdd(addQuery as CFDictionary, nil)
       guard status == errSecSuccess else {
         throw NSError(domain: "Keychain", code: Int(status))
       }
 
-      // Return public key in compressed format (33 bytes)
-      let publicKeyData = publicKey.compressedRepresentation
-      let publicKeyBase64 = publicKeyData.base64EncodedString()
-
+      // 33-byte compressed SEC1 public key (backend: VerifyingKey::from_sec1_bytes).
+      // Compress from x963 (65B) to avoid the iOS 16-only compressedRepresentation.
+      let publicKeyData = compressPublicKey(privateKey.publicKey.x963Representation)
       result([
-        "publicKey": publicKeyBase64,
+        "publicKey": publicKeyData.base64EncodedString(),
         "keyId": keyId,
       ])
     } catch {
       result(FlutterError(code: "GENERATION_FAILED", message: error.localizedDescription, details: nil))
     }
+  }
+
+  /// Reconstruct a Secure Enclave signing key from its persisted opaque blob.
+  /// The blob was stored via kSecValueData (see generateKey); CryptoKit — NOT a
+  /// SecKey ref — is the only valid way to rebuild an SE key for signing.
+  private func loadSigningKey(
+    keyId: String,
+    context: LAContext? = nil
+  ) throws -> SecureEnclave.P256.Signing.PrivateKey {
+    let keyTag = "com.cowallet.se.\(keyId)".data(using: .utf8)!
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassKey,
+      kSecAttrApplicationTag as String: keyTag,
+      kSecReturnData as String: true,
+    ]
+    var out: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &out)
+    guard status == errSecSuccess, let blob = out as? Data else {
+      throw NSError(domain: "Keychain", code: Int(status),
+                    userInfo: [NSLocalizedDescriptionKey: "SE signing key not found"])
+    }
+    if let context = context {
+      return try SecureEnclave.P256.Signing.PrivateKey(
+        dataRepresentation: blob, authenticationContext: context)
+    }
+    return try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob)
   }
 
   /// Get public key for a key ID
@@ -96,34 +121,10 @@ public class MpcSecureEnclaveHandler: NSObject, FlutterPlugin {
     }
 
     do {
-      let keyTag = "com.cowallet.se.\(keyId)".data(using: .utf8)!
-      let query: [String: Any] = [
-        kSecClass as String: kSecClassKey,
-        kSecAttrApplicationTag as String: keyTag,
-        kSecReturnRef as String: true,
-      ]
-
-      var keyRef: CFTypeRef?
-      let status = SecItemCopyMatching(query as CFDictionary, &keyRef)
-
-      guard status == errSecSuccess, let ref = keyRef else {
-        throw NSError(domain: "Keychain", code: Int(status))
-      }
-      let key = ref as! SecKey
-
-      // Extract public key and compress
-      guard let publicKey = SecKeyCopyPublicKey(key) else {
-        throw NSError(domain: "Keychain", code: -1)
-      }
-
-      // Convert to raw bytes and compress
-      var error: Unmanaged<CFError>?
-      guard let keyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? else {
-        throw error?.takeRetainedValue() as Error? ?? NSError(domain: "Keychain", code: -1)
-      }
-
-      // Compress public key (65 -> 33 bytes)
-      let compressed = compressPublicKey(keyData)
+      // Reconstruct via CryptoKit (no auth context needed to read the public
+      // key) and emit 33-byte compressed SEC1, matching generateKey + backend.
+      let privateKey = try loadSigningKey(keyId: keyId)
+      let compressed = compressPublicKey(privateKey.publicKey.x963Representation)
       result(compressed.base64EncodedString())
     } catch {
       result(FlutterError(code: "GET_KEY_FAILED", message: error.localizedDescription, details: nil))
@@ -141,18 +142,29 @@ public class MpcSecureEnclaveHandler: NSObject, FlutterPlugin {
       return
     }
 
-    // Authenticate with biometric
+    // Authenticate with biometrics, falling back to the device passcode.
+    //
+    // MUST be .deviceOwnerAuthentication (NOT ...WithBiometrics): the
+    // "WithBiometrics" policy is biometric-ONLY — when Face ID fails, its
+    // fallback button returns LAError.userFallback to the app instead of
+    // presenting the system passcode, so the user is stuck. The plain
+    // .deviceOwnerAuthentication policy tries biometrics first and then
+    // automatically presents the system PIN/passcode on failure.
+    //
+    // This is safe here because the SE key itself is not access-control bound
+    // (created with kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, no
+    // SecAccessControl), so this evaluatePolicy IS the single auth gate.
     let context = LAContext()
     var error: NSError?
 
-    guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-      let message = error?.localizedDescription ?? "Biometric authentication not available"
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+      let message = error?.localizedDescription ?? "Device authentication not available"
       result(FlutterError(code: "BIOMETRIC_UNAVAILABLE", message: message, details: nil))
       return
     }
 
     context.evaluatePolicy(
-      .deviceOwnerAuthenticationWithBiometrics,
+      .deviceOwnerAuthentication,
       localizedReason: reason
     ) { [weak self] success, authError in
       guard success else {
@@ -162,34 +174,20 @@ public class MpcSecureEnclaveHandler: NSObject, FlutterPlugin {
       }
 
       do {
-        // Get key from keychain
-        let keyTag = "com.cowallet.se.\(keyId)".data(using: .utf8)!
-        let query: [String: Any] = [
-          kSecClass as String: kSecClassKey,
-          kSecAttrApplicationTag as String: keyTag,
-          kSecReturnRef as String: true,
-        ]
-
-        var keyRef: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &keyRef)
-
-        guard status == errSecSuccess, let ref = keyRef else {
-          throw NSError(domain: "Keychain", code: Int(status))
-        }
-        let key = ref as! SecKey
-
-        // Sign the message
-        var sigError: Unmanaged<CFError>?
-        guard let signature = SecKeyCreateSignature(
-          key,
-          .ecdsaSignatureMessageX962SHA256,
-          messageData as CFData,
-          &sigError
-        ) as Data? else {
-          throw sigError?.takeRetainedValue() as Error? ?? NSError(domain: "Signing", code: -1)
+        // Reconstruct the SE key via CryptoKit (the ONLY valid way — a stored
+        // SE blob is not a SecKey). Pass the already-authenticated LAContext so
+        // the SE operation rides the auth we just performed.
+        let privateKey = try self?.loadSigningKey(keyId: keyId, context: context)
+        guard let privateKey = privateKey else {
+          throw NSError(domain: "Signing", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Handler deallocated"])
         }
 
-        result(signature.base64EncodedString())
+        // CryptoKit hashes with SHA-256 internally, matching the backend's
+        // verify_prehash(Sha256::digest(msg)). Returns a DER-encoded ECDSA
+        // signature; the backend accepts DER or 64-byte compact.
+        let signature = try privateKey.signature(for: messageData)
+        result(signature.derRepresentation.base64EncodedString())
       } catch {
         result(FlutterError(code: "SIGNING_FAILED", message: error.localizedDescription, details: nil))
       }
@@ -204,7 +202,12 @@ public class MpcSecureEnclaveHandler: NSObject, FlutterPlugin {
     // SE is available on iPhone 5s and later
     let hasSecureEnclave = ProcessInfo().isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 9, minorVersion: 0, patchVersion: 0))
 
-    result(hasSecureEnclave && context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error))
+    // Match the signing path's policy (.deviceOwnerAuthentication): available
+    // whenever ANY device auth exists — biometric OR passcode. Using the
+    // biometrics-only policy here would wrongly report unavailable on a
+    // passcode-only device (or when biometrics are temporarily locked out),
+    // even though signWithBiometric can still authenticate via the passcode.
+    result(hasSecureEnclave && context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error))
   }
 
   // MARK: - Helper Functions

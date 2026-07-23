@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import '../config/api_config.dart';
 import '../utils/secure_storage.dart';
@@ -9,7 +10,38 @@ import 'result.dart';
 
 class DioClient {
   static Dio? _instance;
-  static bool _isRefreshing = false;
+
+  /// This build's integer version, stamped on every request as X-App-Version so
+  /// the server-side version gate can reject outdated clients (v1.0.1 MPC
+  /// protocol is not backward compatible). Read once from PackageInfo, cached.
+  static int? _appBuild;
+
+  static Future<int> _buildNumber() async {
+    if (_appBuild != null) return _appBuild!;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appBuild = int.tryParse(info.buildNumber) ?? 0;
+    } catch (_) {
+      _appBuild = 0;
+    }
+    return _appBuild!;
+  }
+
+  /// Injected by the app layer to navigate to the blocking force-upgrade screen
+  /// when the server answers 426 Upgrade Required. Kept as a callback so this
+  /// low-level file doesn't import UI. Receives the parsed 426 JSON body.
+  static void Function(Map<String, dynamic> body)? onUpgradeRequired;
+
+  /// Injected by the app layer (main.dart) to recover a session on 401 —
+  /// refresh-token first, then challenge-response re-login. Kept as a callback
+  /// so this low-level network file doesn't import AuthApi (avoids a cycle) and
+  /// so both the interceptor and startup share ONE single-flight recovery.
+  /// Returns true if a valid token is now stored.
+  static Future<bool> Function()? sessionRecoverer;
+
+  /// Marks a request that has already been retried after a recovery, so a
+  /// second 401 on the retry doesn't trigger another recovery loop.
+  static const String _retriedFlag = 'x-session-retried';
 
   static Dio get instance {
     if (_instance == null) {
@@ -39,19 +71,30 @@ class DioClient {
           try {
             // 从安全存储拿token，自动加到请求头
             String? token = await SecureStorage.getToken();
-            
+
             if (token != null && token.isNotEmpty) {
               options.headers["Authorization"] = "Bearer $token";
               // Do not log token contents, not even a prefix (F-021): a prefix
               // still leaks the JWT header/alg and narrows brute-force space.
-              print("✅ [DioClient] Token attached");
+              debugPrint("✅ [DioClient] Token attached");
             } else {
-              print("⚠️  [DioClient] No token found in SecureStorage");
+              debugPrint("⚠️  [DioClient] No token found in SecureStorage");
               // 尝试直接检查文件
-              print("   Path: ${options.path}");
+              debugPrint("   Path: ${options.path}");
             }
+
+            // Mandatory device binding (F-010): protected routes reject requests
+            // without an X-Device-ID header matching the JWT's device_id.
+            final deviceId = await SecureStorage.getDeviceId();
+            if (deviceId != null && deviceId.isNotEmpty) {
+              options.headers["X-Device-ID"] = deviceId;
+            }
+
+            // Version gate (F: forced upgrade). Server compares this to
+            // MIN_APP_BUILD and returns 426 for stale clients.
+            options.headers["X-App-Version"] = (await _buildNumber()).toString();
           } catch (e) {
-            print("❌ [DioClient] Error reading token: $e");
+            debugPrint("❌ [DioClient] Error reading token: $e");
           }
           return handler.next(options);
         },
@@ -59,34 +102,55 @@ class DioClient {
           return handler.next(response);
         },
         onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401 && !_isRefreshing) {
-            // Skip refresh for the refresh endpoint itself
-            final path = e.requestOptions.path;
-            if (path.contains('/auth/refresh') || path.contains('/auth/register') || path.contains('/auth/login')) {
+          final opts = e.requestOptions;
+          final path = opts.path;
+
+          // 426 Upgrade Required: server rejected this build. Trigger the
+          // blocking upgrade screen and stop — no retry can succeed until the
+          // user updates. Handled before the 401 recovery path.
+          if (e.response?.statusCode == 426) {
+            final body = e.response?.data;
+            onUpgradeRequired?.call(
+              body is Map<String, dynamic> ? body : <String, dynamic>{},
+            );
+            return handler.next(e);
+          }
+
+          // Only attempt recovery on a genuine 401, once per request, and never
+          // for the auth endpoints themselves (they'd recurse). The recoverer
+          // is single-flight, so concurrent 401s collapse into ONE refresh /
+          // re-login and all retry afterwards.
+          final isAuthPath = path.contains('/auth/refresh') ||
+              path.contains('/auth/login') ||
+              path.contains('/auth/register') ||
+              path.contains('/auth/challenge');
+          final alreadyRetried = opts.extra[_retriedFlag] == true;
+
+          if (e.response?.statusCode != 401 ||
+              isAuthPath ||
+              alreadyRetried ||
+              sessionRecoverer == null) {
+            return handler.next(e);
+          }
+
+          try {
+            final recovered = await sessionRecoverer!();
+            if (!recovered) {
+              // Leave stored tokens as-is: a transient failure or a declined
+              // biometric prompt must not silently log the user out. The next
+              // request (or app restart) retries recovery.
+              debugPrint("⚠️  Session recovery failed for $path");
               return handler.next(e);
             }
-
-            _isRefreshing = true;
-            try {
-              final refreshed = await _tryRefreshToken();
-              if (refreshed) {
-                // Retry the original request with new token
-                final token = await SecureStorage.getToken();
-                final opts = e.requestOptions;
-                opts.headers["Authorization"] = "Bearer $token";
-                final response = await _instance!.fetch(opts);
-                return handler.resolve(response);
-              } else {
-                print("⚠️  Token refresh failed - clearing auth data");
-                await SecureStorage.clearAuthData();
-              }
-            } catch (_) {
-              await SecureStorage.clearAuthData();
-            } finally {
-              _isRefreshing = false;
-            }
+            // Retry the original request once with the fresh token.
+            final token = await SecureStorage.getToken();
+            opts.headers["Authorization"] = "Bearer $token";
+            opts.extra[_retriedFlag] = true;
+            final response = await _instance!.fetch(opts);
+            return handler.resolve(response);
+          } catch (_) {
+            return handler.next(e);
           }
-          return handler.next(e);
         },
       ),
       // 日志拦截器，开发环境开启，生产环境关闭
@@ -124,7 +188,11 @@ class DioClient {
       );
 
       // 响应处理 - 根据你的后端实际返回格式调整
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      // 任意 2xx 均视为成功：DELETE /account 等接口返回 204 No Content（空 body），
+      // 只认 200/201 会把 204 误判为失败——账户已在服务端删除，客户端却弹"删除失败"
+      // 且跳过本地清理。Dio 默认 validateStatus 也只放行 2xx，与此判定一致。
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode >= 200 && statusCode < 300) {
         // 如果后端直接返回数据，没有外层包装
         return Result.success(response.data as T);
         // 如果后端有标准包装格式：{ "code": 0, "msg": "success", "data": {} }
@@ -227,6 +295,7 @@ class DioClient {
   }) async {
     try {
       String? token = await SecureStorage.getToken();
+      final deviceId = await SecureStorage.getDeviceId();
       final dio = Dio(BaseOptions(
         baseUrl: ApiConfig.apiBaseUrl,
         connectTimeout: Duration(seconds: ApiConfig.connectTimeout),
@@ -235,6 +304,8 @@ class DioClient {
           "Content-Type": "application/json",
           "Accept": "text/event-stream",
           if (token != null) "Authorization": "Bearer $token",
+          // Mandatory device binding (F-010).
+          if (deviceId != null && deviceId.isNotEmpty) "X-Device-ID": deviceId,
         },
         responseType: ResponseType.stream,
       ));
@@ -253,45 +324,9 @@ class DioClient {
         ),
       );
     } catch (e) {
-      print("❌ [DioClient] Stream request failed: $e");
+      debugPrint("❌ [DioClient] Stream request failed: $e");
       return null;
     }
-  }
-
-  /// Attempt to refresh the access token using the stored refresh token.
-  /// Uses a separate Dio instance to avoid interceptor recursion.
-  static Future<bool> _tryRefreshToken() async {
-    final refreshToken = await SecureStorage.getRefreshToken();
-    if (refreshToken == null || refreshToken.isEmpty) return false;
-
-    try {
-      final dio = Dio(BaseOptions(
-        baseUrl: ApiConfig.apiBaseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-        headers: {"Content-Type": "application/json"},
-      ));
-
-      final response = await dio.post(
-        "/auth/refresh",
-        data: {"refresh_token": refreshToken},
-      );
-
-      if (response.statusCode == 200 && response.data != null) {
-        final newToken = response.data["token"] as String?;
-        final newRefresh = response.data["refresh_token"] as String?;
-        if (newToken != null) {
-          await SecureStorage.saveToken(newToken);
-        }
-        if (newRefresh != null) {
-          await SecureStorage.saveRefreshToken(newRefresh);
-        }
-        return newToken != null;
-      }
-    } catch (e) {
-      print("❌ Token refresh error: $e");
-    }
-    return false;
   }
 
   // 错误处理

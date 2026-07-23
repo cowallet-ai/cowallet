@@ -29,6 +29,21 @@ class LocalAuthBiometricService implements BiometricService {
   }
 
   @override
+  Future<bool> isDeviceSupported() async {
+    try {
+      // isDeviceSupported() is true when the OS can authenticate the user by
+      // ANY means — biometric or the device passcode/PIN/pattern. It's false
+      // only when the device has no lock configured at all.
+      final supported = await _auth.isDeviceSupported();
+      _debug('isDeviceSupported: $supported');
+      return supported;
+    } on PlatformException catch (e) {
+      _debug('isDeviceSupported error: ${e.code}, ${e.message}');
+      return false;
+    }
+  }
+
+  @override
   Future<List<String>> getAvailableBiometrics() async {
     try {
       final types = await _auth.getAvailableBiometrics();
@@ -103,7 +118,11 @@ class LocalAuthBiometricService implements BiometricService {
       final result = await _auth.authenticate(
         localizedReason: reason,
         options: const AuthenticationOptions(
-          biometricOnly: true,
+          // biometricOnly:false lets the OS fall back to the device passcode/PIN
+          // when biometrics fail or are unavailable. With `true` the "Enter
+          // Passcode" option is suppressed, so a failed Face ID / fingerprint
+          // left the user stuck with no way to proceed.
+          biometricOnly: false,
           useErrorDialogs: true,
           stickyAuth: true,
         ),

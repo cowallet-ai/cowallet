@@ -1,6 +1,6 @@
-use std::pin::Pin;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 pub type AiResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -85,10 +85,11 @@ pub trait AiProvider: Send + Sync {
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     DeepSeek,
+    Bedrock,
 }
 
 impl Default for ProviderKind {
     fn default() -> Self {
-        Self::DeepSeek
+        Self::Bedrock
     }
 }

@@ -1,6 +1,6 @@
 use alloy_primitives::{Address, B256};
 use alloy_signer::Signature;
-use mpc_core::dkls23::{KeyShare, SessionConfig, sign::SignSession};
+use mpc_core::dkls23::{sign::SignSession, KeyShare, SessionConfig};
 
 use crate::userop::UserOperation;
 
@@ -94,7 +94,7 @@ impl MpcSigner {
         for recovery_id in 0..4u8 {
             let y_parity = (recovery_id & 1) == 1;
             let sig = Signature::from_scalars_and_parity(r, s, y_parity);
-            
+
             if let Ok(recovered_addr) = sig.recover_address_from_prehash(hash) {
                 if recovered_addr == self.address {
                     return Ok(sig);

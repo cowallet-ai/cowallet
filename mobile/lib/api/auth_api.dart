@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:convert/convert.dart';
 import '../network/dio_client.dart';
@@ -8,15 +9,19 @@ import '../utils/secure_storage.dart';
 /// 认证API - 匹配后端实际接口
 class AuthApi {
   /// 发送邮箱验证码（注册前验证邮箱所有权）
+  /// [turnstileToken] Cloudflare Turnstile 人机校验 token。后端仅在配置了
+  /// secret 时强制校验，否则忽略（兼容模式）。
   static Future<Result<Map<String, dynamic>>> sendEmailOtp({
     required String email,
     bool force = false,
+    String turnstileToken = '',
   }) async {
     return await DioClient.post(
       "/auth/email/send-otp",
       data: {
         "email": email,
         if (force) "force": true,
+        if (turnstileToken.isNotEmpty) "turnstile_token": turnstileToken,
       },
     );
   }
@@ -35,6 +40,10 @@ class AuthApi {
     String? backupShardHash,
   }) async {
     // Attach the hardware device public key so challenge-response login works.
+    // register runs in the OTP stage, BEFORE the bio stage creates the key, so
+    // ensure it exists first — otherwise device_pubkey would be omitted and the
+    // user could never log in via challenge-response.
+    await DeviceIdentity.ensureInitialized();
     final devicePubkey = await DeviceIdentity.publicKeyHex();
     final deviceAlg = DeviceIdentity.algorithm;
 
@@ -45,8 +54,8 @@ class AuthApi {
         "email": email,
         "otp": otp,
         if (force) "force": true,
-        if (backupShardHash != null) "backup_shard_hash": backupShardHash,
-        if (devicePubkey != null) "device_pubkey": devicePubkey,
+        "backup_shard_hash": ?backupShardHash,
+        "device_pubkey": ?devicePubkey,
         if (devicePubkey != null && deviceAlg != null) "device_pubkey_alg": deviceAlg,
       },
     );
@@ -58,13 +67,13 @@ class AuthApi {
       String? userId = result.data?["user_id"];
 
       // Do not log token material, not even a prefix (F-021).
-      print("📝 AuthApi.register response: token=${token != null ? "<received>" : "<null>"}, userId=$userId");
+      debugPrint("📝 AuthApi.register response: token=${token != null ? "<received>" : "<null>"}, userId=$userId");
 
       if (token != null) {
         await SecureStorage.saveToken(token);
-        print("✅ Token saved to SecureStorage");
+        debugPrint("✅ Token saved to SecureStorage");
       } else {
-        print("❌ Token is null in response");
+        debugPrint("❌ Token is null in response");
       }
 
       if (refreshToken != null) {
@@ -73,10 +82,10 @@ class AuthApi {
 
       if (userId != null) {
         await SecureStorage.saveUserId(userId);
-        print("✅ UserId saved to SecureStorage");
+        debugPrint("✅ UserId saved to SecureStorage");
       }
     } else {
-      print("❌ Registration failed: ${result.errorMessage}");
+      debugPrint("❌ Registration failed: ${result.errorMessage}");
     }
     return result;
   }
@@ -151,6 +160,53 @@ class AuthApi {
     return result;
   }
 
+  /// In-flight session recovery, shared across ALL callers (the 401 interceptor
+  /// AND the app-startup refresh). The backend refresh token is one-time-use
+  /// (rotated + blacklisted on each refresh), so two concurrent refreshes would
+  /// race — the loser presents an already-blacklisted token and gets 401,
+  /// wiping the session. Single-flight collapses every concurrent 401 into one
+  /// recovery attempt; the rest await the same Future and then retry.
+  static Future<bool>? _recovering;
+
+  /// Recover a valid access token. Tries the refresh token first; if that fails
+  /// (e.g. the 7-day refresh token expired or was already rotated), falls back
+  /// to challenge-response re-login using the device hardware key.
+  ///
+  /// [allowInteractiveLogin] gates the challenge-response fallback, which fires
+  /// a biometric/device-credential prompt via signChallenge. Single-flight
+  /// means at most ONE prompt per expiry event, not one per pending request.
+  ///
+  /// Does NOT clear auth data on failure: a transient failure (network, 503
+  /// blacklist-check) or a cancelled biometric prompt must not log the user
+  /// out. Returns false and leaves stored tokens intact for the next attempt.
+  static Future<bool> recoverSession({bool allowInteractiveLogin = true}) {
+    final existing = _recovering;
+    if (existing != null) return existing;
+    final future = _doRecoverSession(allowInteractiveLogin);
+    _recovering = future;
+    return future.whenComplete(() {
+      if (identical(_recovering, future)) _recovering = null;
+    });
+  }
+
+  static Future<bool> _doRecoverSession(bool allowInteractiveLogin) async {
+    // 1) Refresh token path (no user interaction). Goes through DioClient so the
+    //    X-Device-ID header is attached — the refresh endpoint 403s without it.
+    if (await refreshToken()) return true;
+
+    // 2) Fallback: challenge-response re-login with the device hardware key.
+    //    Requires a biometric/device-credential prompt.
+    if (!allowInteractiveLogin) return false;
+    final deviceId = await SecureStorage.getDeviceId();
+    if (deviceId == null || deviceId.isEmpty) return false;
+    try {
+      final result = await login(deviceId: deviceId, reason: '会话已过期，请验证以继续');
+      return result.isSuccess;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 使用 refresh_token 刷新 access_token
   static Future<bool> refreshToken() async {
     final refreshToken = await SecureStorage.getRefreshToken();
@@ -185,6 +241,26 @@ class AuthApi {
   /// 退出登录 - 仅清除认证数据，不影响钱包和设置
   static Future<void> logout() async {
     await SecureStorage.clearAuthData();
+  }
+
+  /// 永久删除账户 (App Store 5.1.1(v) 合规要求)
+  ///
+  /// 调用后端 `DELETE /account`，服务器在一个事务内删除该用户的所有数据
+  /// (钱包、分片、交易、策略、会话、聊天记录等)。成功后清空本地全部安全存储，
+  /// 使 App 回到未注册的初始状态。
+  ///
+  /// 注意: 这不可撤销。设备上的密钥分片一并清除，账户无法恢复。
+  static Future<Result<void>> deleteAccount() async {
+    final result = await DioClient.delete("/account");
+    if (result.isSuccess) {
+      // 服务器已删除账户，抹掉本地所有 token / 钱包地址 / 分片 / 设置。
+      await SecureStorage.clearAll();
+      return Result.success(null);
+    }
+    return Result.error(
+      result.errorMessage ?? 'Failed to delete account',
+      result.errorCode ?? 500,
+    );
   }
 
   /// 检查是否已登录且 token 未过期

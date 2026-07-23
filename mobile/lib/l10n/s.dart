@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'app_localizations.dart';
 
@@ -127,6 +128,15 @@ class S {
 
   static String get biometricAuth => _localizations?.biometricAuth ?? _p('生物识别', 'Biometric Authentication');
   static String get biometricAuthReason => _localizations?.biometricAuthReason ?? _p('请验证身份以继续', 'Authenticate to proceed');
+  // Device-security setup gate (shown when the device has no biometric AND no
+  // system passcode/PIN/pattern — there is nothing to authenticate against).
+  static String get deviceSecurityRequiredTitle => _p('需要设备锁', 'Set up device security');
+  static String get deviceSecurityRequiredBody => _p(
+    '你的手机还没有设置锁屏密码或生物识别。为保护你的钱包,请先在系统设置里开启锁屏密码/指纹/面容,再回来继续。',
+    'Your phone has no screen lock or biometrics set up. To protect your wallet, enable a passcode / fingerprint / face lock in system settings, then come back.',
+  );
+  static String get deviceSecurityOpenSettings => _p('打开系统设置', 'Open settings');
+  static String get deviceSecurityCancel => _p('稍后', 'Not now');
   static String get biometricNotAvailable => _localizations?.biometricNotAvailable ?? _p('此设备不支持', 'Not available on this device');
   static String get biometricEnable => _localizations?.biometricEnable ?? _p('开启', 'Enable');
   static String get biometricDisable => _localizations?.biometricDisable ?? _p('关闭', 'Disable');
@@ -159,8 +169,38 @@ class S {
 
   static String get voiceInput => _localizations?.voiceInput ?? _p('语音输入', 'Voice Input');
   static String get voiceInputSub => _localizations?.voiceInputSub ?? _p('使用语音与 AI 助手交互', 'Use voice to interact with AI assistant');
-  static String get aiModel => _localizations?.aiModel ?? _p('AI 模型', 'AI Model');
-  static String get aiModelSub => _localizations?.aiModelSub ?? _p('选择你喜欢的 AI 助手', 'Choose your preferred AI assistant');
+
+  // AI data-sharing consent (App Store privacy compliance)
+  static String get aiConsentTitle => _p('AI 助手数据使用说明', 'How the AI assistant uses your data');
+  static String get aiConsentIntro => _p(
+    '要回答你的问题、执行转账等操作，CoWallet 需要把下列信息发送给第三方 AI 服务商（Anthropic Claude，经 AWS Bedrock 提供；以及 DeepSeek）进行处理：',
+    'To answer your questions and carry out actions like transfers, CoWallet sends the following to third-party AI providers (Anthropic Claude via AWS Bedrock, and DeepSeek) for processing:',
+  );
+  static String get aiConsentItemMessage => _p('你输入或语音转写的对话内容', 'Your typed or voice-transcribed messages');
+  static String get aiConsentItemWallet => _p('你的钱包地址', 'Your wallet address');
+  static String get aiConsentItemPortfolio => _p('资产概况：总额、各链余额与持仓代币', 'Portfolio: total value, per-chain balances and token holdings');
+  static String get aiConsentItemContacts => _p('联系人的名称与地址（当对话涉及时）', 'Contact names and addresses (when relevant to your request)');
+  static String get aiConsentItemLocale => _p('语言偏好与会话标识', 'Language preference and session identifiers');
+  static String get aiConsentFooter => _p(
+    '这些数据仅用于处理你的请求。服务商不会用它来训练模型。详情见隐私政策。你可以随时在「设置」中撤回同意，撤回后 AI 助手将停止使用。',
+    'This data is used only to process your requests and is not used to train the providers\' models. See our Privacy Policy for details. You can withdraw consent anytime in Settings, which disables the AI assistant.',
+  );
+  static String get aiConsentAgree => _p('同意并继续', 'Agree & continue');
+  static String get aiConsentDecline => _p('暂不使用', 'Not now');
+  static String get aiConsentPrivacyLink => _p('查看隐私政策', 'View Privacy Policy');
+  static String get aiConsentRequiredToast => _p('需要先同意 AI 数据使用说明才能使用助手', 'Please accept the AI data notice to use the assistant');
+
+  // Settings — AI data-sharing row
+  static String get aiDataSharing => _p('AI 数据使用', 'AI Data Sharing');
+  static String get aiDataSharingSub => _p('管理与第三方 AI 服务商的数据共享同意', 'Manage consent for sharing data with AI providers');
+  static String get aiConsentRevokeTitle => _p('撤回 AI 数据共享同意？', 'Withdraw AI data-sharing consent?');
+  static String get aiConsentRevokeBody => _p(
+    '撤回后，AI 助手将无法使用，直到你再次同意。你仍可使用按钮完成转账、收款等操作。',
+    'After withdrawing, the AI assistant will be unavailable until you consent again. You can still use buttons for transfers, receiving, and more.',
+  );
+  static String get aiConsentRevokeConfirm => _p('撤回同意', 'Withdraw');
+  static String get aiConsentStatusOn => _p('已同意', 'Granted');
+  static String get aiConsentStatusOff => _p('未同意', 'Not granted');
   static String get language => _localizations?.language ?? _p('语言', 'Language');
   static String get weeklyReport => _localizations?.weeklyReport ?? _p('周报', 'Weekly Report');
   static String get weeklyReportSub => _localizations?.weeklyReportSub ?? _p('每周获取资产摘要', 'Get weekly portfolio summary');
@@ -176,6 +216,16 @@ class S {
   static String get resetWalletConfirmBody => _localizations?.resetWalletConfirmBody ?? _p('这将删除你的钱包。你需要通过备份来恢复。', 'This will delete your wallet. You\'ll need to recover from your backup.');
   static String get resetWalletConfirm => _localizations?.resetWalletConfirm ?? _p('重置', 'Reset');
   static String get resetWalletChecking => _localizations?.resetWalletChecking ?? _p('检查余额中...', 'Checking balance...');
+
+  static String get deleteAccount => _localizations?.deleteAccount ?? _p('删除账户', 'Delete Account');
+  static String get deleteAccountSub => _localizations?.deleteAccountSub ?? _p('永久删除账户及全部数据', 'Permanently delete your account and all data');
+  static String get deleteAccountHasBalance => _localizations?.deleteAccountHasBalance ?? _p('你的钱包仍有余额。删除账户将永久销毁密钥，资产将无法找回。建议先将资产转出。仍要继续吗？', 'Your wallet still has a balance. Deleting your account permanently destroys your keys and the funds cannot be recovered. We recommend transferring your assets out first. Continue anyway?');
+  static String get deleteAccountConfirmTitle => _localizations?.deleteAccountConfirmTitle ?? _p('永久删除账户？', 'Delete Account Permanently?');
+  static String get deleteAccountConfirmBody => _localizations?.deleteAccountConfirmBody ?? _p('此操作不可撤销。你的钱包、密钥分片、交易记录和所有数据将被永久删除，且无法恢复。', 'This cannot be undone. Your wallet, key shares, transaction history, and all data will be permanently deleted and cannot be recovered.');
+  static String get deleteAccountConfirm => _localizations?.deleteAccountConfirm ?? _p('永久删除', 'Delete Permanently');
+  static String get deleteAccountDeleting => _localizations?.deleteAccountDeleting ?? _p('正在删除账户...', 'Deleting account...');
+  static String get deleteAccountSuccess => _localizations?.deleteAccountSuccess ?? _p('账户已删除', 'Account deleted');
+  static String get deleteAccountFailed => _localizations?.deleteAccountFailed ?? _p('删除失败，请稍后重试', 'Deletion failed, please try again');
 
   static String get signoff1 => _localizations?.signoff1 ?? _p('用 ❤️ 为未来的货币而建', 'Built with ❤️ for the future of money');
   static String signoff2(String version) => _localizations?.signoff2(version) ?? 'v$version';
@@ -253,7 +303,7 @@ class S {
   // Onboarding — Backup
   static String get backupH1 => _p('备份你的第 3 份钥匙', 'Back up your 3rd key');
   static String get backupSub => _p('选择一种方式保存你的备份钥匙。丢了手机时,它能帮你恢复钱包。', 'Choose how to save your backup key. It helps recover your wallet if you lose your phone.');
-  static String get backupCloudTitle => _p('iCloud / Google Cloud', 'iCloud / Google Cloud');
+  static String get backupCloudTitle => Platform.isIOS ? 'iCloud' : _p('Google 云端硬盘', 'Google Drive');
   static String get backupCloudDesc => _p('自动加密上传,最方便', 'Auto-encrypted upload, most convenient');
   static String get backupFileTitle => _p('保存到文件', 'Save to file');
   static String get backupFileDesc => _p('导出 JSON 文件,自己保管', 'Export JSON file, keep it yourself');
@@ -288,7 +338,7 @@ class S {
 
   // Contact & Chat UI
   static String contactSaved(String name) =>
-      _localizations?.contactSaved(name) ?? _p('✅ 已保存联系人「$name」', '✅ Contact \"$name\" saved');
+      _localizations?.contactSaved(name) ?? _p('✅ 已保存联系人「$name」', '✅ Contact "$name" saved');
   static String get releaseToCancel => _localizations?.releaseToCancel ?? _p('松手取消', 'Release to cancel');
   static String get slideUpToSend => _localizations?.slideUpToSend ?? _p('上滑取消,松手发送', 'Slide up to cancel, release to send');
   static String get voiceListening => _localizations?.voiceListening ?? _p('正在聆听…', 'Listening…');
@@ -296,6 +346,12 @@ class S {
   static String get voiceDone => _localizations?.voiceDone ?? _p('完成', 'Done');
   static String get voiceUnavailable => _localizations?.voiceUnavailable ?? _p('语音识别不可用,请检查麦克风权限', 'Voice input unavailable, check microphone permission');
   static String get voiceErrorHint => _localizations?.voiceErrorHint ?? _p('语音识别出错,请重试', 'Voice recognition error, please try again');
+  static String get voiceEngineMissingTitle => _p('语音识别不可用', 'Voice input unavailable');
+  static String get voiceEngineMissingBody => _p(
+        '你的设备暂不支持语音输入。请在系统设置中启用语音识别服务后再试。',
+        'Voice input is not supported on your device yet. Enable a speech recognition service in your system settings and try again.',
+      );
+  static String get voiceEngineInstall => _p('去设置', 'Open settings');
   static String get saveContact => _localizations?.saveContact ?? _p('保存联系人', 'Save Contact');
 
   // Chat UI
@@ -361,7 +417,7 @@ class S {
   static String largeTransferDesc(String amount) => _localizations?.largeTransferDesc(amount) ?? _p('单笔转账超过 $amount 需确认', 'Single transfer over $amount requires confirmation');
   static String get activePolicies => _localizations?.activePolicies ?? _p('已激活策略', 'Active Policies');
   static String get noPolicies => _localizations?.noPolicies ?? _p('暂无策略,可使用上方快速设置', 'No policies. Use quick setup above.');
-  static String deletePolicyConfirm(String name) => _localizations?.deletePolicyConfirm(name) ?? _p('删除「$name」?', 'Delete \"$name\"?');
+  static String deletePolicyConfirm(String name) => _localizations?.deletePolicyConfirm(name) ?? _p('删除「$name」?', 'Delete "$name"?');
 
   // Time
   static String get yesterday => _localizations?.yesterday ?? _p('昨天', 'Yesterday');
@@ -505,6 +561,7 @@ class S {
   static String get txPending => _p('确认中…', 'Confirming…');
   static String get txConfirmed => _p('已确认', 'Confirmed');
   static String get txFailedStatus => _p('失败', 'Failed');
+  static String get turnstileTitle => _p('安全验证', 'Security check');
   static String get noTxYet => _p('暂无交易记录', 'No transactions yet');
   static String get demoData => _p('示例数据', 'Demo data');
   static String get regenerate => _p('再试一次', 'Regenerate');
@@ -534,7 +591,9 @@ class S {
   static String get keyCloudWhere => _p('CoWallet 服务器 · HSM 保护', 'CoWallet server · HSM protected');
   static String get keyCloudMeta => _p('✓ 心跳 2 分钟前 · 加密完整', '✓ Heartbeat 2 min ago · encrypted');
   static String get keyRecovery => _p('第 3 份 · 你保管', '3rd key · Yours');
-  static String get keyRecoveryWhere => _p('由你存在 iCloud / Google Drive', 'Stored by you in iCloud / Google Drive');
+  static String get keyRecoveryWhere => Platform.isIOS
+      ? _p('由你存在 iCloud', 'Stored by you in iCloud')
+      : _p('由你存在 Google 云端硬盘', 'Stored by you in Google Drive');
   static String get keyRecoveryWhereFile => _p('由你保存在本地 JSON 文件', 'Stored by you as a local JSON file');
   static String get keyRecoveryTag => _p('该测了', 'test it');
   static String get keyRecoveryMeta => _p('⚠ 90 天没确认过它还在', '⚠ Not verified in 90 days');
@@ -561,6 +620,22 @@ class S {
   static String get rotating => _p('轮转中...', 'Rotating...');
   static String get rotationSuccess => _p('三份钥匙已刷新', 'All three keys refreshed');
   static String get rotationFailed => _p('钥匙轮转失败', 'Key rotation failed');
+  static String get rotateConfirmBody => _p(
+      '将刷新全部三份密钥分片，钱包地址与资产不受影响。请保持网络畅通，过程约需几秒。',
+      'This refreshes all three key shares. Your wallet address and assets are unaffected. Keep your connection stable; it takes a few seconds.');
+  static String get rotationBackupReExportNeeded => _p(
+      '钥匙已轮换，请重新导出备份文件（旧备份已失效）',
+      'Keys rotated — please re-export your backup file (the old backup is now outdated)');
+  static String get rotationSuccessCloudBackup => _p(
+      '三份钥匙已刷新，云端备份已同步更新',
+      'All three keys refreshed and cloud backup updated');
+  static String get mandatoryBackupTitle => _p('必须重新备份', 'Backup Required');
+  static String get mandatoryBackupBody => _p(
+      '钥匙已轮换成功。你的旧备份文件已失效——若不重新导出，一旦丢失手机将无法恢复钱包。请立即导出新备份。',
+      'Your keys were rotated. Your old backup file is now invalid — without re-exporting, you will not be able to recover your wallet if you lose this phone. Export a new backup now.');
+  static String get mandatoryBackupExitBlocked => _p(
+      '请先完成备份导出，这一步无法跳过', 'Finish exporting your backup first — this step cannot be skipped');
+  static String get mandatoryBackupDone => _p('备份已完成', 'Backup complete');
   static String get scanTitle => _p('扫一扫', 'Scan QR');
   static String get scanPermissionDenied => _p('需要相机权限才能扫码', 'Camera permission is required to scan');
   static String get scanOpenSettings => _p('去设置', 'Open Settings');
@@ -640,7 +715,9 @@ class S {
   static String get recoveryVerify => _p('验证', 'Verify');
   static String get recoveryBackupH1 => _p('导入你的备份钥匙', 'Import your backup key');
   static String get recoveryBackupSub => _p('选择你当初备份第 3 份钥匙的方式来导入。', 'Import using the method you used to back up your 3rd key.');
-  static String get recoveryFromCloud => _p('从 iCloud / Google Cloud', 'From iCloud / Google Cloud');
+  static String get recoveryFromCloud => Platform.isIOS
+      ? _p('从 iCloud', 'From iCloud')
+      : _p('从 Google 云端硬盘', 'From Google Drive');
   static String get recoveryFromCloudDesc => _p('自动检索云端备份', 'Automatically retrieve cloud backup');
   static String get recoveryFromFile => _p('从备份文件', 'From backup file');
   static String get recoveryFromFileDesc => _p('选择之前导出的 JSON 文件', 'Select the JSON file you exported');
@@ -784,4 +861,13 @@ class S {
   static String get backupCopyToClipboard => _p('复制到剪贴板', 'Copy to clipboard');
   static String get backupSaveToFile => _p('保存到文件', 'Save to file');
   static String get backupPasteData => _p('粘贴加密数据', 'Paste encrypted data');
+
+  // Forced upgrade
+  static String get upgradeTitle => _p('需要更新', 'Update Required');
+  static String get upgradeMessage => _p(
+      '当前版本已不再支持,为了保障你的资产安全,请更新到最新版本后继续使用。',
+      'This version is no longer supported. Please update to the latest version to keep your assets safe and continue.');
+  static String get upgradeButton => _p('立即更新', 'Update Now');
+  static String get upgradeStoreOpenFailed =>
+      _p('无法打开应用商店,请手动更新', 'Could not open the app store, please update manually');
 }

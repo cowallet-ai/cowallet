@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use axum::{
-    Router,
     routing::{get, post},
+    Router,
 };
 
 mod action;
@@ -20,5 +20,8 @@ pub fn router() -> Router<AppState> {
         .route("/action", post(ai_action))
         .route("/sessions", get(list_sessions).post(create_session))
         .route("/sessions/{session_id}/messages", get(get_session_messages))
-        .route("/sessions/{session_id}", axum::routing::delete(delete_session))
+        .route(
+            "/sessions/{session_id}",
+            axum::routing::delete(delete_session),
+        )
 }

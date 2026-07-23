@@ -1,6 +1,8 @@
-import 'package:flutter/widgets.dart';
-import '../bridge/frb_generated/frb_generated.dart';
-import '../widgets/pin_verify_dialog.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../bridge/mpc_bridge.dart';
+import '../l10n/strings.dart';
+import '../theme/colors.dart';
 import '../platform/biometrics.dart';
 import '../platform/biometrics_impl.dart';
 import '../platform/cloud_backup.dart';
@@ -83,24 +85,24 @@ class Services {
     push = PushService();
     await push.init();
 
-    print('[Services] Essential init complete');
+    debugPrint('[Services] Essential init complete');
   }
 
   /// Background initialization - runs after first paint.
   /// Heavier operations (Rust FFI, cached data) go here.
   static Future<void> initBackground() async {
     try {
-      await RustLib.init(forceSameCodegenVersion: false)
+      await MpcBridge.ensureInitialized()
           .timeout(const Duration(seconds: 5));
       rustReady = true;
     } catch (e) {
-      print('[Services] RustLib.init() failed: $e — FFI unavailable');
+      debugPrint('[Services] RustLib.init() failed: $e — FFI unavailable');
     }
     backup = BackupShardService(PlatformCloudBackup());
     mpcSessionManager = MpcSessionManager(mpcWallet);
     pendingSign = PendingSignService();
 
-    print('[Services] Background init complete');
+    debugPrint('[Services] Background init complete');
   }
 
   /// Deferred initialization - runs after UI is stable.
@@ -129,7 +131,7 @@ class Services {
     notifications = NotificationService();
     await notifications.init();
 
-    print('[Services] Deferred init complete');
+    debugPrint('[Services] Deferred init complete');
   }
 
   /// Run all initialization phases in order.
@@ -152,32 +154,88 @@ class Services {
         final result = await ShardsApi.storeBackupHash(backupShardHashHex: pendingHash);
         if (result.isSuccess) {
           await app_storage.SecureStorage.delete('pending_backup_hash');
-          print('[Services] Retried pending backup hash upload — success');
+          debugPrint('[Services] Retried pending backup hash upload — success');
         }
       }
     } catch (_) {}
   }
 
-  /// Unified authentication: biometric if user enabled it, otherwise app PIN.
+  /// Unified authentication for sensitive, non-shard-loading operations
+  /// (freeze, view keys, delete account). Goes straight to the OS: the native
+  /// prompt does biometrics AND falls back to the device passcode/PIN itself
+  /// (`biometricOnly:false`). There is no longer an in-app PIN.
+  ///
+  /// If the device has NO secure lock at all, there's nothing to authenticate
+  /// against — we guide the user to set one up in system settings and deny.
   /// All sensitive operations MUST use this — never call biometrics.authenticate directly.
   static Future<bool> authenticate({required String reason}) async {
-    final biometricEnabled = await biometrics.isEnabled();
-    print('[Auth] biometricEnabled=$biometricEnabled');
-    if (biometricEnabled) {
-      final hasEnrolled = await biometrics.hasEnrolledBiometrics();
-      print('[Auth] hasEnrolled=$hasEnrolled');
-      if (hasEnrolled) {
-        final result = await biometrics.authenticate(reason: reason);
-        print('[Auth] biometric authenticate result=$result');
-        return result;
-      }
-      print('[Auth] biometric enabled but not enrolled, falling through to PIN');
+    final supported = await biometrics.isDeviceSupported();
+    debugPrint('[Auth] isDeviceSupported=$supported');
+    if (!supported) {
+      await _promptDeviceSecuritySetup();
+      return false;
     }
+    final result = await biometrics.authenticate(reason: reason);
+    debugPrint('[Auth] native authenticate result=$result');
+    return result;
+  }
+
+  /// Shown when the device has no biometric and no system passcode. Offers to
+  /// open system settings so the user can add a lock, then come back. Public so
+  /// onboarding can reuse the same guidance before persisting the device shard.
+  static Future<void> promptDeviceSecuritySetup() => _promptDeviceSecuritySetup();
+
+  static Future<void> _promptDeviceSecuritySetup() async {
     final ctx = navigatorKey.currentContext;
-    print('[Auth] navigatorKey.currentContext=${ctx != null ? "available" : "NULL"}');
-    if (ctx == null) return false;
-    final pinResult = await PinVerifyDialog.show(ctx, reason: reason);
-    print('[Auth] PIN verify result=$pinResult');
-    return pinResult;
+    if (ctx == null) return;
+    final open = await showDialog<bool>(
+      context: ctx,
+      builder: (c) => AlertDialog(
+        backgroundColor: CwColors.bgCard,
+        title: Text(S.deviceSecurityRequiredTitle),
+        content: Text(S.deviceSecurityRequiredBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: Text(S.deviceSecurityCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(true),
+            child: Text(S.deviceSecurityOpenSettings),
+          ),
+        ],
+      ),
+    );
+    if (open == true) {
+      // Best-effort: opens the OS Settings app. Neither platform exposes a
+      // reliable deep link straight to the passcode screen, so we land the
+      // user in Settings and let the dialog copy tell them what to enable.
+      final uri = Uri.parse('app-settings:');
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+  }
+
+  /// Authentication for operations that immediately load the device shard
+  /// (sign, reshare). The device shard is always hardware-backed now, so the
+  /// keystore's OWN native prompt during shard decryption authorizes the
+  /// auth-bound key — that IS the authentication. Prompting here too would ask
+  /// the user twice, so we defer to the keystore as the single gate.
+  ///
+  /// We still verify a device lock EXISTS up front: without one the keystore
+  /// key is unusable and decryption would fail with an opaque error, so we
+  /// guide the user to set up device security instead.
+  ///
+  /// Use this ONLY for shard-loading operations. Operations that do not load
+  /// the shard (freeze, view keys) must call [authenticate].
+  static Future<bool> authenticateForShardOp({required String reason}) async {
+    final supported = await biometrics.isDeviceSupported();
+    if (!supported) {
+      await _promptDeviceSecuritySetup();
+      return false;
+    }
+    debugPrint('[Auth] shard-op: deferring to native keystore prompt');
+    return true;
   }
 }

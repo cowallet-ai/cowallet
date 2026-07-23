@@ -1,9 +1,23 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+}
+
+// Release signing credentials are loaded from android/key.properties, which is
+// gitignored and never committed. When the file is absent (e.g. a fresh clone
+// or a dev machine without the keystore) we fall back to debug signing so that
+// `flutter run --release` still works — only real release builds need the file.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -22,8 +36,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cowallet.ai"
+        // Store/runtime identity — aligned with iOS (com.cowallet.app), which
+        // already has an established App Store identity. Kept distinct from
+        // `namespace` (com.cowallet.ai) on purpose: namespace only drives the
+        // generated R class + Kotlin package layout, so leaving it unchanged
+        // avoids moving MainActivity.kt / touching the manifest.
+        applicationId = "com.cowallet.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -32,11 +50,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use the real upload keystore when key.properties is present;
+            // otherwise fall back to debug so local release builds still run.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

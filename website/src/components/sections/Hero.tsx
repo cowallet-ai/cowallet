@@ -3,6 +3,7 @@
 import { useLang } from "@/context/LangContext";
 import { Orb } from "@/components/ui/Orb";
 import { Button } from "@/components/ui/Button";
+import { DownloadButtons } from "@/components/ui/DownloadButtons";
 import { PhoneDemo } from "./PhoneDemo";
 
 export function Hero() {
@@ -39,13 +40,14 @@ export function Hero() {
               {t("hero.sub")}
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-              <a href="https://static.catwallet.ai/app/app-release.apk" download>
-                <Button variant="accent" size="lg">
-                  {t("hero.cta.primary")}
-                </Button>
-              </a>
-              <Button variant="outline" size="lg">
+            <DownloadButtons
+              iosVariant="accent"
+              androidVariant="outline"
+              className="justify-center lg:justify-start"
+            />
+
+            <div className="mt-3 flex justify-center lg:justify-start">
+              <Button variant="ghost" size="lg">
                 {t("hero.cta.secondary")}
               </Button>
             </div>

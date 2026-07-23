@@ -3,6 +3,7 @@ name = "mpc-relay"
 description = "NATS-based MPC message relay — session management, message routing"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 mpc-core = { path = "../../crates/mpc-core" }

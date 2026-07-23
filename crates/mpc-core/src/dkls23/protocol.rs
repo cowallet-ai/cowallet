@@ -1,7 +1,7 @@
-use k256::Scalar;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{Signature as K256Signature, SigningKey, VerifyingKey};
 use k256::elliptic_curve::{Field, PrimeField};
+use k256::Scalar;
 use rand::rngs::OsRng;
 use zeroize::Zeroize;
 
@@ -147,7 +147,10 @@ pub fn threshold_sign(
         )));
     }
 
-    let share_values: Vec<Vec<u8>> = shares.iter().map(|s| s.secret_share.as_bytes().to_vec()).collect();
+    let share_values: Vec<Vec<u8>> = shares
+        .iter()
+        .map(|s| s.secret_share.as_bytes().to_vec())
+        .collect();
     let mut secret_bytes = shamir_reconstruct(share_indices, &share_values)?;
 
     let secret_arr: [u8; 32] = secret_bytes

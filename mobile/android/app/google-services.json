@@ -1,32 +1,13 @@
 {
   "project_info": {
-    "project_number": "1040731720258",
-    "project_id": "cowallet-3e797",
-    "storage_bucket": "cowallet-3e797.firebasestorage.app"
+    "project_number": "312797098067",
+    "project_id": "cowallet-prod-43f1c",
+    "storage_bucket": "cowallet-prod-43f1c.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1040731720258:android:70bd626d614be2a84cbbdb",
-        "android_client_info": {
-          "package_name": "com.cowallet.ai"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBBcg_6DadIeINyTDN2yaMHmTdT5NP-SlU"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:1040731720258:android:bf2f888277c98fec4cbbdb",
+        "mobilesdk_app_id": "1:312797098067:android:f75054ebcc78d5408ed6a6",
         "android_client_info": {
           "package_name": "com.cowallet.app"
         }
@@ -34,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBBcg_6DadIeINyTDN2yaMHmTdT5NP-SlU"
+          "current_key": "AIzaSyDwV-gedDV1VEqpun9fneRzzQF99rnp9x0"
         }
       ],
       "services": {

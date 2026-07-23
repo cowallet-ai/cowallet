@@ -5,29 +5,45 @@ mod routes;
 mod services;
 mod state;
 
-use axum::{Router, extract::{State, Extension}, middleware as axum_mw, middleware::Next, response::Json, routing::get};
-use axum::http::{Method, header, StatusCode, Request};
 use axum::body::Body;
+use axum::http::{header, Method, Request, StatusCode};
+use axum::{
+    extract::{Extension, State},
+    middleware as axum_mw,
+    middleware::Next,
+    response::Json,
+    routing::get,
+    Router,
+};
 use serde_json::json;
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::compression::CompressionLayer;
-use tower_http::timeout::TimeoutLayer;
-use tower_http::limit::RequestBodyLimitLayer;
-use tower_http::trace::{TraceLayer, MakeSpan, OnResponse};
-use tracing_subscriber;
 use std::time::Duration;
+use tower_http::compression::CompressionLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::{MakeSpan, OnResponse, TraceLayer};
+use tracing_subscriber;
 
 use middleware::audit::audit_middleware;
 use middleware::auth::require_auth;
 use middleware::metrics::metrics_middleware;
-use middleware::rate_limit::{strict_rate_limit_middleware, standard_rate_limit_middleware, auth_rate_limit_middleware};
+use middleware::rate_limit::{
+    auth_rate_limit_middleware, standard_rate_limit_middleware, strict_rate_limit_middleware,
+};
 use middleware::request_id::request_id_middleware;
 use middleware::security_headers::SecurityHeadersLayer;
 use middleware::validation::input_validation_middleware;
+use middleware::version_gate::version_gate;
 use state::AppState;
 
 fn cors_layer() -> CorsLayer {
-    let methods = [Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS];
+    let methods = [
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::DELETE,
+        Method::OPTIONS,
+    ];
     let headers = [header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT];
 
     let allowed = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
@@ -57,11 +73,7 @@ fn setup_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let backtrace = std::backtrace::Backtrace::capture();
-        tracing::error!(
-            "PANIC occurred.\nInfo: {}\nBacktrace:\n{}",
-            info,
-            backtrace
-        );
+        tracing::error!("PANIC occurred.\nInfo: {}\nBacktrace:\n{}", info, backtrace);
         // Call the default hook after logging
         default_hook(info);
     }));
@@ -79,10 +91,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
     setup_panic_hook();
 
-    let database_url =
-        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let rpc_url =
-        std::env::var("RPC_URL").unwrap_or_else(|_| "https://1rpc.io/eth".into());
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let rpc_url = std::env::var("RPC_URL").unwrap_or_else(|_| "https://1rpc.io/eth".into());
 
     // Build per-chain RPC URL map (primary URL for backward compat)
     // Helper: treat empty env vars the same as unset
@@ -94,80 +104,127 @@ async fn main() {
     };
     let mut rpc_urls = std::collections::HashMap::new();
     rpc_urls.insert(1u64, env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"));
-    rpc_urls.insert(8453, env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"));
-    rpc_urls.insert(42161, env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"));
-    rpc_urls.insert(10, env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"));
-    rpc_urls.insert(56, env_or("BSC_MAINNET_RPC_URL", "https://bsc-dataseed.binance.org"));
-    rpc_urls.insert(137, env_or("POLYGON_MAINNET_RPC_URL", "https://polygon.drpc.org"));
-    rpc_urls.insert(11155111, env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"));
-    rpc_urls.insert(84532, env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"));
+    rpc_urls.insert(
+        8453,
+        env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"),
+    );
+    rpc_urls.insert(
+        42161,
+        env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"),
+    );
+    rpc_urls.insert(
+        10,
+        env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"),
+    );
+    rpc_urls.insert(
+        56,
+        env_or("BSC_MAINNET_RPC_URL", "https://bsc-dataseed.binance.org"),
+    );
+    rpc_urls.insert(
+        137,
+        env_or("POLYGON_MAINNET_RPC_URL", "https://polygon.drpc.org"),
+    );
+    rpc_urls.insert(
+        11155111,
+        env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"),
+    );
+    rpc_urls.insert(
+        84532,
+        env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
+    );
 
     // Multi-RPC fallback: multiple public endpoints per chain (from ChainList)
     let chain_rpcs: std::collections::HashMap<u64, Vec<String>> = [
-        (1u64, vec![
-            env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"),
-            "https://eth.drpc.org".into(),
-            "https://rpc.ankr.com/eth".into(),
-        ]),
-        (8453, vec![
-            env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"),
-            "https://base.drpc.org".into(),
-            "https://1rpc.io/base".into(),
-        ]),
-        (42161, vec![
-            env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"),
-            "https://arbitrum.drpc.org".into(),
-            "https://1rpc.io/arb".into(),
-        ]),
-        (10, vec![
-            env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"),
-            "https://optimism.drpc.org".into(),
-            "https://1rpc.io/op".into(),
-        ]),
-        (56, vec![
-            env_or("BSC_MAINNET_RPC_URL", "https://bsc-dataseed.binance.org"),
-            "https://bsc-dataseed1.defibit.io".into(),
-            "https://bsc.drpc.org".into(),
-        ]),
-        (137, vec![
-            env_or("POLYGON_MAINNET_RPC_URL", "https://polygon.drpc.org"),
-            "https://polygon-bor-rpc.publicnode.com".into(),
-            "https://1rpc.io/matic".into(),
-        ]),
-        (11155111, vec![
-            env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"),
-            "https://sepolia.drpc.org".into(),
-        ]),
-        (84532, vec![
-            env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
-            "https://base-sepolia-rpc.publicnode.com".into(),
-        ]),
-    ].into_iter().collect();
+        (
+            1u64,
+            vec![
+                env_or("ETH_MAINNET_RPC_URL", "https://1rpc.io/eth"),
+                "https://eth.drpc.org".into(),
+                "https://rpc.ankr.com/eth".into(),
+            ],
+        ),
+        (
+            8453,
+            vec![
+                env_or("BASE_MAINNET_RPC_URL", "https://mainnet.base.org"),
+                "https://base.drpc.org".into(),
+                "https://1rpc.io/base".into(),
+            ],
+        ),
+        (
+            42161,
+            vec![
+                env_or("ARB_MAINNET_RPC_URL", "https://arb1.arbitrum.io/rpc"),
+                "https://arbitrum.drpc.org".into(),
+                "https://1rpc.io/arb".into(),
+            ],
+        ),
+        (
+            10,
+            vec![
+                env_or("OP_MAINNET_RPC_URL", "https://mainnet.optimism.io"),
+                "https://optimism.drpc.org".into(),
+                "https://1rpc.io/op".into(),
+            ],
+        ),
+        (
+            56,
+            vec![
+                env_or("BSC_MAINNET_RPC_URL", "https://bsc-dataseed.binance.org"),
+                "https://bsc-dataseed1.defibit.io".into(),
+                "https://bsc.drpc.org".into(),
+            ],
+        ),
+        (
+            137,
+            vec![
+                env_or("POLYGON_MAINNET_RPC_URL", "https://polygon.drpc.org"),
+                "https://polygon-bor-rpc.publicnode.com".into(),
+                "https://1rpc.io/matic".into(),
+            ],
+        ),
+        (
+            11155111,
+            vec![
+                env_or("ETH_SEPOLIA_RPC_URL", "https://rpc.sepolia.org"),
+                "https://sepolia.drpc.org".into(),
+            ],
+        ),
+        (
+            84532,
+            vec![
+                env_or("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
+                "https://base-sepolia-rpc.publicnode.com".into(),
+            ],
+        ),
+    ]
+    .into_iter()
+    .collect();
 
-    let app_state = AppState::new(&database_url, rpc_url, rpc_urls, chain_rpcs).await
+    let app_state = AppState::new(&database_url, rpc_url, rpc_urls, chain_rpcs)
+        .await
         .expect("Database connection required — cannot start without PostgreSQL");
 
     let encryption_key = std::env::var("ENCRYPTION_KEY")
         .expect("ENCRYPTION_KEY must be set (64 hex chars = 32 bytes)");
-    let encryption_key = hex::decode(&encryption_key)
-        .expect("ENCRYPTION_KEY must be valid hex");
+    let encryption_key = hex::decode(&encryption_key).expect("ENCRYPTION_KEY must be valid hex");
 
+    // Reject weak/low-entropy keys (all-zero, placeholders, simple patterns) —
+    // not just wrong length. Same check runs in AppState::new; kept here as
+    // defense-in-depth for the app-level encryption service.
+    services::crypto::validate_encryption_key(&encryption_key).expect("ENCRYPTION_KEY rejected");
     let mut key_array = [0u8; 32];
-    assert!(encryption_key.len() == 32, "ENCRYPTION_KEY must be exactly 32 bytes (64 hex chars)");
     key_array.copy_from_slice(&encryption_key);
 
-    let encryption = services::crypto::EncryptionService::new(
-        &key_array,
-        "default-key",
-    );
+    let encryption = services::crypto::EncryptionService::new(&key_array, "default-key");
 
     // Protected routes with standard rate limiting (100 req/min)
     // MPC routes defined directly to avoid nest path parameter issues
     // MPC routes with strict rate limiting (10 req/min)
-    let mpc_routes = routes::mpc::router()
-        .layer(axum_mw::from_fn(strict_rate_limit_middleware));
+    let mpc_routes = routes::mpc::router().layer(axum_mw::from_fn(strict_rate_limit_middleware));
 
     let protected = Router::new()
+        .nest("/account", routes::account::router())
         .nest("/mpc", mpc_routes)
         .nest("/tx", routes::tx::router())
         .nest("/policy", routes::policy::router())
@@ -181,7 +238,12 @@ async fn main() {
         .nest("/push", routes::push::routes())
         .layer(Extension(encryption))
         .layer(axum_mw::from_fn(require_auth))
-        .layer(axum_mw::from_fn(standard_rate_limit_middleware));
+        .layer(axum_mw::from_fn(standard_rate_limit_middleware))
+        // Outermost on protected routes: reject outdated clients (426) before
+        // auth/rate-limit work. Header-only check, no DB. Fail-open when
+        // MIN_APP_BUILD is unset. Public routes (auth/config/price/chains) stay
+        // ungated so an old client can still bootstrap and learn to upgrade.
+        .layer(axum_mw::from_fn(version_gate));
 
     // Clone app_state for shutdown handler
     let app_state_clone = app_state.clone();
@@ -203,13 +265,15 @@ async fn main() {
                 request_id = %request_id,
             )
         })
-        .on_response(|response: &axum::http::Response<_>, latency: Duration, _span: &tracing::Span| {
-            tracing::info!(
-                status = %response.status(),
-                latency = %format_args!("{:?}", latency),
-                "response sent"
-            );
-        });
+        .on_response(
+            |response: &axum::http::Response<_>, latency: Duration, _span: &tracing::Span| {
+                tracing::info!(
+                    status = %response.status(),
+                    latency = %format_args!("{:?}", latency),
+                    "response sent"
+                );
+            },
+        );
 
     // Metrics endpoint handler - renders metrics from AppState
     async fn metrics(State(state): State<AppState>) -> impl axum::response::IntoResponse {
@@ -219,16 +283,21 @@ async fn main() {
 
         // Add circuit breaker stats
         let rpc_stats = state.rpc_circuit_breaker.stats().await;
-        output.push_str(&MetricsStore::render_circuit_breaker_stats("rpc", &rpc_stats));
+        output.push_str(&MetricsStore::render_circuit_breaker_stats(
+            "rpc", &rpc_stats,
+        ));
 
         let defi_stats = state.defi_circuit_breaker.stats().await;
-        output.push_str(&MetricsStore::render_circuit_breaker_stats("defi", &defi_stats));
+        output.push_str(&MetricsStore::render_circuit_breaker_stats(
+            "defi",
+            &defi_stats,
+        ));
 
         // Add database connection pool stats
         if let Some(db) = &state.db {
             output.push_str(&MetricsStore::render_db_pool_stats(
                 db.options().get_max_connections() as i64,
-                0,  // Size and idle info not directly available in sqlx public API
+                0, // Size and idle info not directly available in sqlx public API
                 0,
             ));
         }
@@ -247,17 +316,23 @@ async fn main() {
         .route("/live", get(live))
         .route("/metrics", get(metrics))
         .merge(routes::mpc_ws::router())
-        .nest("/api/v1/auth", routes::auth::router()
-            .layer(axum_mw::from_fn(auth_rate_limit_middleware)))
+        .nest(
+            "/api/v1/auth",
+            routes::auth::router().layer(axum_mw::from_fn(auth_rate_limit_middleware)),
+        )
         .nest("/api/v1/price", routes::price::router())
         .nest("/api/v1/chains", routes::chains::router())
+        .nest("/api/v1/config", routes::config::router())
         .nest("/api/v1", protected)
         .with_state(app_state.clone())
         // Order: Outermost first (applied first to request, last to response)
-        .layer(axum_mw::from_fn_with_state(app_state_for_middleware, |state: State<AppState>, mut request: Request<Body>, next: Next| async move {
-            request.extensions_mut().insert(state.0);
-            next.run(request).await
-        }))
+        .layer(axum_mw::from_fn_with_state(
+            app_state_for_middleware,
+            |state: State<AppState>, mut request: Request<Body>, next: Next| async move {
+                request.extensions_mut().insert(state.0);
+                next.run(request).await
+            },
+        ))
         .layer(SecurityHeadersLayer::new())
         .layer(CompressionLayer::new()) // gzip/brotli compression
         .layer(TimeoutLayer::new(Duration::from_secs(30))) // 30s request timeout
@@ -270,7 +345,10 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
-    tracing::info!("cowallet API server v{} listening on :3000", env!("CARGO_PKG_VERSION"));
+    tracing::info!(
+        "cowallet API server v{} listening on :3000",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Graceful shutdown setup.
     // `into_make_service_with_connect_info` is required so the rate limiter can
@@ -355,7 +433,11 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthRespon
     };
 
     // RPC health check (simple URL validation for now)
-    let rpc_status = if state.rpc_url.contains("http") { "healthy" } else { "degraded" };
+    let rpc_status = if state.rpc_url.contains("http") {
+        "healthy"
+    } else {
+        "degraded"
+    };
 
     // Yield cache status
     let cache_data = state.yield_cache.data.read().await;
@@ -380,17 +462,20 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthRespon
         _ => StatusCode::SERVICE_UNAVAILABLE,
     };
 
-    (status_code, Json(HealthResponse {
-        status: overall_status,
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        version: env!("CARGO_PKG_VERSION"),
-        uptime_seconds: uptime,
-        services: ServiceHealth {
-            database: db_status,
-            rpc: rpc_status,
-            yield_cache: cache_status,
-        },
-    }))
+    (
+        status_code,
+        Json(HealthResponse {
+            status: overall_status,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            version: env!("CARGO_PKG_VERSION"),
+            uptime_seconds: uptime,
+            services: ServiceHealth {
+                database: db_status,
+                rpc: rpc_status,
+                yield_cache: cache_status,
+            },
+        }),
+    )
 }
 
 /// Ready probe for Kubernetes - indicates service can accept traffic
@@ -401,7 +486,10 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<serde_json::V
     if db_ready {
         (StatusCode::OK, Json(json!({ "ready": true })))
     } else {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "ready": false })))
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "ready": false })),
+        )
     }
 }
 

@@ -3,6 +3,7 @@ name = "api-server"
 description = "Axum HTTP API — auth, MPC coordination, transactions, policy, AI proxy"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 mpc-core = { path = "../../crates/mpc-core" }
@@ -51,3 +52,13 @@ rsa = { version = "0.9", features = ["sha2"] }
 sha3 = "0.10"
 aws-config = { workspace = true }
 aws-sdk-sesv2 = { workspace = true }
+
+[features]
+# Opt-in DB-backed integration tests (require a live Postgres + DATABASE_URL).
+# Off by default so `cargo test` stays green offline / in CI without a DB.
+integration-tests = []
+
+[dev-dependencies]
+# `sqlx::test` (macros) + migration runner, needed only by integration tests.
+# The prod `sqlx` (workspace) intentionally omits these features.
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros", "migrate"] }

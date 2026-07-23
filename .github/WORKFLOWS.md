@@ -1,5 +1,13 @@
 # GitHub Actions CI/CD 配置指南
 
+> ⚠️ **已过时(2026-07)。** 本文档描述的是早期腾讯云 TKE/TCR 方案,**均已不再使用**。
+> 实际生产部署走 **AWS ECS**(`deploy-ecs.yml`)。当前真实的 workflow 是:
+> `ci.yml`(Rust 测试)、`deploy-ecs.yml`(ECS 部署)、`rust-audit.yml`、`flutter-ci.yml`、
+> `security.yml`。质量门禁的权威说明见 [`docs/cosign.md`](../docs/cosign.md)。
+> 下方内容仅作历史归档保留,请勿据此配置。
+>
+> 门禁体系全貌与命名(**CoSign / 协签**)见 [`docs/cosign.md`](../docs/cosign.md)。
+
 ## 概述
 
 cowallet 项目包含完整的 GitHub Actions CI/CD 流程：

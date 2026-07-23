@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyCHm3WU2kESIt-o6x4znsGZ1fLwTZtkBAo</string>
+	<string>AIzaSyBOqv4BizhwZLauVXp88BXMSsHroPrtXKI</string>
 	<key>GCM_SENDER_ID</key>
-	<string>229991355516</string>
+	<string>312797098067</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.cowallet.app</string>
 	<key>PROJECT_ID</key>
-	<string>cowallet-df574</string>
+	<string>cowallet-prod-43f1c</string>
 	<key>STORAGE_BUCKET</key>
-	<string>cowallet-df574.firebasestorage.app</string>
+	<string>cowallet-prod-43f1c.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -25,10 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:229991355516:ios:bbe4cf83c57edeeb7ee5f9</string>
-	<key>CLIENT_ID</key>
-	<string>1040731720258-p4v0a09858m7si9u99hdt66r6ibqre64.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.1040731720258-p4v0a09858m7si9u99hdt66r6ibqre64</string>
+	<string>1:312797098067:ios:273c7219ce91cebc8ed6a6</string>
 </dict>
 </plist>

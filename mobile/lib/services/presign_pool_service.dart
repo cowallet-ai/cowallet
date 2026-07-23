@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import '../api/mpc_api.dart';
@@ -68,7 +69,7 @@ class PresignPoolService {
         }
       }
     } catch (e) {
-      print('[PresignPoolService] Check failed: $e');
+      debugPrint('[PresignPoolService] Check failed: $e');
     }
   }
 
@@ -78,14 +79,14 @@ class PresignPoolService {
     _isRefilling = true;
 
     try {
-      print('[PresignPoolService] Refilling: generating $count presignatures');
+      debugPrint('[PresignPoolService] Refilling: generating $count presignatures');
       final generated = await Services.mpcWallet.runPresign(
         walletId: walletAddress,
         count: count,
       );
-      print('[PresignPoolService] Refill complete: generated $generated/$count');
+      debugPrint('[PresignPoolService] Refill complete: generated $generated/$count');
     } catch (e) {
-      print('[PresignPoolService] Refill error: $e');
+      debugPrint('[PresignPoolService] Refill error: $e');
     } finally {
       _isRefilling = false;
     }

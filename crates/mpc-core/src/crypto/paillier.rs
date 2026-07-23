@@ -50,10 +50,8 @@ impl PaillierKeypair {
 
         // Generate two safe primes p, q of equal bit length
         // Uses glass_pumpkin's internal OsRng
-        let p = glass_pumpkin::safe_prime::new(bits)
-            .expect("safe prime generation failed");
-        let q = glass_pumpkin::safe_prime::new(bits)
-            .expect("safe prime generation failed");
+        let p = glass_pumpkin::safe_prime::new(bits).expect("safe prime generation failed");
+        let q = glass_pumpkin::safe_prime::new(bits).expect("safe prime generation failed");
 
         Self::from_primes(p, q)
     }
@@ -86,12 +84,7 @@ impl PaillierKeypair {
                 n_squared,
                 g,
             },
-            secret: PaillierSecretKey {
-                lambda,
-                mu,
-                p,
-                q,
-            },
+            secret: PaillierSecretKey { lambda, mu, p, q },
         }
     }
 
@@ -129,6 +122,37 @@ impl PaillierKeypair {
 }
 
 impl PaillierPublicKey {
+    /// Validate a public key received from an untrusted peer before using it in
+    /// homomorphic operations.
+    ///
+    /// A modulus proof only attests to the `n` embedded IN the proof; nothing
+    /// otherwise ties the `PaillierPublicKey` a peer sends to that proven `n`,
+    /// and a peer could ship a struct whose `n_squared`/`g` are inconsistent
+    /// with `n`. Either lets an attacker run the MtA homomorphism under a modulus
+    /// small enough to force wraparound, leaking the other party's secret
+    /// multiplicand. This checks:
+    ///   - `n` matches `expected_n` (the value covered by the verified proof),
+    ///   - `n` is at least 2047 bits (product of two ~1024-bit primes),
+    ///   - `n_squared == n * n`,
+    ///   - `g == n + 1` (the standard generator this implementation assumes).
+    ///
+    /// Callers MUST still separately verify the modulus proof over `expected_n`.
+    pub fn validate(&self, expected_n: &BigUint) -> Result<(), String> {
+        if &self.n != expected_n {
+            return Err("Paillier public key modulus does not match its modulus proof".to_string());
+        }
+        if self.n.bits() < 2047 {
+            return Err("Paillier modulus too small".to_string());
+        }
+        if self.n_squared != &self.n * &self.n {
+            return Err("Paillier n_squared inconsistent with n".to_string());
+        }
+        if self.g != &self.n + BigUint::one() {
+            return Err("Paillier generator g must equal n + 1".to_string());
+        }
+        Ok(())
+    }
+
     /// Encrypt a plaintext message m ∈ Z_n.
     /// Returns ciphertext c = g^m * r^n mod n^2
     pub fn encrypt(&self, m: &BigUint) -> PaillierCiphertext {
@@ -164,7 +188,11 @@ impl PaillierPublicKey {
     }
 
     /// Add a plaintext to a ciphertext: Enc(a) * g^b = Enc(a + b)
-    pub fn add_plaintext(&self, ct: &PaillierCiphertext, plaintext: &BigUint) -> PaillierCiphertext {
+    pub fn add_plaintext(
+        &self,
+        ct: &PaillierCiphertext,
+        plaintext: &BigUint,
+    ) -> PaillierCiphertext {
         let g_b = mod_pow(&self.g, plaintext, &self.n_squared);
         let c = (&ct.c * g_b) % &self.n_squared;
         PaillierCiphertext { c }
@@ -210,10 +238,9 @@ pub fn biguint_to_scalar_bytes(val: &BigUint, n: &BigUint) -> [u8; 32] {
 /// secp256k1 curve order as BigUint
 pub fn secp256k1_order() -> BigUint {
     BigUint::from_bytes_be(&[
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
-        0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
-        0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFE, 0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B, 0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36,
+        0x41, 0x41,
     ])
 }
 
@@ -261,6 +288,40 @@ fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_validate_accepts_honest_key_and_rejects_tampering() {
+        let kp = PaillierKeypair::generate();
+        let pk = kp.public.clone();
+        let good_n = pk.n.clone();
+
+        // Honest key, bound to its own modulus: accepted.
+        assert!(pk.validate(&good_n).is_ok());
+
+        // Modulus doesn't match the proven N (the MtA-wraparound attack): rejected.
+        let wrong_n = &good_n + BigUint::one();
+        assert!(pk.validate(&wrong_n).is_err());
+
+        // g inconsistent with n (g != n+1): rejected.
+        let mut bad_g = pk.clone();
+        bad_g.g = &pk.n + BigUint::from(2u64);
+        assert!(bad_g.validate(&good_n).is_err());
+
+        // n_squared inconsistent with n: rejected.
+        let mut bad_sq = pk.clone();
+        bad_sq.n_squared = &pk.n * &pk.n + BigUint::one();
+        assert!(bad_sq.validate(&good_n).is_err());
+
+        // A small modulus (would enable wraparound) is rejected on size, even
+        // when self-consistent and matching its own (small) proven N.
+        let small_n = BigUint::from(3233u64); // 61*53
+        let small_pk = PaillierPublicKey {
+            n: small_n.clone(),
+            n_squared: &small_n * &small_n,
+            g: &small_n + BigUint::one(),
+        };
+        assert!(small_pk.validate(&small_n).is_err());
+    }
 
     /// Benchmark: time `PaillierKeypair::generate()` (two 1024-bit safe primes).
     /// This is invoked on the DEVICE during Round 2 of every signature today,
@@ -314,7 +375,10 @@ mod tests {
         let m = BigUint::from(123456u64);
         let ct = kp.public.encrypt(&m);
         let dec = restored.secret.decrypt(&restored.public, &ct);
-        assert_eq!(dec, m, "restored keypair must decrypt ciphertext from original");
+        assert_eq!(
+            dec, m,
+            "restored keypair must decrypt ciphertext from original"
+        );
     }
 
     #[test]
@@ -389,19 +453,37 @@ mod tests {
 
         // Verify n is the expected bit length (2048 bits)
         let n_bits = keypair.public.n.bits();
-        assert!(n_bits >= 2040 && n_bits <= 2048, "n should be approximately 2048 bits, got {}", n_bits);
+        assert!(
+            n_bits >= 2040 && n_bits <= 2048,
+            "n should be approximately 2048 bits, got {}",
+            n_bits
+        );
 
         // Verify p and q are different
-        assert_ne!(keypair.secret.p, keypair.secret.q, "p and q should be different");
+        assert_ne!(
+            keypair.secret.p, keypair.secret.q,
+            "p and q should be different"
+        );
 
         // Verify p and q are approximately half the size of n
         let p_bits = keypair.secret.p.bits();
         let q_bits = keypair.secret.q.bits();
-        assert!(p_bits >= 1020 && p_bits <= 1028, "p should be approximately 1024 bits, got {}", p_bits);
-        assert!(q_bits >= 1020 && q_bits <= 1028, "q should be approximately 1024 bits, got {}", q_bits);
+        assert!(
+            p_bits >= 1020 && p_bits <= 1028,
+            "p should be approximately 1024 bits, got {}",
+            p_bits
+        );
+        assert!(
+            q_bits >= 1020 && q_bits <= 1028,
+            "q should be approximately 1024 bits, got {}",
+            q_bits
+        );
 
         // Verify lambda is non-zero
-        assert!(!keypair.secret.lambda.is_zero(), "lambda should not be zero");
+        assert!(
+            !keypair.secret.lambda.is_zero(),
+            "lambda should not be zero"
+        );
 
         // Verify mu is non-zero
         assert!(!keypair.secret.mu.is_zero(), "mu should not be zero");
@@ -423,7 +505,11 @@ mod tests {
         for val in test_values {
             let ciphertext = keypair.public.encrypt(&val);
             let decrypted = keypair.secret.decrypt(&keypair.public, &ciphertext);
-            assert_eq!(decrypted, val, "decrypt(encrypt({})) should equal {}", val, val);
+            assert_eq!(
+                decrypted, val,
+                "decrypt(encrypt({})) should equal {}",
+                val, val
+            );
         }
 
         // Test with a large value (near the curve order)
@@ -431,7 +517,10 @@ mod tests {
         let large_val = &q - BigUint::from(1u64);
         let ct = keypair.public.encrypt(&large_val);
         let decrypted = keypair.secret.decrypt(&keypair.public, &ct);
-        assert_eq!(decrypted, large_val, "should handle large values near curve order");
+        assert_eq!(
+            decrypted, large_val,
+            "should handle large values near curve order"
+        );
     }
 
     #[test]
@@ -450,7 +539,10 @@ mod tests {
         let c_sum = keypair.public.add(&c_a, &c_b);
         let decrypted_sum = keypair.secret.decrypt(&keypair.public, &c_sum);
 
-        assert_eq!(decrypted_sum, expected_sum, "Enc(100) + Enc(200) should decrypt to 300");
+        assert_eq!(
+            decrypted_sum, expected_sum,
+            "Enc(100) + Enc(200) should decrypt to 300"
+        );
 
         // Test multiple additions
         let c1 = keypair.public.encrypt(&BigUint::from(10u64));
@@ -461,7 +553,11 @@ mod tests {
         let c_sum_123 = keypair.public.add(&c_sum_12, &c3);
         let decrypted_multi = keypair.secret.decrypt(&keypair.public, &c_sum_123);
 
-        assert_eq!(decrypted_multi, BigUint::from(60u64), "Enc(10) + Enc(20) + Enc(30) should decrypt to 60");
+        assert_eq!(
+            decrypted_multi,
+            BigUint::from(60u64),
+            "Enc(10) + Enc(20) + Enc(30) should decrypt to 60"
+        );
 
         // Test addition with larger values
         let x = BigUint::from(987654321u64);
@@ -473,6 +569,9 @@ mod tests {
         let c_xy = keypair.public.add(&c_x, &c_y);
         let decrypted_xy = keypair.secret.decrypt(&keypair.public, &c_xy);
 
-        assert_eq!(decrypted_xy, expected, "homomorphic addition should work with large values");
+        assert_eq!(
+            decrypted_xy, expected,
+            "homomorphic addition should work with large values"
+        );
     }
 }

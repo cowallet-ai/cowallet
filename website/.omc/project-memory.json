@@ -1,0 +1,232 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1783560333117,
+  "projectRoot": "/Users/mac/cat/cowallet/website",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "next",
+        "version": "15.3.0",
+        "category": "fullstack"
+      },
+      {
+        "name": "react",
+        "version": "19.0.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.0.0",
+        "category": "frontend"
+      }
+    ],
+    "packageManager": "pnpm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npx tsc --noEmit 2>&1 | head -20",
+    "testCommand": null,
+    "lintCommand": "pnpm lint",
+    "devCommand": "pnpm dev",
+    "scripts": {
+      "dev": "next dev",
+      "build": "next build",
+      "start": "next start",
+      "lint": "next lint"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": true,
+    "workspaces": [],
+    "mainDirectories": [
+      "public",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "out": {
+      "path": "out",
+      "purpose": "Build output",
+      "fileCount": 9,
+      "lastAccessed": 1783560333089,
+      "keyFiles": [
+        "404.html",
+        "index.html",
+        "index.txt",
+        "privacy.html",
+        "privacy.txt"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 0,
+      "lastAccessed": 1783560333091,
+      "keyFiles": []
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1783560333112,
+      "keyFiles": []
+    },
+    "src/app": {
+      "path": "src/app",
+      "purpose": "Application code",
+      "fileCount": 3,
+      "lastAccessed": 1783560333114,
+      "keyFiles": [
+        "globals.css",
+        "layout.tsx",
+        "page.tsx"
+      ]
+    },
+    "src/components": {
+      "path": "src/components",
+      "purpose": "UI components",
+      "fileCount": 0,
+      "lastAccessed": 1783560333114,
+      "keyFiles": []
+    },
+    "src/lib": {
+      "path": "src/lib",
+      "purpose": "Library code",
+      "fileCount": 3,
+      "lastAccessed": 1783560333114,
+      "keyFiles": [
+        "i18n.ts",
+        "intents.ts",
+        "legal.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/components/sections/Navbar.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1784529466932,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ui/DownloadButtons.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1784529615410,
+      "type": "file"
+    },
+    {
+      "path": "src/styles/phone.css",
+      "accessCount": 5,
+      "lastAccessed": 1784530737855,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/Hero.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1784529234715,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/Cta.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1784529321864,
+      "type": "file"
+    },
+    {
+      "path": "next.config.ts",
+      "accessCount": 3,
+      "lastAccessed": 1783563817686,
+      "type": "file"
+    },
+    {
+      "path": "src/lib/i18n.ts",
+      "accessCount": 3,
+      "lastAccessed": 1784529488151,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/PhoneDemo.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1784530648055,
+      "type": "file"
+    },
+    {
+      "path": "src/app/support/page.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1783560541343,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ui/Button.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529106548,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/Footer.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529106603,
+      "type": "file"
+    },
+    {
+      "path": "src/lib/download.ts",
+      "accessCount": 1,
+      "lastAccessed": 1784529140589,
+      "type": "file"
+    },
+    {
+      "path": "src/components/phone/PhoneSimulator.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529704325,
+      "type": "file"
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529721749,
+      "type": "file"
+    },
+    {
+      "path": "src/components/phone/PhoneFrame.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529779190,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/usePhoneState.ts",
+      "accessCount": 1,
+      "lastAccessed": 1784529846023,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

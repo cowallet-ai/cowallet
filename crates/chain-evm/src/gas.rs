@@ -310,13 +310,7 @@ mod tests {
 
     #[test]
     fn test_erc20_gas_limit_bounds() {
-        let est = estimate_gas(
-            GasModel::Eip1559,
-            true,
-            30_000_000_000,
-            1_500_000_000,
-            None,
-        );
+        let est = estimate_gas(GasModel::Eip1559, true, 30_000_000_000, 1_500_000_000, None);
 
         // ERC-20 transfers need more gas than native transfers
         assert!(est.gas_limit > TRANSFER_GAS);
@@ -360,7 +354,14 @@ mod tests {
 
     #[test]
     fn test_estimate_gas_for_chain_ethereum() {
-        let est = estimate_gas_for_chain(1, false, 30_000_000_000, 1_500_000_000, None, GasStrategy::Normal);
+        let est = estimate_gas_for_chain(
+            1,
+            false,
+            30_000_000_000,
+            1_500_000_000,
+            None,
+            GasStrategy::Normal,
+        );
         assert!(est.is_ok());
         let est = est.unwrap();
         assert_eq!(est.gas_limit, TRANSFER_GAS);
@@ -415,13 +416,7 @@ mod tests {
         let base_fee = 100_000_000u128;
         let priority = 1_000_000u128;
 
-        let est = estimate_gas(
-            GasModel::OpBedrock,
-            false,
-            base_fee,
-            priority,
-            Some(l1_fee),
-        );
+        let est = estimate_gas(GasModel::OpBedrock, false, base_fee, priority, Some(l1_fee));
 
         // L1 fee should be added to the total cost
         assert_eq!(est.l1_data_fee, Some(l1_fee));
