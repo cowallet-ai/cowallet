@@ -129,7 +129,10 @@ impl AppState {
                 }
             };
         let ai_provider_pref = ProviderKind::from_env();
-        tracing::info!("Preferred AI provider (AI_PROVIDER): {:?}", ai_provider_pref);
+        tracing::info!(
+            "Preferred AI provider (AI_PROVIDER): {:?}",
+            ai_provider_pref
+        );
 
         // Decode + validate ENCRYPTION_KEY. This is the root key for every
         // server shard and presignature, so reject weak/low-entropy keys here
@@ -385,14 +388,14 @@ mod tests {
     fn fails_open_to_other_provider() {
         let deepseek = stub();
         // Prefer Bedrock, but only DeepSeek is configured.
-        let got = select(ProviderKind::Bedrock, None, Some(&deepseek))
-            .expect("falls back to deepseek");
+        let got =
+            select(ProviderKind::Bedrock, None, Some(&deepseek)).expect("falls back to deepseek");
         assert!(Arc::ptr_eq(&got, &deepseek));
 
         let bedrock = stub();
         // Prefer DeepSeek, but only Bedrock is configured.
-        let got = select(ProviderKind::DeepSeek, Some(&bedrock), None)
-            .expect("falls back to bedrock");
+        let got =
+            select(ProviderKind::DeepSeek, Some(&bedrock), None).expect("falls back to bedrock");
         assert!(Arc::ptr_eq(&got, &bedrock));
     }
 

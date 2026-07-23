@@ -1,54 +1,50 @@
 use crate::services::ai_provider::*;
+use base64::Engine;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-/// Claude provider via the right.codes Anthropic-compatible relay.
-///
-/// This speaks the standard Anthropic Messages API (`/v1/messages`) with
-/// `x-api-key` auth and standard SSE streaming — NOT the AWS Bedrock binary
-/// event-stream format. The struct name is kept as `BedrockProvider` so the
-/// rest of the app (state wiring, `select_ai_provider`) is unchanged.
+/// Claude provider via AWS Bedrock (API Key + Bearer token auth).
 #[derive(Clone)]
 pub struct BedrockProvider {
     client: Client,
     api_key: String,
-    base_url: String,
+    region: String,
     model_id: String,
 }
 
 impl BedrockProvider {
     pub async fn from_env() -> AiResult<Self> {
-        // Accept either RIGHTCODES_API_KEY or the legacy BEDROCK_API_KEY.
-        let api_key = std::env::var("RIGHTCODES_API_KEY")
-            .or_else(|_| std::env::var("BEDROCK_API_KEY"))
-            .map_err(|_| "RIGHTCODES_API_KEY (or BEDROCK_API_KEY) not set".to_string())?;
-        let base_url = std::env::var("RIGHTCODES_BASE_URL")
-            .unwrap_or_else(|_| "https://www.right.codes/deepseek/anthropic".into());
-        let model_id = std::env::var("RIGHTCODES_MODEL")
-            .or_else(|_| std::env::var("BEDROCK_MODEL_ID"))
-            .unwrap_or_else(|_| "deepseek-v4-flash".into());
+        let api_key =
+            std::env::var("BEDROCK_API_KEY").map_err(|_| "BEDROCK_API_KEY not set".to_string())?;
+        let region = std::env::var("BEDROCK_REGION").unwrap_or_else(|_| "us-west-2".into());
+        let model_id = std::env::var("BEDROCK_MODEL_ID")
+            .unwrap_or_else(|_| "anthropic.claude-sonnet-4-20250514-v1:0".into());
 
         let client = Client::new();
-        tracing::info!("AI provider: right.codes DeepSeek (model={})", model_id);
+        tracing::info!(
+            "AI provider: Bedrock Claude (region={}, model={})",
+            region,
+            model_id
+        );
         Ok(Self {
             client,
             api_key,
-            base_url,
+            region,
             model_id,
         })
     }
 
-    fn messages_url(&self) -> String {
-        format!("{}/v1/messages", self.base_url.trim_end_matches('/'))
+    fn base_url(&self) -> String {
+        format!("https://bedrock-runtime.{}.amazonaws.com", self.region)
     }
 }
 
-// -- Request types (standard Anthropic Messages format) --
+// -- Request types (Bedrock Claude Messages format) --
 
 #[derive(Serialize)]
-struct AnthropicRequest {
-    model: String,
+struct BedrockRequest {
+    anthropic_version: String,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
@@ -57,8 +53,6 @@ struct AnthropicRequest {
     tools: Option<Vec<ApiTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    stream: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -87,6 +81,8 @@ enum ContentPart {
 
 #[derive(Serialize)]
 struct ApiTool {
+    #[serde(rename = "type")]
+    tool_type: &'static str,
     name: String,
     description: String,
     input_schema: serde_json::Value,
@@ -108,9 +104,6 @@ enum ResponseBlock {
         name: String,
         input: serde_json::Value,
     },
-    // Ignore any other block types (e.g. thinking) gracefully.
-    #[serde(other)]
-    Other,
 }
 
 // -- Conversion helpers --
@@ -180,6 +173,7 @@ fn convert_tools(tools: &[ToolDef]) -> Option<Vec<ApiTool>> {
         tools
             .iter()
             .map(|t| ApiTool {
+                tool_type: "custom",
                 name: t.name.clone(),
                 description: t.description.clone(),
                 input_schema: t.parameters.clone(),
@@ -187,8 +181,6 @@ fn convert_tools(tools: &[ToolDef]) -> Option<Vec<ApiTool>> {
             .collect(),
     )
 }
-
-const MAX_TOKENS: u32 = 4096;
 
 // -- AiProvider implementation --
 
@@ -201,21 +193,21 @@ impl AiProvider for BedrockProvider {
         temperature: Option<f32>,
     ) -> AiResult<ChatResponse> {
         let (system, api_messages) = convert_messages(messages);
-        let body = AnthropicRequest {
-            model: self.model_id.clone(),
-            max_tokens: MAX_TOKENS,
+        let body = BedrockRequest {
+            anthropic_version: "bedrock-2023-05-31".into(),
+            max_tokens: 4096,
             system,
             messages: api_messages,
             tools: convert_tools(tools),
             temperature,
-            stream: false,
         };
+
+        let url = format!("{}/model/{}/invoke", self.base_url(), self.model_id);
 
         let resp = self
             .client
-            .post(self.messages_url())
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -224,7 +216,7 @@ impl AiProvider for BedrockProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(format!("right.codes API error {}: {}", status, text).into());
+            return Err(format!("Bedrock API error {}: {}", status, text).into());
         }
 
         let api_resp: ApiResponse = resp.json().await?;
@@ -241,7 +233,6 @@ impl AiProvider for BedrockProvider {
                         arguments: serde_json::to_string(&input).unwrap_or_default(),
                     });
                 }
-                ResponseBlock::Other => {}
             }
         }
 
@@ -262,21 +253,25 @@ impl AiProvider for BedrockProvider {
         temperature: Option<f32>,
     ) -> AiResult<BoxStream<StreamEvent>> {
         let (system, api_messages) = convert_messages(messages);
-        let body = AnthropicRequest {
-            model: self.model_id.clone(),
-            max_tokens: MAX_TOKENS,
+        let body = BedrockRequest {
+            anthropic_version: "bedrock-2023-05-31".into(),
+            max_tokens: 4096,
             system,
             messages: api_messages,
             tools: convert_tools(tools),
             temperature,
-            stream: true,
         };
+
+        let url = format!(
+            "{}/model/{}/invoke-with-response-stream",
+            self.base_url(),
+            self.model_id
+        );
 
         let resp = self
             .client
-            .post(self.messages_url())
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -285,50 +280,39 @@ impl AiProvider for BedrockProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(format!("right.codes stream error {}: {}", status, text).into());
+            return Err(format!("Bedrock stream error {}: {}", status, text).into());
         }
 
-        let stream = parse_anthropic_sse(resp);
+        let stream = parse_bedrock_sse(resp);
         Ok(Box::pin(stream))
     }
 }
 
-// -- Standard Anthropic SSE parser --
-// The relay returns text/event-stream: lines of `event: <type>` and
-// `data: <json>`, separated by blank lines. We only need the `data:` JSON
-// (it carries the `type` field too), so we parse each `data:` payload.
+// -- AWS Event Stream parser --
+// Bedrock returns binary event stream frames. Each frame:
+// [4B total_len][4B headers_len][4B prelude_crc][headers...][payload...][4B msg_crc]
+// The payload is JSON like: {"bytes":"<base64-encoded-event-json>"}
+// The base64 decodes to the actual Anthropic streaming event.
 
-fn parse_anthropic_sse(resp: reqwest::Response) -> impl futures::Stream<Item = StreamEvent> {
+fn parse_bedrock_sse(resp: reqwest::Response) -> impl futures::Stream<Item = StreamEvent> {
     use futures::stream;
 
     let byte_stream = resp.bytes_stream();
 
     stream::unfold(
-        (byte_stream, String::new(), StreamState::default(), false),
-        |(mut bytes, mut buffer, mut state, mut done)| async move {
-            if done {
-                return None;
-            }
+        (byte_stream, Vec::<u8>::new(), StreamState::default()),
+        |(mut bytes, mut buffer, mut state)| async move {
+            use futures::StreamExt;
             loop {
-                // Emit a complete SSE data event if one is buffered.
-                if let Some((evt, finished)) = next_sse_event(&mut buffer, &mut state) {
-                    if finished {
-                        done = true;
-                    }
-                    if let Some(evt) = evt {
-                        return Some((evt, (bytes, buffer, state, done)));
-                    }
-                    if done {
-                        return None;
-                    }
-                    continue;
+                if let Some(evt) = extract_events_from_buffer(&mut buffer, &mut state) {
+                    return Some((evt, (bytes, buffer, state)));
                 }
                 match bytes.next().await {
                     Some(Ok(data)) => {
-                        buffer.push_str(&String::from_utf8_lossy(&data));
+                        buffer.extend_from_slice(&data);
                     }
                     Some(Err(e)) => {
-                        tracing::error!("right.codes stream read error: {}", e);
+                        tracing::error!("Bedrock stream read error: {}", e);
                         return None;
                     }
                     None => return None,
@@ -338,36 +322,77 @@ fn parse_anthropic_sse(resp: reqwest::Response) -> impl futures::Stream<Item = S
     )
 }
 
-/// Pull the next complete SSE line (terminated by `\n`) out of the buffer and,
-/// if it's a `data:` line, parse it. Returns:
-/// - `Some((Some(evt), finished))` when a stream event is produced,
-/// - `Some((None, finished))` when a line was consumed but produced no event,
-/// - `None` when no complete line is buffered yet (caller must read more).
-fn next_sse_event(
-    buffer: &mut String,
+fn extract_events_from_buffer(
+    buffer: &mut Vec<u8>,
     state: &mut StreamState,
-) -> Option<(Option<StreamEvent>, bool)> {
-    let newline = buffer.find('\n')?;
-    let line: String = buffer.drain(..=newline).collect();
-    let line = line.trim_end_matches(['\r', '\n']);
+) -> Option<StreamEvent> {
+    loop {
+        // AWS Event Stream frame: min 16 bytes (prelude + CRCs)
+        if buffer.len() < 16 {
+            return None;
+        }
 
-    let data = match line.strip_prefix("data:") {
-        Some(rest) => rest.trim(),
-        None => return Some((None, false)), // event:/blank/comment line — ignore
-    };
+        // Read total length (4 bytes, big-endian)
+        let total_len = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]) as usize;
 
-    if data.is_empty() {
-        return Some((None, false));
-    }
+        // Sanity check: valid frame is 16..16MB
+        if total_len < 16 || total_len > 16 * 1024 * 1024 {
+            // Skip one garbage byte and retry
+            buffer.remove(0);
+            continue;
+        }
 
-    match parse_event_json(data, state) {
-        Some(StreamEvent::Done) => Some((Some(StreamEvent::Done), true)),
-        Some(evt) => Some((Some(evt), false)),
-        None => Some((None, false)),
+        // Wait for the complete frame
+        if buffer.len() < total_len {
+            return None;
+        }
+
+        // Read headers length (bytes 4..8, big-endian)
+        let headers_len = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]) as usize;
+
+        // Payload sits after: 12 (prelude) + headers, before: total - 4 (msg CRC)
+        let payload_start = 12 + headers_len;
+        let payload_end = total_len - 4;
+
+        // Extract and consume the frame
+        let payload = if payload_end > payload_start && payload_end <= total_len {
+            buffer[payload_start..payload_end].to_vec()
+        } else {
+            Vec::new()
+        };
+        *buffer = buffer[total_len..].to_vec();
+
+        if payload.is_empty() {
+            continue;
+        }
+
+        // Parse the payload JSON: {"bytes":"<base64>"} or error
+        if let Some(evt) = decode_frame_payload(&payload, state) {
+            return Some(evt);
+        }
     }
 }
 
-// -- Event JSON types (standard Anthropic streaming events) --
+fn decode_frame_payload(payload: &[u8], state: &mut StreamState) -> Option<StreamEvent> {
+    let payload_str = std::str::from_utf8(payload).ok()?;
+    let wrapper: serde_json::Value = serde_json::from_str(payload_str).ok()?;
+
+    if let Some(bytes_b64) = wrapper.get("bytes").and_then(|v| v.as_str()) {
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(bytes_b64)
+            .ok()?;
+        let event_json = String::from_utf8(decoded).ok()?;
+        return parse_event_json(&event_json, state);
+    }
+
+    // Error frame from Bedrock
+    if let Some(msg) = wrapper.get("message").and_then(|v| v.as_str()) {
+        tracing::warn!("Bedrock stream error frame: {}", msg);
+    }
+    None
+}
+
+// -- Event JSON types --
 
 #[derive(Default)]
 struct StreamState {
