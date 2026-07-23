@@ -64,6 +64,11 @@ jobs:
       # 32 distinct bytes (0x00..0x1f): passes validate_encryption_key's length,
       # non-zero, and >=16-distinct-byte entropy floor. CI-only, not a real key.
       ENCRYPTION_KEY: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      # CI 编译提速:关增量(每次都是缓存/干净构建,增量只占体积不提速)+
+      # 关 test profile 的 debuginfo(CI 不调试,省下 codegen/链接时间的一大块)。
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_TERM_COLOR: always
 
     steps:
       - name: Checkout
@@ -76,11 +81,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "."
+          # 与 rust-audit.yml 的 clippy job 共享同一份编译缓存 —— clippy 与 test
+          # 的 codegen 大量重叠,共享后省掉近一整遍 workspace 编译。两处 key 必须一致。
+          shared-key: "workspace"
+
+      # cargo-nextest:测试执行阶段的并行调度优于 cargo test,测试多时收益明显。
+      # 编译阶段不变。本 workspace 无可运行 doctest(唯一 doc fence 是 ```json),
+      # 故 nextest 不跑 doctest 也不漏测。
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
 
       # 全 workspace 测试门禁。原先只测 api-server,导致 mpc-core(21 个
       # 测试文件)、chain-evm、policy-engine 等密码学/资金核心 crate 完全不进
       # 门禁 —— 对一个 MPC 钱包是最大的回归风险敞口。现改为全 workspace。
-      # 已验证:cargo test --workspace --all-targets --no-run 编译 0 error。
+      # --tests 覆盖 lib 单测 + 集成测试(去掉 examples/benches,那些不该进门禁,
+      # 且 --all-targets 编它们纯属浪费 CI 时间)。
       # clippy 仍暂不强制(184 warn + 2 err 历史债,见 rust-audit.yml 的 advisory
       # clippy job);债清后再在此升为 -D warnings。
       #
@@ -88,7 +103,7 @@ jobs:
       # 在 debug 下 ~13 分钟。那些全流程门禁在下面独立的 distributed-e2e job 里
       # 用 --release 跑(Paillier 快 10-20 倍),既挡 PR 又不拖慢本 job / 本地。
       - name: Run tests (workspace)
-        run: cargo test --workspace --all-targets
+        run: cargo nextest run --workspace --tests
 
   # 分布式 MPC 全流程 e2e 门禁(COW-1)。
   #

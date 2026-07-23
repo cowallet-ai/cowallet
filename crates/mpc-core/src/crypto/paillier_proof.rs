@@ -444,12 +444,12 @@ fn mod_inverse(a: &BigUint, m: &BigUint) -> BigUint {
 
 #[cfg(test)]
 mod tests {
-    use super::super::paillier::PaillierKeypair;
+    use super::super::paillier::test_keypair;
     use super::*;
 
     #[test]
     fn test_paillier_range_proof_valid() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let q = secp256k1_order();
 
         // Value in valid range
@@ -474,7 +474,7 @@ mod tests {
     fn test_paillier_range_proof_rejects_oversized_s1() {
         // F-005: a proof whose s1 exceeds the tight accept bound (q^3 + q^2)
         // must be rejected. We forge a proof by inflating s1 past the bound.
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let q = secp256k1_order();
         let value = BigUint::from(7u64);
         let r = loop {
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn test_paillier_range_proof_wrong_domain() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let value = BigUint::from(42u64);
         let r = loop {
             let candidate = rand::thread_rng().gen_biguint_below(&keypair.public.n);
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_paillier_range_proof_tampered_ciphertext() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let value = BigUint::from(999u64);
         let r = loop {
             let candidate = rand::thread_rng().gen_biguint_below(&keypair.public.n);
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_paillier_modulus_proof_valid() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let proof =
             PaillierModulusProof::prove(&keypair.public.n, &keypair.secret.p, &keypair.secret.q);
         assert!(proof.verify());
@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn test_paillier_modulus_proof_tampered_n() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let mut proof =
             PaillierModulusProof::prove(&keypair.public.n, &keypair.secret.p, &keypair.secret.q);
         // Tamper with N (add 2 to keep it odd)
@@ -571,7 +571,7 @@ mod tests {
         // F-005: a large N (>= 2047 bits, odd) that has a small prime factor must
         // be rejected by the trial-division check. Take a valid modulus and
         // multiply by 3 to inject a small factor (result is still odd).
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let bad_n = &keypair.public.n * BigUint::from(3u64);
         assert!(bad_n.bits() >= 2047);
         assert_eq!(&bad_n % BigUint::from(2u64), BigUint::from(1u64));

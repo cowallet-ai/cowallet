@@ -176,8 +176,9 @@ mod tests {
         let b_be = b_val.to_bytes_be();
         b_bytes[32 - b_be.len()..].copy_from_slice(&b_be);
 
-        // Alice generates Paillier keypair
-        let keypair = PaillierKeypair::generate();
+        // Shared Paillier keypair — keygen is the dominant test cost and MtA
+        // correctness doesn't depend on a fresh key.
+        let keypair = crate::crypto::paillier::test_keypair();
 
         // Alice creates MtA instance
         let alice = MtAAlice::new(a_bytes, keypair.clone());
@@ -213,7 +214,7 @@ mod tests {
         let a_bytes = biguint_to_scalar_bytes(&a_val, &q);
         let b_bytes = biguint_to_scalar_bytes(&b_val, &q);
 
-        let keypair = PaillierKeypair::generate();
+        let keypair = crate::crypto::paillier::test_keypair();
         let alice = MtAAlice::new(a_bytes, keypair.clone());
 
         let first_msg = alice.generate_first_message();
