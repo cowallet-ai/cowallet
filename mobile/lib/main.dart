@@ -16,9 +16,7 @@ import 'package:cowallet/views/settings/mandatory_backup_export_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   // Wire the 401 interceptor to the single-flight session recoverer so a token
   // expiry mid-session self-heals (refresh → challenge-response re-login)
@@ -53,7 +51,10 @@ bool _forceUpgradeShown = false;
 
 /// Replace the whole stack with the non-dismissible upgrade screen. Safe to call
 /// from anywhere (startup check or the 426 interceptor); no-ops if already shown.
-void _navigateToForceUpgrade({required String iosUrl, required String androidUrl}) {
+void _navigateToForceUpgrade({
+  required String iosUrl,
+  required String androidUrl,
+}) {
   if (_forceUpgradeShown) return;
   _forceUpgradeShown = true;
   Services.navigatorKey.currentState?.pushNamedAndRemoveUntil(
@@ -80,7 +81,7 @@ class CowalletApp extends StatefulWidget {
 class _CowalletAppState extends State<CowalletApp> {
   final appState = AppState();
   Locale? _locale;
-  final String _initialRoute = AppRouter.onboarding;  // Default to onboarding
+  final String _initialRoute = AppRouter.onboarding; // Default to onboarding
 
   // Use shared navigator key from Services
   GlobalKey<NavigatorState> get _navigatorKey => Services.navigatorKey;
@@ -89,18 +90,19 @@ class _CowalletAppState extends State<CowalletApp> {
   void initState() {
     super.initState();
     _initEssentialAndNavigate();
-    _initLocale();
   }
 
   /// Initialize locale: check saved preference or auto-detect from system
   Future<void> _initLocale() async {
     final savedLang = Services.settings.language;
     if (savedLang == 'zh' || savedLang == 'en') {
-      setState(() => _locale = Locale(savedLang));
+      if (!mounted) return;
+      setState(() => _locale = Locale(savedLang!));
     } else {
       // Auto-detect from system locale
       final systemLocale = WidgetsBinding.instance.platformDispatcher.locale;
       final locale = _detectLocale(systemLocale);
+      if (!mounted) return;
       setState(() => _locale = locale);
       await Services.settings.setLanguage(locale.languageCode);
     }
@@ -109,7 +111,9 @@ class _CowalletAppState extends State<CowalletApp> {
   /// Detect locale from system language code
   Locale _detectLocale(Locale systemLocale) {
     final lang = systemLocale.languageCode.toLowerCase();
-    return (lang == 'zh' || lang.startsWith('zh')) ? const Locale('zh') : const Locale('en');
+    return (lang == 'zh' || lang.startsWith('zh'))
+        ? const Locale('zh')
+        : const Locale('en');
   }
 
   /// Change language and persist preference
@@ -130,6 +134,7 @@ class _CowalletAppState extends State<CowalletApp> {
   Future<void> _initEssentialAndNavigate() async {
     // Wait for essential services to be ready
     await Services.initEssential();
+    await _initLocale();
     _setupPushNotificationHandlers();
 
     // Forced-upgrade gate (client half). If this build is below the server's
@@ -266,10 +271,7 @@ class _CowalletAppState extends State<CowalletApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('zh'),
-        Locale('en'),
-      ],
+      supportedLocales: const [Locale('zh'), Locale('en')],
       builder: (context, child) {
         // Initialize S with context for backward compatibility
         S.of(context);
