@@ -329,12 +329,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceInputSub => 'Use voice to interact with AI assistant';
 
   @override
-  String get aiModel => 'AI Model';
-
-  @override
-  String get aiModelSub => 'Choose your preferred AI assistant';
-
-  @override
   String get language => 'Language';
 
   @override

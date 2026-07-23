@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../platform/se_manager.dart';
 import '../platform/sb_manager.dart';
 import '../platform/cloud_backup.dart';
@@ -211,19 +212,19 @@ class KeyHealthService {
     try {
       final shardBytes = await _backupService.retrieveFromCloud();
       if (shardBytes == null || shardBytes.length != 32) {
-        print('[KeyHealth] cloud backup not available or invalid: ${shardBytes?.length}');
+        debugPrint('[KeyHealth] cloud backup not available or invalid: ${shardBytes?.length}');
         return false;
       }
-      print('[KeyHealth] cloud parsed backup shard: ${shardBytes.length} bytes');
+      debugPrint('[KeyHealth] cloud parsed backup shard: ${shardBytes.length} bytes');
 
       final valid = await _verifyBackupShard(shardBytes);
-      print('[KeyHealth] cloud verifyBackupShard result: $valid');
+      debugPrint('[KeyHealth] cloud verifyBackupShard result: $valid');
       if (!valid) return false;
 
       await SecureStorage.save(await _getBackupCheckedKey(), DateTime.now().toIso8601String());
       return true;
     } catch (e) {
-      print('[KeyHealth] testBackupKey (cloud) error: $e');
+      debugPrint('[KeyHealth] testBackupKey (cloud) error: $e');
       return false;
     }
   }
@@ -232,19 +233,19 @@ class KeyHealthService {
     try {
       final shardBytes = _backupService.parseBackupFile(fileContent);
       if (shardBytes == null || shardBytes.length != 32) {
-        print('[KeyHealth] parseBackupFile failed: shardBytes=${shardBytes?.length}');
+        debugPrint('[KeyHealth] parseBackupFile failed: shardBytes=${shardBytes?.length}');
         return false;
       }
-      print('[KeyHealth] parsed backup shard: ${shardBytes.length} bytes');
+      debugPrint('[KeyHealth] parsed backup shard: ${shardBytes.length} bytes');
 
       final valid = await _verifyBackupShard(shardBytes);
-      print('[KeyHealth] verifyBackupShard result: $valid');
+      debugPrint('[KeyHealth] verifyBackupShard result: $valid');
       if (!valid) return false;
 
       await SecureStorage.save(await _getBackupCheckedKey(), DateTime.now().toIso8601String());
       return true;
     } catch (e) {
-      print('[KeyHealth] testBackupKeyWithFile error: $e');
+      debugPrint('[KeyHealth] testBackupKeyWithFile error: $e');
       return false;
     }
   }

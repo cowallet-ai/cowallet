@@ -62,7 +62,7 @@ class ChatHistoryWidget extends StatelessWidget {
               ),
             )
           else
-            ...transactions.take(5).map((tx) => _buildTxRow(context, tx)).toList(),
+            ...transactions.take(5).map((tx) => _buildTxRow(context, tx)),
           if (transactions.length > 5)
             Padding(
               padding: const EdgeInsets.only(top: 8),

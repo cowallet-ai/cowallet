@@ -88,7 +88,7 @@ class ChatSwapConfirmWidget extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _infoRow(S.slippageTolerance, '${slippage}%'),
+          _infoRow(S.slippageTolerance, '$slippage%'),
           if (chainId != null && toChainId != null && toChainId != chainId)
             _infoRow(S.network, '${_chainName(chainId!)} → ${_chainName(toChainId!)}')
           else if (chainId != null)

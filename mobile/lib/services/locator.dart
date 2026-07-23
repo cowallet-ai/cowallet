@@ -85,7 +85,7 @@ class Services {
     push = PushService();
     await push.init();
 
-    print('[Services] Essential init complete');
+    debugPrint('[Services] Essential init complete');
   }
 
   /// Background initialization - runs after first paint.
@@ -96,13 +96,13 @@ class Services {
           .timeout(const Duration(seconds: 5));
       rustReady = true;
     } catch (e) {
-      print('[Services] RustLib.init() failed: $e — FFI unavailable');
+      debugPrint('[Services] RustLib.init() failed: $e — FFI unavailable');
     }
     backup = BackupShardService(PlatformCloudBackup());
     mpcSessionManager = MpcSessionManager(mpcWallet);
     pendingSign = PendingSignService();
 
-    print('[Services] Background init complete');
+    debugPrint('[Services] Background init complete');
   }
 
   /// Deferred initialization - runs after UI is stable.
@@ -131,7 +131,7 @@ class Services {
     notifications = NotificationService();
     await notifications.init();
 
-    print('[Services] Deferred init complete');
+    debugPrint('[Services] Deferred init complete');
   }
 
   /// Run all initialization phases in order.
@@ -154,7 +154,7 @@ class Services {
         final result = await ShardsApi.storeBackupHash(backupShardHashHex: pendingHash);
         if (result.isSuccess) {
           await app_storage.SecureStorage.delete('pending_backup_hash');
-          print('[Services] Retried pending backup hash upload — success');
+          debugPrint('[Services] Retried pending backup hash upload — success');
         }
       }
     } catch (_) {}
@@ -170,13 +170,13 @@ class Services {
   /// All sensitive operations MUST use this — never call biometrics.authenticate directly.
   static Future<bool> authenticate({required String reason}) async {
     final supported = await biometrics.isDeviceSupported();
-    print('[Auth] isDeviceSupported=$supported');
+    debugPrint('[Auth] isDeviceSupported=$supported');
     if (!supported) {
       await _promptDeviceSecuritySetup();
       return false;
     }
     final result = await biometrics.authenticate(reason: reason);
-    print('[Auth] native authenticate result=$result');
+    debugPrint('[Auth] native authenticate result=$result');
     return result;
   }
 
@@ -235,7 +235,7 @@ class Services {
       await _promptDeviceSecuritySetup();
       return false;
     }
-    print('[Auth] shard-op: deferring to native keystore prompt');
+    debugPrint('[Auth] shard-op: deferring to native keystore prompt');
     return true;
   }
 }

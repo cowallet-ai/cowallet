@@ -38,8 +38,8 @@ class TokenBalance {
 
 class BalanceService extends ChangeNotifier {
   // Multi-chain state
-  Map<int, List<TokenBalance>> _chainTokens = {};
-  Map<int, String> _chainTotals = {};
+  final Map<int, List<TokenBalance>> _chainTokens = {};
+  final Map<int, String> _chainTotals = {};
   String _portfolioTotalUsd = '0.00';
 
   // Legacy single-chain state (for backward compatibility)

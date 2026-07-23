@@ -128,7 +128,6 @@ class _PolicyViewState extends State<PolicyView> {
 
   @override
   Widget build(BuildContext context) {
-    final isZh = S.lang == Lang.zh;
     return Scaffold(
       backgroundColor: CwColors.bgPaper,
       appBar: AppBar(
