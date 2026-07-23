@@ -256,10 +256,17 @@ async fn handle_ws_connection(
                         handle_client_message(&state, session_id, party_index, ws_msg).await;
                     }
                     Err(e) => {
+                        // Truncate on a char boundary — slicing &text[..200] can
+                        // panic mid-multibyte-char and abort before session cleanup.
+                        let preview_end = text
+                            .char_indices()
+                            .map(|(i, _)| i)
+                            .nth(200)
+                            .unwrap_or(text.len());
                         tracing::warn!(
                             "WS text deserialization failed for session {} party {}: {} (first 200 chars: {})",
                             session_id, party_index, e,
-                            &text[..text.len().min(200)]
+                            &text[..preview_end]
                         );
                     }
                 }

@@ -130,10 +130,15 @@ jobs:
                 ports:
                   - "3000:3000"
                 environment:
+                  APP_ENV: ${APP_ENV}
                   DATABASE_URL: ${DATABASE_URL}
                   REDIS_URL: ${REDIS_URL}
                   NATS_URL: ${NATS_URL}
                   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+                  MIN_APP_BUILD: ${MIN_APP_BUILD:-0}
+                  LATEST_APP_BUILD: ${LATEST_APP_BUILD:-0}
+                  IOS_STORE_URL: ${IOS_STORE_URL:-}
+                  ANDROID_STORE_URL: ${ANDROID_STORE_URL:-}
                 depends_on:
                   postgres:
                     condition: service_healthy
@@ -147,11 +152,16 @@ jobs:
 
             # 写入环境变量文件（仅首次或有变化时更新）
             cat > .env << 'ENV_EOF'
+            APP_ENV=production
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD || 'changeme' }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             REDIS_URL=${{ secrets.REDIS_URL }}
             NATS_URL=nats://nats:4222
             ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            MIN_APP_BUILD=${{ secrets.MIN_APP_BUILD || '0' }}
+            LATEST_APP_BUILD=${{ secrets.LATEST_APP_BUILD || '0' }}
+            IOS_STORE_URL=${{ secrets.IOS_STORE_URL }}
+            ANDROID_STORE_URL=${{ secrets.ANDROID_STORE_URL }}
             ENV_EOF
 
             # 运行数据库迁移（如容器存在则执行）

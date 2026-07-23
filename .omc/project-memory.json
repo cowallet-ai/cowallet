@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1784254625090,
+  "lastScanned": 1784684387684,
   "projectRoot": "/Users/mac/cat/cowallet",
   "techStack": {
     "languages": [
@@ -62,28 +62,28 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1784254625072,
+      "lastAccessed": 1784684387651,
       "keyFiles": []
     },
     "crates": {
       "path": "crates",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1784254625072,
+      "lastAccessed": 1784684387651,
       "keyFiles": []
     },
     "docker": {
       "path": "docker",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1784254625073,
+      "lastAccessed": 1784684387652,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
-      "fileCount": 13,
-      "lastAccessed": 1784254625073,
+      "fileCount": 15,
+      "lastAccessed": 1784684387665,
       "keyFiles": [
         "API接入实施方案.md",
         "CoWallet-FENZ-2026-0142-SOLUTION-ZH.html",
@@ -96,7 +96,7 @@
       "path": "k8s",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1784254625076,
+      "lastAccessed": 1784684387665,
       "keyFiles": [
         "deployment.yml",
         "kustomization.yml",
@@ -107,7 +107,7 @@
       "path": "mobile",
       "purpose": null,
       "fileCount": 25,
-      "lastAccessed": 1784254625077,
+      "lastAccessed": 1784684387667,
       "keyFiles": [
         "BIP39_IMPLEMENTATION.md",
         "CRITICAL_SERVICES.md",
@@ -120,7 +120,7 @@
       "path": "prototype",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1784254625077,
+      "lastAccessed": 1784684387671,
       "keyFiles": [
         "index.html"
       ]
@@ -129,7 +129,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 4,
-      "lastAccessed": 1784254625078,
+      "lastAccessed": 1784684387679,
       "keyFiles": [
         "build_android.sh",
         "build_ios.sh",
@@ -141,7 +141,7 @@
       "path": "target",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1784254625078,
+      "lastAccessed": 1784684387679,
       "keyFiles": [
         "CACHEDIR.TAG"
       ]
@@ -150,7 +150,7 @@
       "path": "website",
       "purpose": null,
       "fileCount": 11,
-      "lastAccessed": 1784254625079,
+      "lastAccessed": 1784684387680,
       "keyFiles": [
         "next-env.d.ts",
         "next.config.ts",
@@ -162,8 +162,8 @@
     "backend/migrations": {
       "path": "backend/migrations",
       "purpose": "Database migrations",
-      "fileCount": 23,
-      "lastAccessed": 1784254625079,
+      "fileCount": 24,
+      "lastAccessed": 1784684387681,
       "keyFiles": [
         "001_initial_schema.sql",
         "002_audit_logs.sql",
@@ -174,14 +174,14 @@
       "path": "website/node_modules",
       "purpose": "Dependencies",
       "fileCount": 2,
-      "lastAccessed": 1784254625081,
+      "lastAccessed": 1784684387683,
       "keyFiles": []
     },
     "website/out": {
       "path": "website/out",
       "purpose": "Build output",
       "fileCount": 9,
-      "lastAccessed": 1784254625082,
+      "lastAccessed": 1784684387684,
       "keyFiles": [
         "404.html",
         "index.html",
@@ -191,135 +191,15 @@
   },
   "hotPaths": [
     {
-      "path": "website/src/lib/legal.ts",
-      "accessCount": 13,
-      "lastAccessed": 1784109719095,
-      "type": "file"
-    },
-    {
-      "path": "backend/api-server/src/routes/auth.rs",
-      "accessCount": 9,
-      "lastAccessed": 1784255399793,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/views/chat/chat_view.dart",
-      "accessCount": 8,
-      "lastAccessed": 1784108838411,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/l10n/s.dart",
-      "accessCount": 8,
-      "lastAccessed": 1784109126656,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/services/settings_service.dart",
-      "accessCount": 6,
-      "lastAccessed": 1784106134757,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/views/settings/settings_view.dart",
-      "accessCount": 4,
-      "lastAccessed": 1784106315287,
-      "type": "file"
-    },
-    {
-      "path": "mobile/ios/APP_STORE_REVIEW.md",
-      "accessCount": 4,
-      "lastAccessed": 1784107894969,
-      "type": "file"
-    },
-    {
-      "path": "mobile/ios/Runner/PrivacyInfo.xcprivacy",
-      "accessCount": 2,
-      "lastAccessed": 1784107823810,
-      "type": "file"
-    },
-    {
-      "path": "docker-compose.prod.yml",
-      "accessCount": 2,
-      "lastAccessed": 1784112939230,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/api/ai_api.dart",
+      "path": "PROJECT_STATUS.md",
       "accessCount": 1,
-      "lastAccessed": 1784105312438,
+      "lastAccessed": 1784684738082,
       "type": "file"
     },
     {
-      "path": "mobile/lib/onboarding/onboarding_flow.dart",
+      "path": "docs/LINEAR_PROJECT_PLAN.md",
       "accessCount": 1,
-      "lastAccessed": 1784105447389,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/utils/secure_storage.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784105997094,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/router/app_router.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784106008553,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/views/home/home_view.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784106008976,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/widgets/ai_consent_sheet.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784106214615,
-      "type": "file"
-    },
-    {
-      "path": "website/src/app/privacy/page.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1784107006123,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/platform/cloud_backup.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784108934308,
-      "type": "file"
-    },
-    {
-      "path": "backend/api-server/src/services/email.rs",
-      "accessCount": 1,
-      "lastAccessed": 1784110292481,
-      "type": "file"
-    },
-    {
-      "path": "k8s/deployment.yml",
-      "accessCount": 1,
-      "lastAccessed": 1784112886228,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/network/dio_client.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784117602118,
-      "type": "file"
-    },
-    {
-      "path": "mobile/lib/config/api_config.dart",
-      "accessCount": 1,
-      "lastAccessed": 1784117612669,
-      "type": "file"
-    },
-    {
-      "path": "docker-compose.yml",
-      "accessCount": 1,
-      "lastAccessed": 1784254759124,
+      "lastAccessed": 1784684866924,
       "type": "file"
     }
   ],

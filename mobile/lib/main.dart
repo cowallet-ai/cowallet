@@ -11,6 +11,7 @@ import 'package:cowallet/services/locator.dart';
 import 'package:cowallet/services/push_service.dart';
 import 'package:cowallet/api/auth_api.dart';
 import 'package:cowallet/network/dio_client.dart';
+import 'package:cowallet/services/version_check.dart';
 import 'package:cowallet/l10n/app_localizations.dart';
 import 'package:cowallet/l10n/s.dart';
 import 'package:cowallet/views/settings/mandatory_backup_export_view.dart';
@@ -26,6 +27,16 @@ void main() async {
   // instead of dumping the user. Shares one in-flight recovery with startup.
   DioClient.sessionRecoverer = AuthApi.recoverSession;
 
+  // Server-side upgrade gate: any protected request from a stale build returns
+  // 426. Route to the blocking upgrade screen (idempotent) so a client that
+  // bypassed the startup check still can't proceed.
+  DioClient.onUpgradeRequired = (body) {
+    _navigateToForceUpgrade(
+      iosUrl: (body['ios_store_url'] as String?) ?? '',
+      androidUrl: (body['android_store_url'] as String?) ?? '',
+    );
+  };
+
   // 🔥 INSTANT FIRST PAINT - Native splash shows immediately
   runApp(const CowalletApp());
 
@@ -36,6 +47,22 @@ void main() async {
     // Remove native splash when app is ready
     FlutterNativeSplash.remove();
   });
+}
+
+/// Whether the blocking upgrade screen is already showing — prevents stacking
+/// duplicate screens when multiple in-flight requests each return 426.
+bool _forceUpgradeShown = false;
+
+/// Replace the whole stack with the non-dismissible upgrade screen. Safe to call
+/// from anywhere (startup check or the 426 interceptor); no-ops if already shown.
+void _navigateToForceUpgrade({required String iosUrl, required String androidUrl}) {
+  if (_forceUpgradeShown) return;
+  _forceUpgradeShown = true;
+  Services.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+    AppRouter.forceUpgrade,
+    (route) => false,
+    arguments: {'ios': iosUrl, 'android': androidUrl},
+  );
 }
 
 class CowalletApp extends StatefulWidget {
@@ -106,6 +133,19 @@ class _CowalletAppState extends State<CowalletApp> {
     // Wait for essential services to be ready
     await Services.initEssential();
     _setupPushNotificationHandlers();
+
+    // Forced-upgrade gate (client half). If this build is below the server's
+    // min_build, show the blocking screen and stop — do NOT route into the
+    // wallet, since signing would fail on the incompatible v1.0.1 MPC protocol.
+    // Fail-open: a network/parse error returns ok, so the app still starts.
+    final version = await VersionCheck.check();
+    if (version.mustUpgrade) {
+      _navigateToForceUpgrade(
+        iosUrl: version.iosStoreUrl,
+        androidUrl: version.androidStoreUrl,
+      );
+      return;
+    }
 
     // Check wallet status and navigate accordingly
     _checkWalletState();

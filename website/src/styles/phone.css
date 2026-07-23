@@ -1,6 +1,8 @@
 /* Phone simulator styles - scoped under .phone-scope */
 @layer components {
   .phone-scope {
+    width: 100%;
+
     --ps-paper: #faf9f5;
     --ps-ink-1: #141008;
     --ps-ink-2: #4a3f32;
@@ -29,7 +31,8 @@
     position: relative;
     width: 100%;
     max-width: 390px;
-    aspect-ratio: 9 / 19.5;
+    margin-inline: auto;
+    aspect-ratio: 9 / 16;
     background: var(--ps-paper);
     border-radius: 48px;
     border: 11px solid #1a1612;

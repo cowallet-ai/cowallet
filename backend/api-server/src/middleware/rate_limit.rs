@@ -24,34 +24,37 @@ pub struct RateLimit {
 }
 
 impl RateLimit {
-    // NOTE (temporary): limits raised ~100x to unblock testing while the
-    // rate-limit KEYING is fixed. Behind the reverse proxy all unauthenticated
-    // requests currently share one `ip:<gateway>` bucket, so the original
-    // strict values throttled real users. Restore the strict values (10/100/5
-    // per 60s) once keying trusts the proxy's real client IP (XFF allowlist)
-    // or keys auth routes by email/device.
-    /// Strict limit for MPC signing operations
+    // Production limits. The temporary ~100x widening (to unblock testing while
+    // rate-limit keying was being fixed) has been reverted now that F-011 keys
+    // authenticated routes by `user:<sub>` and unauthenticated routes by the
+    // real peer socket (ConnectInfo), not the spoofable XFF header.
+    //
+    // NOTE: if this service is deployed behind a reverse proxy that does NOT
+    // rewrite the source address, all unauthenticated callers share one
+    // `ip:<gateway>` bucket — configure the proxy to preserve the client IP (or
+    // add a vetted TRUSTED_PROXIES allowlist) before scaling public traffic.
+    /// Strict limit for MPC signing operations (protected → keyed per user)
     pub const fn strict() -> Self {
         Self {
-            max_requests: 1000,
+            max_requests: 10,
             window_secs: 60,
         }
     }
 
-    /// Standard limit for read endpoints
+    /// Standard limit for read endpoints (protected → keyed per user)
     pub const fn standard() -> Self {
         Self {
-            max_requests: 10000,
+            max_requests: 100,
             window_secs: 60,
         }
     }
 
     /// Very strict limit for auth operations (login, register, OTP send).
-    /// Restored toward the strict target (was temporarily 500) now that the
-    /// OTP endpoint additionally gates on Turnstile + per-email hourly caps.
+    /// Brute force is further bounded by per-email hourly caps + OTP 5-attempt
+    /// lockout + Turnstile on the OTP endpoint.
     pub const fn auth() -> Self {
         Self {
-            max_requests: 50,
+            max_requests: 5,
             window_secs: 60,
         }
     }

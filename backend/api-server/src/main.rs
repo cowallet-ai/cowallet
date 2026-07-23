@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use middleware::audit::audit_middleware;
 use middleware::auth::require_auth;
+use middleware::version_gate::version_gate;
 use middleware::metrics::metrics_middleware;
 use middleware::rate_limit::{strict_rate_limit_middleware, standard_rate_limit_middleware, auth_rate_limit_middleware};
 use middleware::request_id::request_id_middleware;
@@ -152,8 +153,12 @@ async fn main() {
     let encryption_key = hex::decode(&encryption_key)
         .expect("ENCRYPTION_KEY must be valid hex");
 
+    // Reject weak/low-entropy keys (all-zero, placeholders, simple patterns) —
+    // not just wrong length. Same check runs in AppState::new; kept here as
+    // defense-in-depth for the app-level encryption service.
+    services::crypto::validate_encryption_key(&encryption_key)
+        .expect("ENCRYPTION_KEY rejected");
     let mut key_array = [0u8; 32];
-    assert!(encryption_key.len() == 32, "ENCRYPTION_KEY must be exactly 32 bytes (64 hex chars)");
     key_array.copy_from_slice(&encryption_key);
 
     let encryption = services::crypto::EncryptionService::new(
@@ -182,7 +187,12 @@ async fn main() {
         .nest("/push", routes::push::routes())
         .layer(Extension(encryption))
         .layer(axum_mw::from_fn(require_auth))
-        .layer(axum_mw::from_fn(standard_rate_limit_middleware));
+        .layer(axum_mw::from_fn(standard_rate_limit_middleware))
+        // Outermost on protected routes: reject outdated clients (426) before
+        // auth/rate-limit work. Header-only check, no DB. Fail-open when
+        // MIN_APP_BUILD is unset. Public routes (auth/config/price/chains) stay
+        // ungated so an old client can still bootstrap and learn to upgrade.
+        .layer(axum_mw::from_fn(version_gate));
 
     // Clone app_state for shutdown handler
     let app_state_clone = app_state.clone();
@@ -252,6 +262,7 @@ async fn main() {
             .layer(axum_mw::from_fn(auth_rate_limit_middleware)))
         .nest("/api/v1/price", routes::price::router())
         .nest("/api/v1/chains", routes::chains::router())
+        .nest("/api/v1/config", routes::config::router())
         .nest("/api/v1", protected)
         .with_state(app_state.clone())
         // Order: Outermost first (applied first to request, last to response)

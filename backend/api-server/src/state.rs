@@ -120,10 +120,14 @@ impl AppState {
                 }
             };
 
-        // Initialize MPC participant with encryption service (ENCRYPTION_KEY validated in main)
+        // Decode + validate ENCRYPTION_KEY. This is the root key for every
+        // server shard and presignature, so reject weak/low-entropy keys here
+        // (this runs before main.rs's own check).
         let encryption_key = hex::decode(
             std::env::var("ENCRYPTION_KEY").expect("ENCRYPTION_KEY must be set")
         ).expect("ENCRYPTION_KEY must be valid hex");
+        crate::services::crypto::validate_encryption_key(&encryption_key)
+            .expect("ENCRYPTION_KEY rejected");
         let mut key_array = [0u8; 32];
         key_array.copy_from_slice(&encryption_key);
         let encryption = crate::services::crypto::EncryptionService::new(&key_array, "server-mpc");

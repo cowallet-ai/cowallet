@@ -40,7 +40,7 @@ pub fn clear_shares() {
 pub fn has_shares() -> bool {
     SHARDS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .as_ref()
         .is_some_and(|m| !m.is_empty())
 }
@@ -57,7 +57,7 @@ pub fn create_dkg_session(session_id: String, dkg: DkgSession) {
 pub fn get_dkg_session_arc(session_id: &str) -> Option<Arc<Mutex<DkgSession>>> {
     DKG_SESSIONS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(session_id)
         .map(Arc::clone)
 }
@@ -78,7 +78,7 @@ pub fn create_sign_session(session_id: String, session: SignSession) {
 pub fn get_sign_session_arc(session_id: &str) -> Option<Arc<Mutex<SignSession>>> {
     SIGN_SESSIONS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(session_id)
         .map(Arc::clone)
 }
@@ -99,7 +99,7 @@ pub fn create_reshare_session(session_id: String, session: ReshareSession) {
 pub fn get_reshare_session_arc(session_id: &str) -> Option<Arc<Mutex<ReshareSession>>> {
     RESHARE_SESSIONS
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .get(session_id)
         .map(Arc::clone)
 }

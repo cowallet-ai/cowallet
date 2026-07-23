@@ -42,7 +42,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "cd /Users/mac/cat/cowallet/website && npx tsc --noEmit > /tmp/tsc2.log 2>&1; echo \"tsc exit: $?\"; cat /tmp/tsc2.log",
+    "buildCommand": "npx tsc --noEmit 2>&1 | head -20",
     "testCommand": null,
     "lintCommand": "pnpm lint",
     "devCommand": "pnpm dev",
@@ -132,15 +132,99 @@
   },
   "hotPaths": [
     {
+      "path": "src/components/sections/Navbar.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1784529466932,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ui/DownloadButtons.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1784529615410,
+      "type": "file"
+    },
+    {
+      "path": "src/styles/phone.css",
+      "accessCount": 5,
+      "lastAccessed": 1784530737855,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/Hero.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1784529234715,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/Cta.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1784529321864,
+      "type": "file"
+    },
+    {
       "path": "next.config.ts",
       "accessCount": 3,
       "lastAccessed": 1783563817686,
       "type": "file"
     },
     {
+      "path": "src/lib/i18n.ts",
+      "accessCount": 3,
+      "lastAccessed": 1784529488151,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/PhoneDemo.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1784530648055,
+      "type": "file"
+    },
+    {
       "path": "src/app/support/page.tsx",
       "accessCount": 1,
       "lastAccessed": 1783560541343,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ui/Button.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529106548,
+      "type": "file"
+    },
+    {
+      "path": "src/components/sections/Footer.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529106603,
+      "type": "file"
+    },
+    {
+      "path": "src/lib/download.ts",
+      "accessCount": 1,
+      "lastAccessed": 1784529140589,
+      "type": "file"
+    },
+    {
+      "path": "src/components/phone/PhoneSimulator.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529704325,
+      "type": "file"
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529721749,
+      "type": "file"
+    },
+    {
+      "path": "src/components/phone/PhoneFrame.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1784529779190,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/usePhoneState.ts",
+      "accessCount": 1,
+      "lastAccessed": 1784529846023,
       "type": "file"
     }
   ],

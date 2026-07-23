@@ -49,12 +49,18 @@ async fn register_token(
         return Err(err(StatusCode::BAD_REQUEST, "platform must be 'ios' or 'android'"));
     }
 
+    // Only update an existing token row if it already belongs to THIS user.
+    // The previous unconditional `DO UPDATE SET user_id = EXCLUDED.user_id` let
+    // any caller who knew (or guessed) another user's FCM token reassign that
+    // token to themselves — or hijack delivery. The `WHERE` on the conflict
+    // update makes a cross-user reassignment a no-op.
     sqlx::query(
         "INSERT INTO push_tokens (user_id, token, platform, device_id)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (token)
-         DO UPDATE SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform,
-                       device_id = EXCLUDED.device_id, updated_at = NOW()"
+         DO UPDATE SET platform = EXCLUDED.platform,
+                       device_id = EXCLUDED.device_id, updated_at = NOW()
+         WHERE push_tokens.user_id = EXCLUDED.user_id"
     )
     .bind(user_id)
     .bind(&req.token)
@@ -62,7 +68,10 @@ async fn register_token(
     .bind(&req.device_id)
     .execute(db)
     .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("push token register failed: {e}");
+        err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+    })?;
 
     Ok(Json(json!({ "success": true })))
 }

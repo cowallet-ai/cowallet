@@ -3,6 +3,7 @@ pub mod ai;
 pub mod auth;
 pub mod balance;
 pub mod chains;
+pub mod config;
 pub mod mpc;
 pub mod mpc_ws;
 pub mod policy;

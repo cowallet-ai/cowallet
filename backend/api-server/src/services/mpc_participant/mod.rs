@@ -898,7 +898,43 @@ impl MpcParticipant {
             history: None,
         };
 
-        Ok(())
+        // Actually evaluate the policies against the transaction. This is the
+        // ONLY server-side gate before the server contributes its signature
+        // share (the co-signer's whole purpose as an enforcement point), so it
+        // MUST fail closed: a `Deny`, or a `RequireApproval` we cannot satisfy,
+        // aborts signing before any share leaks.
+        let decision = policy_engine::rules::evaluate(&tx_ctx, &policies);
+        match decision.action {
+            PolicyAction::Deny { reason } => {
+                tracing::warn!(
+                    "signing denied by policy {:?} for user {}: {}",
+                    decision.matched_policy, user_id, reason
+                );
+                Err(format!("transaction denied by policy: {}", reason))
+            }
+            PolicyAction::RequireApproval { .. } => {
+                // No multi-approver storage exists yet, so an approval can never
+                // be verified — refuse rather than silently signing. When the
+                // approval workflow is implemented, check for a satisfied
+                // approval record here instead of rejecting outright.
+                tracing::warn!(
+                    "signing requires unimplemented multi-approval (policy {:?}) for user {}",
+                    decision.matched_policy, user_id
+                );
+                Err("transaction requires multi-party approval, which is not yet available".to_string())
+            }
+            // Approve / RequireBiometric (biometric is enforced device-side
+            // before the sign request is ever sent) / Delay proceed. Delay has
+            // no server-side timer infrastructure; log it for visibility.
+            PolicyAction::Delay { seconds } => {
+                tracing::info!(
+                    "policy {:?} requests a {}s delay for user {} (advisory; not enforced server-side)",
+                    decision.matched_policy, seconds, user_id
+                );
+                Ok(())
+            }
+            PolicyAction::Approve | PolicyAction::RequireBiometric => Ok(()),
+        }
     }
 
     /// Decode an ERC-20 `transfer(address,uint256)` or

@@ -363,12 +363,18 @@ pub async fn build_swap_tx(
     // Sanitize amounts: Bridgers requires integer strings (no decimals)
     let clean_from_amount = sanitize_amount(from_token_amount);
     let clean_amount_out_min = sanitize_amount(amount_out_min);
-    // If amountOutMin is "0" or empty, use "1" (accept any positive output)
-    let final_amount_out_min = if clean_amount_out_min == "0" || clean_amount_out_min.is_empty() {
-        "1".to_string()
-    } else {
-        clean_amount_out_min.clone()
-    };
+    // Fail closed on a missing minimum-output. Previously "0"/empty was coerced
+    // to "1" (accept ANY positive output), which is ~100% slippage — a bad or
+    // manipulated quote, or an MEV sandwich, could take almost the entire trade.
+    // Since `to`/`data`/`value` are taken verbatim from the Bridgers response,
+    // the min-out is the only slippage protection, so we require a real one.
+    if clean_amount_out_min == "0" || clean_amount_out_min.is_empty() {
+        return Err(
+            "swap quote returned no minimum output amount; refusing to build a \
+             transaction with no slippage protection".to_string(),
+        );
+    }
+    let final_amount_out_min = clean_amount_out_min.clone();
 
     tracing::info!(
         "[Bridgers] swap fromTokenAmount={} amountOutMin={} slippage={} (raw inputs: {} / {})",

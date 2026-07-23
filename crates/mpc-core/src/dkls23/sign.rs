@@ -117,10 +117,8 @@ pub enum SignRound2Message {
         party_index: u16,
         /// [pk_len(4) | pk_json | ciphertext_json] — Enc(k_0^{-1} * x'_0)
         encrypted_share: Vec<u8>,
-        /// [ciphertext_json] — Enc(k_0^{-1}), needed for server's x'_1 term
+        /// [ciphertext_json] — Enc(k_0^{-1}), needed for server's x'_1 and m terms
         encrypted_k_inv: Vec<u8>,
-        /// k_0^{-1} * m (plaintext partial signature from device)
-        partial_s: Vec<u8>,
         /// Range proof for Enc(k_0^{-1} * x'_0): proves value ∈ [0, q)
         range_proof_share: crate::crypto::paillier_proof::PaillierRangeProof,
         /// Range proof for Enc(k_0^{-1}): proves value ∈ [0, q)
@@ -483,9 +481,12 @@ impl SignSession {
 
     /// Generate Round 2 message with MtA-based signature contribution.
     ///
-    /// Lower-indexed party (device): Generates Paillier keypair, encrypts k_0^{-1} * x'_0,
-    /// and sends MtARequest with the ciphertext + partial_s = k_0^{-1} * m.
-    /// The server NEVER learns k_0^{-1} or x'_0 individually.
+    /// Lower-indexed party (device): Generates Paillier keypair, encrypts k_0^{-1} * x'_0
+    /// and k_0^{-1}, and sends MtARequest with those ciphertexts only.
+    /// The server NEVER learns k_0^{-1}, x'_0, or any bare product of k_0^{-1}
+    /// individually. In particular the m-term (k_0^{-1}*m) is computed by the
+    /// server homomorphically from Enc(k_0^{-1}); it is NEVER sent in the clear,
+    /// because the server also knows m and could otherwise recover k_0^{-1}.
     ///
     /// Higher-indexed party (server): Waits for MtA request (no-op until process_round2).
     pub fn generate_round2(&mut self) -> Result<ProtocolMessage> {
@@ -505,12 +506,6 @@ impl SignSession {
         let r = self.r_scalar.ok_or_else(||
             MpcError::SigningFailed("r scalar not computed".into()))?;
 
-        let m_ct = Scalar::from_repr(self.message_hash.into());
-        if bool::from(m_ct.is_none()) {
-            return Err(MpcError::SigningFailed("invalid message hash".into()));
-        }
-        let m = m_ct.unwrap();
-
         let share_bytes: [u8; 32] = share
             .secret_share.as_bytes()[..32]
             .try_into()
@@ -524,7 +519,8 @@ impl SignSession {
         let lagrange = self.compute_lagrange_coefficient()?;
         let x_prime_i = x_i * lagrange;
 
-        let k_i_inv = my_k.invert().unwrap_or(Scalar::ONE);
+        let k_i_inv = Option::<Scalar>::from(my_k.invert())
+            .ok_or_else(|| MpcError::SigningFailed("ephemeral nonce k is zero (non-invertible)".into()))?;
 
         let other_party_index = self.round1_messages.iter()
             .find(|msg| msg.party_index != self.party_index)
@@ -585,9 +581,6 @@ impl SignSession {
                 &paillier.public.n, &paillier.secret.p, &paillier.secret.q,
             );
 
-            // partial_s = k_0^{-1} * m (safe to send: without knowing k_0, useless)
-            let partial_s = k_i_inv * m;
-
             // Serialize Enc(k_0^{-1} * x'_0)
             let encrypted_bytes = serde_json::to_vec(&encrypted_share)
                 .map_err(|e| MpcError::SigningFailed(format!("paillier serialization failed: {}", e)))?;
@@ -613,7 +606,6 @@ impl SignSession {
                 party_index: self.party_index,
                 encrypted_share: combined,
                 encrypted_k_inv: encrypted_k_inv_bytes,
-                partial_s: partial_s.to_bytes().to_vec(),
                 range_proof_share,
                 range_proof_k_inv,
                 modulus_proof,
@@ -639,7 +631,8 @@ impl SignSession {
     /// Process Round 2 messages and aggregate into final signature.
     ///
     /// Higher-indexed party (server): Receives MtARequest, uses Paillier homomorphism
-    /// to compute s = k_1^{-1} * (partial_s + r * Enc(k_0^{-1} * x'_0)) + k_1^{-1} * r * x'_1
+    /// to compute Enc(s) = (k_1^{-1}*m + k_1^{-1}*r*x'_1) ⊙ Enc(k_0^{-1})
+    ///                      ⊕ (k_1^{-1}*r) ⊙ Enc(k_0^{-1} * x'_0)
     /// Server never learns k_0^{-1} or x'_0.
     ///
     /// Lower-indexed party (device): Receives ServerSignature {s}, forms complete signature.
@@ -683,16 +676,16 @@ impl SignSession {
 
     /// Server-side: compute Enc(s) using Paillier homomorphism and send to device.
     fn server_compute_signature(&mut self) -> Result<EcdsaSignature> {
-        let (encrypted_share_bytes, encrypted_k_inv_bytes, partial_s_bytes, rp_share, rp_k_inv, mod_proof) =
+        let (encrypted_share_bytes, encrypted_k_inv_bytes, rp_share, rp_k_inv, mod_proof) =
             self.round2_messages.iter()
             .find_map(|m| {
                 if let SignRound2Message::MtARequest {
-                    encrypted_share, encrypted_k_inv, partial_s,
+                    encrypted_share, encrypted_k_inv,
                     range_proof_share, range_proof_k_inv, modulus_proof, ..
                 } = m {
                     Some((
                         encrypted_share.clone(), encrypted_k_inv.clone(),
-                        partial_s.clone(), range_proof_share.clone(), range_proof_k_inv.clone(),
+                        range_proof_share.clone(), range_proof_k_inv.clone(),
                         modulus_proof.clone(),
                     ))
                 } else {
@@ -719,6 +712,18 @@ impl SignSession {
             return Err(MpcError::SigningFailed("Paillier modulus proof failed: N may not be well-formed".into()));
         }
 
+        // Bind the device's public key to the PROVEN modulus and check its
+        // internal consistency before any homomorphic op runs under it. Without
+        // this, mod_proof only vouches for its own embedded N — a malicious
+        // device could send a device_pk with a small/inconsistent modulus, force
+        // MtA wraparound, and recover the server's secret multiplicand (x'_1).
+        {
+            let proven_n = num_bigint::BigUint::from_bytes_be(&mod_proof.n);
+            device_pk
+                .validate(&proven_n)
+                .map_err(|e| MpcError::SigningFailed(format!("device Paillier pk rejected: {}", e)))?;
+        }
+
         // Parse Enc(k_0^{-1})
         let c_k_inv: PaillierCiphertext = serde_json::from_slice(&encrypted_k_inv_bytes)
             .map_err(|e| MpcError::SigningFailed(format!("invalid k_inv ciphertext: {}", e)))?;
@@ -731,14 +736,13 @@ impl SignSession {
             return Err(MpcError::SigningFailed("range proof for encrypted_k_inv failed".into()));
         }
 
-        // Parse partial_s = k_0^{-1} * m
-        let mut ps_bytes = [0u8; 32];
-        ps_bytes.copy_from_slice(&partial_s_bytes[..32]);
-        let partial_s_ct = Scalar::from_repr(ps_bytes.into());
-        if bool::from(partial_s_ct.is_none()) {
-            return Err(MpcError::SigningFailed("invalid partial_s".into()));
+        // Message scalar m (server derives it locally from the shared
+        // message_hash — the device does NOT send any k_0^{-1}-bearing scalar).
+        let m_ct = Scalar::from_repr(self.message_hash.into());
+        if bool::from(m_ct.is_none()) {
+            return Err(MpcError::SigningFailed("invalid message hash".into()));
         }
-        let partial_s = partial_s_ct.unwrap();
+        let m = m_ct.unwrap();
 
         // Server's own values
         let share = self.my_share.as_ref()
@@ -758,18 +762,26 @@ impl SignSession {
             MpcError::SigningFailed("r not computed".into()))?;
         let my_k = self.my_k.ok_or_else(||
             MpcError::SigningFailed("k_1 not set".into()))?;
-        let k_1_inv = my_k.invert().unwrap_or(Scalar::ONE);
+        let k_1_inv = Option::<Scalar>::from(my_k.invert())
+            .ok_or_else(|| MpcError::SigningFailed("ephemeral nonce k_1 is zero (non-invertible)".into()))?;
 
-        // Compute Enc(s) using three terms:
+        // Compute Enc(s) using three terms, ALL homomorphic over Enc(k_0^{-1}):
         //   s = k_0^{-1}*k_1^{-1}*m + k_0^{-1}*k_1^{-1}*r*x'_0 + k_0^{-1}*k_1^{-1}*r*x'_1
-        // term1 = k_1^{-1} * partial_s  (plaintext, since partial_s = k_0^{-1}*m)
-        // term2 = (k_1^{-1}*r) ⊙ Enc(k_0^{-1}*x'_0)
-        // term3 = (k_1^{-1}*r*x'_1) ⊙ Enc(k_0^{-1})
+        // term1 = (k_1^{-1}*m)    ⊙ Enc(k_0^{-1})        = Enc(k_0^{-1}*k_1^{-1}*m)
+        // term2 = (k_1^{-1}*r)    ⊙ Enc(k_0^{-1}*x'_0)   = Enc(k_0^{-1}*k_1^{-1}*r*x'_0)
+        // term3 = (k_1^{-1}*r*x'_1)⊙ Enc(k_0^{-1})        = Enc(k_0^{-1}*k_1^{-1}*r*x'_1)
+        //
+        // SECURITY: term1 MUST stay homomorphic. Sending a plaintext k_0^{-1}*m
+        // (the old `partial_s`) let the server — which also knows m — recover
+        // k_0^{-1} = (k_0^{-1}*m)*m^{-1}, then k_0, k, and finally the full
+        // private key d = (s*k - m)*r^{-1} from the on-chain (r,s). Keeping the
+        // m-term encrypted under the device's Paillier key prevents this.
 
-        // term1: plaintext
-        let k1_inv_partial_s = k_1_inv * partial_s;
-        let k1_inv_partial_s_bytes: [u8; 32] = k1_inv_partial_s.to_bytes().into();
-        let k1_inv_partial_s_int = scalar_to_biguint(&k1_inv_partial_s_bytes);
+        // term1: homomorphic — (k_1^{-1}*m) ⊙ Enc(k_0^{-1})
+        let k1_inv_m = k_1_inv * m;
+        let k1_inv_m_bytes: [u8; 32] = k1_inv_m.to_bytes().into();
+        let k1_inv_m_int = scalar_to_biguint(&k1_inv_m_bytes);
+        let c_term1 = device_pk.scalar_mul(&c_k_inv, &k1_inv_m_int);
 
         // term2: homomorphic
         let k1_inv_r = k_1_inv * r;
@@ -777,15 +789,15 @@ impl SignSession {
         let k1_inv_r_int = scalar_to_biguint(&k1_inv_r_bytes);
         let c_term2 = device_pk.scalar_mul(&c_k_inv_x, &k1_inv_r_int);
 
-        // term3: homomorphic — THIS is the fix (previously used plaintext k_1^{-1}*r*x'_1)
+        // term3: homomorphic
         let k1_inv_r_x1 = k_1_inv * r * x_prime_1;
         let k1_inv_r_x1_bytes: [u8; 32] = k1_inv_r_x1.to_bytes().into();
         let k1_inv_r_x1_int = scalar_to_biguint(&k1_inv_r_x1_bytes);
         let c_term3 = device_pk.scalar_mul(&c_k_inv, &k1_inv_r_x1_int);
 
-        // Enc(s) = Enc(term2) ⊕ Enc(term3) ⊕ Enc(term1)
-        let c_term2_plus_3 = device_pk.add(&c_term2, &c_term3);
-        let c_s = device_pk.add_plaintext(&c_term2_plus_3, &k1_inv_partial_s_int);
+        // Enc(s) = Enc(term1) ⊕ Enc(term2) ⊕ Enc(term3)
+        let c_term1_plus_2 = device_pk.add(&c_term1, &c_term2);
+        let c_s = device_pk.add(&c_term1_plus_2, &c_term3);
 
         // Send Enc(s) to device for decryption
         let c_s_bytes = serde_json::to_vec(&c_s)
@@ -952,11 +964,15 @@ impl SignSession {
             }
         }
 
-        // Fallback: use computed recovery id if ecrecover didn't match
-        // (shouldn't happen if signature is correct)
-        let aggregate_r = self.aggregate_r_point
-            .ok_or_else(|| MpcError::SigningFailed("aggregate R not set for fallback".into()))?;
-        self.compute_recovery_id(&aggregate_r, &Scalar::ONE)
+        // Neither recovery id reproduced our known public key — the (r, s) does
+        // NOT verify against this wallet. This happens when the server returned
+        // a malformed Enc(s). Fail closed rather than emitting a signature that
+        // won't verify on-chain (the old code fell back to a computed recovery
+        // id and returned Ok, masking an invalid signature as success).
+        Err(MpcError::SigningFailed(
+            "assembled signature does not recover to the wallet public key; \
+             aborting (server may have returned an invalid share)".into(),
+        ))
     }
 
     /// Local/simulated signing (for testing only, reconstructs full key).
@@ -1005,7 +1021,8 @@ impl SignSession {
         let m = m_ct.unwrap();
 
         // Compute k_inv
-        let k_inv = k.invert().unwrap_or(Scalar::ONE);
+        let k_inv = Option::<Scalar>::from(k.invert())
+            .ok_or_else(|| MpcError::SigningFailed("ephemeral nonce k is zero (non-invertible)".into()))?;
 
         // Compute s = k^{-1} * (m + r * secret)
         let s = k_inv * (m + r_scalar * secret);

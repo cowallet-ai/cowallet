@@ -863,4 +863,13 @@ class S {
   static String get backupCopyToClipboard => _p('复制到剪贴板', 'Copy to clipboard');
   static String get backupSaveToFile => _p('保存到文件', 'Save to file');
   static String get backupPasteData => _p('粘贴加密数据', 'Paste encrypted data');
+
+  // Forced upgrade
+  static String get upgradeTitle => _p('需要更新', 'Update Required');
+  static String get upgradeMessage => _p(
+      '当前版本已不再支持,为了保障你的资产安全,请更新到最新版本后继续使用。',
+      'This version is no longer supported. Please update to the latest version to keep your assets safe and continue.');
+  static String get upgradeButton => _p('立即更新', 'Update Now');
+  static String get upgradeStoreOpenFailed =>
+      _p('无法打开应用商店,请手动更新', 'Could not open the app store, please update manually');
 }

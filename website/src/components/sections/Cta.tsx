@@ -2,13 +2,13 @@
 
 import { useLang } from "@/context/LangContext";
 import { Orb } from "@/components/ui/Orb";
-import { Button } from "@/components/ui/Button";
+import { DownloadButtons } from "@/components/ui/DownloadButtons";
 
 export function Cta() {
   const { t } = useLang();
 
   return (
-    <section className="py-24 px-6 text-center relative overflow-hidden">
+    <section id="download" className="py-24 px-6 text-center relative overflow-hidden">
       <div className="absolute inset-0 -z-10" style={{
         background: "radial-gradient(ellipse 60% 50% at 50% 50%, #ede4ce 0%, transparent 70%)",
       }} />
@@ -24,16 +24,7 @@ export function Cta() {
           {t("cta.sub")}
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button variant="primary" size="lg">
-            {t("cta.appstore")}
-          </Button>
-          <a href="https://static.catwallet.ai/app/app-release.apk" download>
-            <Button variant="outline" size="lg">
-              {t("cta.playstore")}
-            </Button>
-          </a>
-        </div>
+        <DownloadButtons iosVariant="primary" androidVariant="outline" />
       </div>
     </section>
   );

@@ -129,6 +129,37 @@ impl PaillierKeypair {
 }
 
 impl PaillierPublicKey {
+    /// Validate a public key received from an untrusted peer before using it in
+    /// homomorphic operations.
+    ///
+    /// A modulus proof only attests to the `n` embedded IN the proof; nothing
+    /// otherwise ties the `PaillierPublicKey` a peer sends to that proven `n`,
+    /// and a peer could ship a struct whose `n_squared`/`g` are inconsistent
+    /// with `n`. Either lets an attacker run the MtA homomorphism under a modulus
+    /// small enough to force wraparound, leaking the other party's secret
+    /// multiplicand. This checks:
+    ///   - `n` matches `expected_n` (the value covered by the verified proof),
+    ///   - `n` is at least 2047 bits (product of two ~1024-bit primes),
+    ///   - `n_squared == n * n`,
+    ///   - `g == n + 1` (the standard generator this implementation assumes).
+    ///
+    /// Callers MUST still separately verify the modulus proof over `expected_n`.
+    pub fn validate(&self, expected_n: &BigUint) -> Result<(), String> {
+        if &self.n != expected_n {
+            return Err("Paillier public key modulus does not match its modulus proof".to_string());
+        }
+        if self.n.bits() < 2047 {
+            return Err("Paillier modulus too small".to_string());
+        }
+        if self.n_squared != &self.n * &self.n {
+            return Err("Paillier n_squared inconsistent with n".to_string());
+        }
+        if self.g != &self.n + BigUint::one() {
+            return Err("Paillier generator g must equal n + 1".to_string());
+        }
+        Ok(())
+    }
+
     /// Encrypt a plaintext message m ∈ Z_n.
     /// Returns ciphertext c = g^m * r^n mod n^2
     pub fn encrypt(&self, m: &BigUint) -> PaillierCiphertext {
@@ -261,6 +292,40 @@ fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_validate_accepts_honest_key_and_rejects_tampering() {
+        let kp = PaillierKeypair::generate();
+        let pk = kp.public.clone();
+        let good_n = pk.n.clone();
+
+        // Honest key, bound to its own modulus: accepted.
+        assert!(pk.validate(&good_n).is_ok());
+
+        // Modulus doesn't match the proven N (the MtA-wraparound attack): rejected.
+        let wrong_n = &good_n + BigUint::one();
+        assert!(pk.validate(&wrong_n).is_err());
+
+        // g inconsistent with n (g != n+1): rejected.
+        let mut bad_g = pk.clone();
+        bad_g.g = &pk.n + BigUint::from(2u64);
+        assert!(bad_g.validate(&good_n).is_err());
+
+        // n_squared inconsistent with n: rejected.
+        let mut bad_sq = pk.clone();
+        bad_sq.n_squared = &pk.n * &pk.n + BigUint::one();
+        assert!(bad_sq.validate(&good_n).is_err());
+
+        // A small modulus (would enable wraparound) is rejected on size, even
+        // when self-consistent and matching its own (small) proven N.
+        let small_n = BigUint::from(3233u64); // 61*53
+        let small_pk = PaillierPublicKey {
+            n: small_n.clone(),
+            n_squared: &small_n * &small_n,
+            g: &small_n + BigUint::one(),
+        };
+        assert!(small_pk.validate(&small_n).is_err());
+    }
 
     /// Benchmark: time `PaillierKeypair::generate()` (two 1024-bit safe primes).
     /// This is invoked on the DEVICE during Round 2 of every signature today,

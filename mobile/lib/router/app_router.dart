@@ -11,6 +11,7 @@ import '../views/recovery/recovery_view.dart';
 import '../views/settings/backup_shard_view.dart';
 import '../views/settings/policy_view.dart';
 import '../views/wallet/tx_history_view.dart';
+import '../views/force_upgrade_view.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../theme/colors.dart';
 import '../theme/typography.dart';
@@ -26,6 +27,7 @@ class AppRouter {
   static const txHistory = '/tx-history';
   static const backupShard = '/backup-shard';
   static const policy = '/policy';
+  static const forceUpgrade = '/force-upgrade';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -46,6 +48,14 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const BackupShardView());
       case policy:
         return MaterialPageRoute(builder: (_) => const PolicyView());
+      case forceUpgrade:
+        final args = (settings.arguments as Map<String, dynamic>?) ?? const {};
+        return MaterialPageRoute(
+          builder: (_) => ForceUpgradeView(
+            iosStoreUrl: (args['ios'] as String?) ?? '',
+            androidStoreUrl: (args['android'] as String?) ?? '',
+          ),
+        );
       default:
         return MaterialPageRoute(builder: (_) => const AppShell());
     }
