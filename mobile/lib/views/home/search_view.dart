@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import '../../theme/typography.dart';
 import '../../l10n/strings.dart';
-import '../../main.dart';
 import '../../services/locator.dart';
 import '../../services/balance_service.dart';
 import '../../services/chain_service.dart';
-import '../../router/app_router.dart';
 
 class SearchView extends StatefulWidget {
   const SearchView({super.key});
@@ -219,7 +217,7 @@ class _SearchViewState extends State<SearchView> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: f.color.withOpacity(0.1),
+                color: f.color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(f.icon, color: f.color, size: 18),
@@ -351,7 +349,7 @@ class _SearchViewState extends State<SearchView> {
           width: 36,
           height: 36,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _tokenFallbackIcon(token.symbol),
+          errorBuilder: (_, _, _) => _tokenFallbackIcon(token.symbol),
         ),
       );
     }

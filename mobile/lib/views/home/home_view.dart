@@ -231,7 +231,7 @@ class _HomeViewState extends State<HomeView> {
                 context,
                 MaterialPageRoute(builder: (_) => const SearchView()),
               );
-              if (result != null && result.isNotEmpty && mounted) {
+              if (result != null && result.isNotEmpty && context.mounted) {
                 AppShell.goToChatAndSend(context, result);
               }
             },

@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:convert/convert.dart';
 import 'package:pointycastle/export.dart';
@@ -85,7 +85,7 @@ class MpcTxService implements TxService {
 
     // Switch chain RPC if targeting a different chain
     if (_chain is JsonRpcChainService && effectiveChainId != this.chainId) {
-      (_chain as JsonRpcChainService).switchChain(ChainConfig.byId(effectiveChainId));
+      (_chain).switchChain(ChainConfig.byId(effectiveChainId));
     }
 
     final address = await _wallet.getAddress();
@@ -165,7 +165,7 @@ class MpcTxService implements TxService {
 
     final msgHash = Digest('Keccak/256').process(payload);
     timer.mark('buildTx+msgHash');
-    print('[TxService] msgHash computed, starting MPC sign...');
+    debugPrint('[TxService] msgHash computed, starting MPC sign...');
 
     // Structured tx fields the server independently re-hashes + policy-checks.
     // Field values mirror the EIP-1559 fields hashed above (empty access list).
@@ -186,7 +186,7 @@ class MpcTxService implements TxService {
     try {
       final signResult = await _wallet.signWithSession(msgHash.toList(), txFields: signTxFields, walletId: address);
       timer.mark('mpcSign');
-      print('[TxService] MPC sign complete, sig length=${signResult.signature.length}');
+      debugPrint('[TxService] MPC sign complete, sig length=${signResult.signature.length}');
 
       if (signResult.signature.length != 65) {
         throw TxSigningException('Invalid MPC signature length: ${signResult.signature.length}');
@@ -233,7 +233,7 @@ class MpcTxService implements TxService {
     );
 
     timer.mark('submit');
-    print('[TxService] submit result: success=${submitResult.isSuccess}, error=${submitResult.errorMessage}');
+    debugPrint('[TxService] submit result: success=${submitResult.isSuccess}, error=${submitResult.errorMessage}');
 
     if (!submitResult.isSuccess || submitResult.data == null) {
       throw TxSigningException(
@@ -243,7 +243,7 @@ class MpcTxService implements TxService {
 
     // Restore default chain RPC
     if (_chain is JsonRpcChainService && effectiveChainId != this.chainId) {
-      (_chain as JsonRpcChainService).switchChain(ChainConfig.byId(this.chainId));
+      (_chain).switchChain(ChainConfig.byId(this.chainId));
     }
 
     // Trigger presign pool check after successful signing (non-blocking)
@@ -251,7 +251,7 @@ class MpcTxService implements TxService {
 
     return submitResult.data!['tx_hash'] as String;
     } catch (e) {
-      print('[TxService] ERROR during sign/submit: $e');
+      debugPrint('[TxService] ERROR during sign/submit: $e');
       rethrow;
     } finally {
       timer.done();

@@ -52,7 +52,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // --- Bio stage state ---
   bool _bioAuthenticating = false;
   bool _bioDone = false;
-  bool _bioError = false;
 
   // --- Email stage state ---
   final _emailCtrl = TextEditingController();
@@ -156,7 +155,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final canResume = await sessionManager.canResume();
     if (canResume && mounted) {
       setState(() => _isResuming = true);
-      print('[OnboardingFlow] Found resumable session, attempting recovery...');
+      debugPrint('[OnboardingFlow] Found resumable session, attempting recovery...');
     }
 
     bool authDone = false;
@@ -167,10 +166,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     String? generatedAddress;
 
     void maybeAdvance() {
-      print('[OnboardingFlow] maybeAdvance: auth=$authDone mpcSession=$mpcSessionDone mpcProto=$mpcProtocolDone wallet=$walletDone anim=$animDone mounted=$mounted addr=$generatedAddress');
+      debugPrint('[OnboardingFlow] maybeAdvance: auth=$authDone mpcSession=$mpcSessionDone mpcProto=$mpcProtocolDone wallet=$walletDone anim=$animDone mounted=$mounted addr=$generatedAddress');
       if (!authDone || !mpcSessionDone || !mpcProtocolDone || !walletDone || !animDone || !mounted) return;
       if (generatedAddress == null) return;
-      print('[OnboardingFlow] All conditions met, advancing to backup stage');
+      debugPrint('[OnboardingFlow] All conditions met, advancing to backup stage');
       try {
         CowalletApp.of(context).setWalletAddress(generatedAddress!);
       } catch (_) {}
@@ -258,7 +257,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // Immediately update UI before any async work
     setState(() {
       _bioAuthenticating = true;
-      _bioError = false;
     });
 
     try {
@@ -294,7 +292,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       } else {
         setState(() {
           _bioAuthenticating = false;
-          _bioError = true;
         });
         return;
       }
@@ -313,7 +310,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       if (!mounted) return;
       setState(() {
         _bioAuthenticating = false;
-        _bioError = true;
       });
     }
   }
@@ -339,7 +335,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         final pendingShard = await SecureStorage.get(SecureStorage.keyPendingBackupShard);
         if (pendingShard != null && pendingShard.isNotEmpty) {
           backupBytes = base64Decode(pendingShard);
-          print('[OnboardingFlow] Loaded backup shard from pending storage');
+          debugPrint('[OnboardingFlow] Loaded backup shard from pending storage');
         }
       }
 
@@ -355,7 +351,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       // Delete pending backup shard after successful backup
       await SecureStorage.delete(SecureStorage.keyPendingBackupShard);
       await SecureStorage.delete(SecureStorage.keyPendingBackupCreatedAt);
-      print('[OnboardingFlow] Deleted pending backup shard after successful backup');
+      debugPrint('[OnboardingFlow] Deleted pending backup shard after successful backup');
 
       // Store SHA-256(backup_shard) on server for future force re-register verification.
       final digest = SHA256Digest();
@@ -363,11 +359,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       final hashHex = convert.hex.encode(hash);
       final hashResult = await ShardsApi.storeBackupHash(backupShardHashHex: hashHex);
       if (hashResult.isSuccess) {
-        print('[OnboardingFlow] Stored backup shard hash on server');
+        debugPrint('[OnboardingFlow] Stored backup shard hash on server');
       } else {
         // Non-fatal: save hash locally for retry later
         await SecureStorage.save('pending_backup_hash', hashHex);
-        print('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
+        debugPrint('[OnboardingFlow] Failed to store backup hash, saved locally for retry');
       }
 
       if (!mounted) return;
@@ -386,8 +382,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         if (mounted) _goTo(_Stage.bio);
       });
     } catch (e, st) {
-      print('[OnboardingBackup] Error: $e');
-      print('[OnboardingBackup] StackTrace: $st');
+      debugPrint('[OnboardingBackup] Error: $e');
+      debugPrint('[OnboardingBackup] StackTrace: $st');
       if (!mounted) return;
       setState(() => _backupSaving = false);
       final errMsg = switch (e) {
@@ -421,6 +417,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final appState = CowalletApp.of(context);
     appState.completeOnboarding();
     final addr = appState.walletAddress;
+    final navigator = Navigator.of(context);
 
     // Clear persisted onboarding step
     await SecureStorage.delete(SecureStorage.keyOnboardingStep);
@@ -433,7 +430,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (addr.isNotEmpty) {
       Services.balance.refresh(addr);
     }
-    Navigator.pushReplacementNamed(context, '/');
+    navigator.pushReplacementNamed('/');
   }
 
   // ======================= BUILD =======================
@@ -457,7 +454,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               fit: StackFit.expand,
               children: [
                 ...previousChildren,
-                if (currentChild != null) currentChild,
+                ?currentChild,
               ],
             );
           },

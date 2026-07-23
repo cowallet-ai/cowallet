@@ -52,14 +52,14 @@ class AiApi {
       "/ai/chat",
       data: {
         "message": message,
-        if (sessionId != null) "session_id": sessionId,
-        if (userId != null) "user_id": userId,
-        if (walletAddress != null) "wallet_address": walletAddress,
-        if (supportedChains != null) "supported_chains": supportedChains,
-        if (portfolioContext != null) "portfolio": portfolioContext,
+        "session_id": ?sessionId,
+        "user_id": ?userId,
+        "wallet_address": ?walletAddress,
+        "supported_chains": ?supportedChains,
+        "portfolio": ?portfolioContext,
         if (contacts != null && contacts.isNotEmpty) "contacts": contacts,
-        if (authMethod != null) "auth_method": authMethod,
-        if (lang != null) "lang": lang,
+        "auth_method": ?authMethod,
+        "lang": ?lang,
       },
     );
 
@@ -111,7 +111,7 @@ class AiApi {
       "/ai/sessions",
       data: {
         "user_id": userId,
-        if (title != null) "title": title,
+        "title": ?title,
       },
     );
 

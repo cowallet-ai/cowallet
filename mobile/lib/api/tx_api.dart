@@ -23,12 +23,12 @@ class TxApi {
       "/tx/submit",
       data: {
         "raw_tx": rawTx,
-        if (chainId != null) "chain_id": chainId,
-        if (toAddr != null) "to_addr": toAddr,
-        if (value != null) "value": value,
-        if (token != null) "token": token,
-        if (fromAddr != null) "from_addr": fromAddr,
-        if (mpcSessionId != null) "mpc_session_id": mpcSessionId,
+        "chain_id": ?chainId,
+        "to_addr": ?toAddr,
+        "value": ?value,
+        "token": ?token,
+        "from_addr": ?fromAddr,
+        "mpc_session_id": ?mpcSessionId,
       },
     );
   }
@@ -105,9 +105,9 @@ class TxApi {
       "/tx/simulate",
       data: {
         "to": to,
-        if (value != null) "value": value,
-        if (data != null) "data": data,
-        if (from != null) "from": from,
+        "value": ?value,
+        "data": ?data,
+        "from": ?from,
       },
     );
   }
@@ -131,9 +131,9 @@ class TxApi {
       data: {
         "from": from,
         "to": to,
-        if (value != null) "value": value,
-        if (token != null) "token": token,
-        if (chainId != null) "chain_id": chainId,
+        "value": ?value,
+        "token": ?token,
+        "chain_id": ?chainId,
       },
     );
   }

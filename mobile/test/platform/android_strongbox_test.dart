@@ -1,10 +1,16 @@
 // Integration tests for Android StrongBox
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cowallet/platform/android_strongbox_channel.dart';
 import 'package:cowallet/platform/sb_manager.dart';
 
 void main() {
+  // Platform-channel calls need the services binding; without it the channel
+  // throws a raw "Binding not initialized" FlutterError instead of the
+  // SbException these tests expect.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('Android StrongBox Platform Channel', () {
     test('isAvailable returns boolean', () async {
       final available = await AndroidStrongBoxChannel.isAvailable();
@@ -68,7 +74,7 @@ void main() {
         expect(available, isA<bool>());
       } catch (e) {
         // Expected in unit tests on non-Android platforms
-        print('StrongBox not available: $e');
+        debugPrint('StrongBox not available: $e');
       }
     });
 
@@ -78,7 +84,7 @@ void main() {
         // Should be null before initialization
         expect(keyId, anyOf([isNull, isA<String>()]));
       } catch (e) {
-        print('Error: $e');
+        debugPrint('Error: $e');
       }
     });
 
@@ -88,7 +94,7 @@ void main() {
         // Should succeed without error
       } catch (e) {
         // Expected in unit tests
-        print('Clear wallet error: $e');
+        debugPrint('Clear wallet error: $e');
       }
     });
   });

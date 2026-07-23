@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../api/mpc_api.dart';
 import '../bridge/mpc_bridge.dart';
@@ -50,7 +51,7 @@ class MpcSessionManager {
         return null;
       }
     } catch (e) {
-      print('[MpcSessionManager] Error checking session: $e');
+      debugPrint('[MpcSessionManager] Error checking session: $e');
       // Network error, keep local state for now
       return session;
     }
@@ -61,13 +62,13 @@ class MpcSessionManager {
     // Check for existing session
     final existing = await checkResumableSession();
     if (existing != null && existing.sessionType == 'keygen') {
-      print('[MpcSessionManager] Attempting to resume DKG session ${existing.remoteSessionId}');
+      debugPrint('[MpcSessionManager] Attempting to resume DKG session ${existing.remoteSessionId}');
       try {
         final result = await _resumeDkg(existing);
         await MpcSessionStore.clearSession();
         return result;
       } catch (e) {
-        print('[MpcSessionManager] Resume failed: $e, starting fresh');
+        debugPrint('[MpcSessionManager] Resume failed: $e, starting fresh');
         await MpcSessionStore.clearSession();
       }
     }
@@ -81,13 +82,13 @@ class MpcSessionManager {
     // Check for existing session
     final existing = await checkResumableSession();
     if (existing != null && existing.sessionType == 'sign') {
-      print('[MpcSessionManager] Attempting to resume Sign session ${existing.remoteSessionId}');
+      debugPrint('[MpcSessionManager] Attempting to resume Sign session ${existing.remoteSessionId}');
       try {
         final result = await _resumeSign(existing, msgHash, txFields: txFields);
         await MpcSessionStore.clearSession();
         return result;
       } catch (e) {
-        print('[MpcSessionManager] Resume failed: $e, starting fresh');
+        debugPrint('[MpcSessionManager] Resume failed: $e, starting fresh');
         await MpcSessionStore.clearSession();
       }
     }
@@ -101,13 +102,13 @@ class MpcSessionManager {
     // Check for existing session
     final existing = await checkResumableSession();
     if (existing != null && existing.sessionType == 'reshare') {
-      print('[MpcSessionManager] Attempting to resume Reshare session ${existing.remoteSessionId}');
+      debugPrint('[MpcSessionManager] Attempting to resume Reshare session ${existing.remoteSessionId}');
       try {
         final result = await _resumeReshare(existing);
         await MpcSessionStore.clearSession();
         return result;
       } catch (e) {
-        print('[MpcSessionManager] Resume failed: $e, starting fresh');
+        debugPrint('[MpcSessionManager] Resume failed: $e, starting fresh');
         await MpcSessionStore.clearSession();
       }
     }

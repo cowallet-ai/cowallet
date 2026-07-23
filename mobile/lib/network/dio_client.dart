@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
@@ -76,11 +76,11 @@ class DioClient {
               options.headers["Authorization"] = "Bearer $token";
               // Do not log token contents, not even a prefix (F-021): a prefix
               // still leaks the JWT header/alg and narrows brute-force space.
-              print("✅ [DioClient] Token attached");
+              debugPrint("✅ [DioClient] Token attached");
             } else {
-              print("⚠️  [DioClient] No token found in SecureStorage");
+              debugPrint("⚠️  [DioClient] No token found in SecureStorage");
               // 尝试直接检查文件
-              print("   Path: ${options.path}");
+              debugPrint("   Path: ${options.path}");
             }
 
             // Mandatory device binding (F-010): protected routes reject requests
@@ -94,7 +94,7 @@ class DioClient {
             // MIN_APP_BUILD and returns 426 for stale clients.
             options.headers["X-App-Version"] = (await _buildNumber()).toString();
           } catch (e) {
-            print("❌ [DioClient] Error reading token: $e");
+            debugPrint("❌ [DioClient] Error reading token: $e");
           }
           return handler.next(options);
         },
@@ -139,7 +139,7 @@ class DioClient {
               // Leave stored tokens as-is: a transient failure or a declined
               // biometric prompt must not silently log the user out. The next
               // request (or app restart) retries recovery.
-              print("⚠️  Session recovery failed for $path");
+              debugPrint("⚠️  Session recovery failed for $path");
               return handler.next(e);
             }
             // Retry the original request once with the fresh token.
@@ -324,7 +324,7 @@ class DioClient {
         ),
       );
     } catch (e) {
-      print("❌ [DioClient] Stream request failed: $e");
+      debugPrint("❌ [DioClient] Stream request failed: $e");
       return null;
     }
   }

@@ -318,7 +318,7 @@ class _WalletViewState extends State<WalletView> {
                   width: 32,
                   height: 32,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _tokenFallbackIcon(emoji, iconBg),
+                  errorBuilder: (_, _, _) => _tokenFallbackIcon(emoji, iconBg),
                 ),
               )
             else

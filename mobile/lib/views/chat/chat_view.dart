@@ -494,8 +494,8 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     _doStream(text, aiMsgIndex);
   }
 
-  Future<void> _doStream(String text, int _initialAiMsgIndex) async {
-    var aiMsgIndex = _initialAiMsgIndex;
+  Future<void> _doStream(String text, int initialAiMsgIndex) async {
+    var aiMsgIndex = initialAiMsgIndex;
     final walletAddress = CowalletApp.of(context).walletAddress;
     final userId = await SecureStorage.getUserId();
 
@@ -749,7 +749,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             }
 
             // Read tools: render widget based on widget_type
-            void _insertWidget(ChatMsg widget) {
+            void insertWidget(ChatMsg widget) {
               setState(() {
                 // If current AI message is empty, remove it before widget
                 if (_messages[aiMsgIndex].text.isEmpty) {
@@ -766,7 +766,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             switch (widgetType ?? toolName) {
               case 'balance':
               case 'get_balance':
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.balance,
                   widgetData: result,
@@ -777,7 +777,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 final addr = result['address'] as String? ??
                     CowalletApp.of(context).walletAddress;
                 if (addr.isNotEmpty) {
-                  _insertWidget(ChatMsg(
+                  insertWidget(ChatMsg(
                     kind: ChatMsgKind.widget,
                     widgetType: WidgetType.receive,
                     widgetData: {'address': addr},
@@ -788,7 +788,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
               case 'get_transaction_history':
                 final transactions = (result['transactions'] as List<dynamic>?) ?? [];
                 final total = result['total'] as int? ?? transactions.length;
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.history,
                   widgetData: {'transactions': transactions, 'total': total},
@@ -796,7 +796,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 break;
               case 'audit':
               case 'security_audit':
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.audit,
                   widgetData: result,
@@ -804,7 +804,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 break;
               case 'token_info':
               case 'get_token_info':
-                _insertWidget(ChatMsg(
+                insertWidget(ChatMsg(
                   kind: ChatMsgKind.widget,
                   widgetType: WidgetType.tokenInfo,
                   widgetData: result,
@@ -1851,7 +1851,7 @@ class _ThinkingDotsState extends State<_ThinkingDots>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) {
+      builder: (_, _) {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [

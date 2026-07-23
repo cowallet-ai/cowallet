@@ -309,9 +309,6 @@ class _SettingsViewState extends State<SettingsView> {
   String _formatLastRotation() {
     if (_lastRotationDate == null) return S.never;
 
-    final locale = Localizations.localeOf(context);
-    final isZh = locale.languageCode == 'zh';
-
     try {
       final date = DateTime.parse(_lastRotationDate!);
       final now = DateTime.now();
