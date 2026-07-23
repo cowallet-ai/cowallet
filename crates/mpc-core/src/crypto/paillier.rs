@@ -285,13 +285,43 @@ fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
     (gcd, x, y)
 }
 
+/// Shared 2048-bit Paillier keypair for tests that only need *a* valid keypair
+/// (encrypt/decrypt, homomorphic ops, range/modulus proofs, MtA) rather than
+/// exercising keygen itself. Tests that specifically validate generation (bit
+/// sizes, p != q, serialize roundtrip) still call `PaillierKeypair::generate()`.
+///
+/// Built from two FIXED, pre-verified 1024-bit safe primes via `from_primes`,
+/// NOT by calling `generate()`: safe-prime search (glass_pumpkin) has a heavy
+/// random long tail (seconds to minutes per call) that dominated test time.
+/// The primes below were produced with `openssl dhparam 1024` (a safe prime:
+/// both p and (p-1)/2 are prime) and each independently primality-checked.
+/// This yields a genuine, valid 2048-bit Paillier key with zero randomness,
+/// so these tests are both fast and deterministic.
+///
+/// `pub(crate)` so sibling crypto test modules (mta, paillier_proof) can reuse it.
+#[cfg(test)]
+pub(crate) fn test_keypair() -> &'static PaillierKeypair {
+    use std::sync::LazyLock;
+    static KP: LazyLock<PaillierKeypair> = LazyLock::new(|| {
+        // Two fixed 1024-bit safe primes (openssl dhparam 1024; verified prime,
+        // (p-1)/2 verified prime). Leading 00 sign byte from openssl is dropped
+        // by hex parsing. CI-only fixtures — never used in production keygen.
+        let p = BigUint::parse_bytes(b"fa211ab2736b6a381c0019eaf71494a5d447a59a418746ac486606b2394e6b1fb7dbe5e8bcab4d55ee379ff1c8560e8afe56f95167e8bcc7b77eb631d4ba60285d433bb1298e62edcbd0903feb1a94a315c5de02da715f890d6370d89393d02932c9efa1e56771d31782da535d1628215cbca9a8ff84766ec8e4654fd441140b", 16)
+            .expect("valid hex prime p");
+        let q = BigUint::parse_bytes(b"d5a1112c9698379a574c4b76d32eef1de1d39adba19bd7e135c34122b3337195c1c351811a39b20969475896e123a0af8ea0a917df69e19aec7cfacbacb3c4b1ceef78c13b9dc3762d48040615b6861adc6c21511831643d573eef22b69f03a76f9f32cb8811e20420a80e6ad3af76b410ddbe93772976840c84ed0fb7d6d22b", 16)
+            .expect("valid hex prime q");
+        PaillierKeypair::from_primes(p, q)
+    });
+    &KP
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_validate_accepts_honest_key_and_rejects_tampering() {
-        let kp = PaillierKeypair::generate();
+        let kp = test_keypair();
         let pk = kp.public.clone();
         let good_n = pk.n.clone();
 
@@ -359,7 +389,9 @@ mod tests {
 
     #[test]
     fn paillier_keypair_roundtrips_through_bytes() {
-        let kp = PaillierKeypair::generate();
+        // Serialization roundtrip is independent of how the key was produced —
+        // reuse the shared fixture instead of paying for a fresh keygen.
+        let kp = test_keypair();
         let bytes = kp.to_bytes();
         let restored = PaillierKeypair::from_bytes(&bytes).expect("should deserialize");
 
@@ -390,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_paillier_encrypt_decrypt() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let m = BigUint::from(42u64);
         let ct = keypair.public.encrypt(&m);
         let decrypted = keypair.secret.decrypt(&keypair.public, &ct);
@@ -399,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_paillier_homomorphic_add() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let m1 = BigUint::from(100u64);
         let m2 = BigUint::from(200u64);
 
@@ -413,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_paillier_scalar_mul() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let m = BigUint::from(7u64);
         let scalar = BigUint::from(6u64);
 
@@ -426,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_paillier_with_scalar_values() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
         let q = secp256k1_order();
 
         // Simulate encrypting a secp256k1 scalar
@@ -491,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_paillier_encrypt_decrypt_roundtrip() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
 
         // Test with various scalar values
         let test_values = vec![
@@ -525,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_paillier_homomorphic_addition() {
-        let keypair = PaillierKeypair::generate();
+        let keypair = test_keypair();
 
         // Test basic addition
         let a = BigUint::from(100u64);
