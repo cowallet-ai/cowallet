@@ -33,6 +33,10 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # 与 ci.yml 的 test job 共享编译缓存(key 必须一致):clippy 与 test 的
+          # codegen 大量重叠,共享后两个 job 合计省掉近一整遍 workspace 编译。
+          shared-key: "workspace"
 
       # Advisory: 不因历史 lint debt 阻塞 PR;结果可见于 Actions 日志。
       # 待 lint debt 清完后移除 continue-on-error 并升级为 required。
