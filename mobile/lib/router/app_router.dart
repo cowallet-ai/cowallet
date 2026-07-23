@@ -115,6 +115,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: IndexedStack(index: _currentIndex, children: _views),
       bottomNavigationBar: _buildTabBar(),
     );

@@ -148,6 +148,10 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
 
   bool get _isEmpty => _messages.isEmpty;
 
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
   // Tap-to-toggle voice dictation. Recognized text is placed in the composer
   // for the user to review/edit before sending — never auto-sent, since a
   // misheard amount or address in a wallet command is dangerous.
@@ -1251,7 +1255,13 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
           Column(
             children: [
               _buildHeader(),
-              Expanded(child: _isEmpty ? _buildEmptyState() : _buildConversation()),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _dismissKeyboard,
+                  child: _isEmpty ? _buildEmptyState() : _buildConversation(),
+                ),
+              ),
               _buildComposer(),
             ],
           ),
@@ -1434,6 +1444,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   Widget _buildEmptyState() {
     return Center(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1493,6 +1504,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   Widget _buildConversation() {
     return ListView.builder(
       controller: _scrollController,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       itemCount: _messages.length,
       itemBuilder: (_, i) {
@@ -1768,6 +1780,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                   isDense: true,
                 ),
                 textInputAction: TextInputAction.send,
+                onTapOutside: (_) => _dismissKeyboard(),
                 onSubmitted: (_) => _send(),
               ),
             ),
