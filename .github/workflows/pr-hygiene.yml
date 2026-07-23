@@ -32,6 +32,7 @@ jobs:
             style
             perf
             build
+            security
           # 不强制 scope;标题首字母不强制大写(中文标题友好)。
           requireScope: false
           subjectPattern: ".+"
