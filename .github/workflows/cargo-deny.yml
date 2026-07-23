@@ -6,8 +6,11 @@ on:
   push:
     branches: [main]
     paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock", "deny.toml"]
+  # compliance job 的 name 是分支保护里的 required check "cargo-deny
+  # (licenses/bans/sources)"。required check 不能配 paths 过滤:纯前端/文档
+  # PR 不匹配 paths 时 workflow 不触发,该 check 会永远停在 pending 卡死合并。
+  # 故 PR 上无条件运行(check 很快、依赖树没变时稳定变绿)。
   pull_request:
-    paths: ["backend/**", "crates/**", "Cargo.toml", "Cargo.lock", "deny.toml"]
   schedule:
     # 每周一 08:17 UTC —— 捡新发布的 CVE(错开整点,避开 runner 高峰)。
     - cron: "17 8 * * 1"
