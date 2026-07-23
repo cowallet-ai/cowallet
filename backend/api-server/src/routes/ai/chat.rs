@@ -5,7 +5,7 @@ use super::tools::{
 use crate::middleware::auth::Claims;
 use crate::services::ai_executor::{ToolContext, ToolExecutionResult};
 use crate::services::ai_provider::{
-    ChatMessage, ChatRole, StreamEvent, ToolCallInfo as ProviderToolCallInfo, ToolDef,
+    AiProvider, ChatMessage, ChatRole, StreamEvent, ToolCallInfo as ProviderToolCallInfo, ToolDef,
 };
 use crate::services::chat_store::ChatStore;
 use crate::state::AppState;
@@ -132,14 +132,14 @@ pub(super) async fn chat_stream(
         }
 
         let _ = req.model;
-        let ai = match state.select_ai_provider() {
-            Some(c) => c,
-            None => {
-                yield sse_event("error", &serde_json::json!({"message": "AI 服务未配置"}));
-                yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
-                return;
-            }
-        };
+        // Providers to try in preference order. AI chat fails over to the next
+        // provider if the preferred one errors when opening the stream below.
+        let providers = state.ai_providers_ordered();
+        if providers.is_empty() {
+            yield sse_event("error", &serde_json::json!({"message": "AI 服务未配置"}));
+            yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
+            return;
+        }
 
         // Build context messages with language directive
         let system_content = if req.lang.as_deref() == Some("en") {
@@ -215,11 +215,28 @@ pub(super) async fn chat_stream(
         let mut full_content = String::new();
         let mut tool_calls_result: Vec<ProviderToolCallInfo> = Vec::new();
 
-        let stream_resp = ai.stream_chat(&messages, &tools, None).await;
-        let mut event_stream = match stream_resp {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!("AI stream failed: {}", e);
+        // Open the stream, failing over across providers in preference order.
+        // Failover only happens here, before any token is emitted; once a
+        // provider is chosen, the retry/second-round streams below reuse it so
+        // we never switch engines mid-conversation.
+        let mut ai: Option<Arc<dyn AiProvider>> = None;
+        let mut event_stream = None;
+        for (kind, provider) in &providers {
+            match provider.stream_chat(&messages, &tools, None).await {
+                Ok(s) => {
+                    ai = Some(Arc::clone(provider));
+                    event_stream = Some(s);
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!("AI provider {:?} stream failed: {} — trying next", kind, e);
+                }
+            }
+        }
+        let (ai, mut event_stream) = match (ai, event_stream) {
+            (Some(ai), Some(s)) => (ai, s),
+            _ => {
+                tracing::error!("All AI providers failed to open a stream");
                 yield sse_event("error", &serde_json::json!({"message": "AI 服务暂时不可用，请稍后重试"}));
                 yield sse_event("done", &serde_json::json!({"needs_confirmation": []}));
                 return;

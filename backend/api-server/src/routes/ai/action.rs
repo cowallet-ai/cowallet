@@ -125,13 +125,15 @@ pub(super) async fn ai_action(
         }
     }
 
-    // Fall back to AI chat if confidence is low or entities insufficient
-    let ai = state.select_ai_provider().ok_or_else(|| {
-        (
+    // Fall back to AI chat if confidence is low or entities insufficient.
+    // Providers are tried in preference order and fail over on request error.
+    let providers = state.ai_providers_ordered();
+    if providers.is_empty() {
+        return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({"error": "AI service not configured"})),
-        )
-    })?;
+        ));
+    }
 
     let messages = vec![
         ChatMessage {
@@ -148,12 +150,29 @@ pub(super) async fn ai_action(
         },
     ];
 
-    // Use non-streaming chat for simple response
-    let response = ai.chat(&messages, &[], None).await.map_err(|e| {
-        tracing::error!("AI chat failed: {}", e);
+    // Use non-streaming chat for simple response, failing over across providers.
+    let mut response = None;
+    let mut last_err = None;
+    for (kind, provider) in &providers {
+        match provider.chat(&messages, &[], None).await {
+            Ok(resp) => {
+                response = Some(resp);
+                break;
+            }
+            Err(e) => {
+                tracing::warn!("AI provider {:?} chat failed: {} — trying next", kind, e);
+                last_err = Some(e);
+            }
+        }
+    }
+    let response = response.ok_or_else(|| {
+        let detail = last_err
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "no provider available".to_string());
+        tracing::error!("All AI providers failed: {}", detail);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("AI request failed: {}", e)})),
+            Json(serde_json::json!({"error": format!("AI request failed: {}", detail)})),
         )
     })?;
 

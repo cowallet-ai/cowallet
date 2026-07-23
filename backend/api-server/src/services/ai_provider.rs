@@ -93,3 +93,64 @@ impl Default for ProviderKind {
         Self::Bedrock
     }
 }
+
+impl std::str::FromStr for ProviderKind {
+    type Err = ();
+
+    /// Parse a provider name, case-insensitively. Only `bedrock` / `deepseek`
+    /// are accepted; anything else is an error (callers fall back to default).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "bedrock" => Ok(Self::Bedrock),
+            "deepseek" => Ok(Self::DeepSeek),
+            _ => Err(()),
+        }
+    }
+}
+
+impl ProviderKind {
+    /// Resolve the operator's preferred provider from the `AI_PROVIDER` env var.
+    /// Values are case-insensitive (`bedrock` | `deepseek`). A missing var uses
+    /// the default silently; a present-but-invalid value warns and falls back to
+    /// the default so a typo can never take AI chat down.
+    pub fn from_env() -> Self {
+        match std::env::var("AI_PROVIDER") {
+            Ok(raw) => match raw.parse::<ProviderKind>() {
+                Ok(kind) => kind,
+                Err(()) => {
+                    tracing::warn!(
+                        "Invalid AI_PROVIDER value {:?}; falling back to default ({:?})",
+                        raw,
+                        ProviderKind::default()
+                    );
+                    ProviderKind::default()
+                }
+            },
+            Err(_) => ProviderKind::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_str_is_case_insensitive() {
+        assert_eq!("bedrock".parse(), Ok(ProviderKind::Bedrock));
+        assert_eq!("Bedrock".parse(), Ok(ProviderKind::Bedrock));
+        assert_eq!("  DEEPSEEK  ".parse(), Ok(ProviderKind::DeepSeek));
+        assert_eq!("deepseek".parse(), Ok(ProviderKind::DeepSeek));
+    }
+
+    #[test]
+    fn from_str_rejects_unknown() {
+        assert_eq!("openai".parse::<ProviderKind>(), Err(()));
+        assert_eq!("".parse::<ProviderKind>(), Err(()));
+    }
+
+    #[test]
+    fn default_is_bedrock() {
+        assert_eq!(ProviderKind::default(), ProviderKind::Bedrock);
+    }
+}
