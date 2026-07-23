@@ -22,7 +22,7 @@ class SettingsService extends ChangeNotifier {
   bool _biometricEnabled = false;
   bool _voiceInputEnabled = true;
   IntentMode _intentMode = IntentMode.onEnter;
-  String _language = 'zh';
+  String? _language;
   bool _weeklyReportEnabled = false;
   bool _emergencyFreezeActive = false;
   bool _aiConsentGranted = false;
@@ -31,7 +31,7 @@ class SettingsService extends ChangeNotifier {
   bool get biometricEnabled => _biometricEnabled;
   bool get voiceInputEnabled => _voiceInputEnabled;
   IntentMode get intentMode => _intentMode;
-  String get language => _language;
+  String? get language => _language;
   bool get weeklyReportEnabled => _weeklyReportEnabled;
   bool get emergencyFreezeActive => _emergencyFreezeActive;
   bool get aiConsentGranted => _aiConsentGranted;
@@ -44,7 +44,7 @@ class SettingsService extends ChangeNotifier {
     _intentMode = _prefs.getString(_keyIntentMode) == 'whileTyping'
         ? IntentMode.whileTyping
         : IntentMode.onEnter;
-    _language = _prefs.getString(_keyLanguage) ?? 'zh';
+    _language = _prefs.getString(_keyLanguage);
     _weeklyReportEnabled = _prefs.getBool(_keyWeeklyReport) ?? false;
     _emergencyFreezeActive = _prefs.getBool(_keyEmergencyFreeze) ?? false;
     _aiConsentGranted = _prefs.getBool(_keyAiConsent) ?? false;
@@ -69,7 +69,10 @@ class SettingsService extends ChangeNotifier {
   Future<void> setIntentMode(IntentMode mode) async {
     if (_intentMode == mode) return;
     _intentMode = mode;
-    await _prefs.setString(_keyIntentMode, mode == IntentMode.whileTyping ? 'whileTyping' : 'onEnter');
+    await _prefs.setString(
+      _keyIntentMode,
+      mode == IntentMode.whileTyping ? 'whileTyping' : 'onEnter',
+    );
     notifyListeners();
   }
 
