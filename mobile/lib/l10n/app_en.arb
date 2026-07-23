@@ -126,8 +126,6 @@
 
   "voiceInput": "Voice Input",
   "voiceInputSub": "Use voice to interact with AI assistant",
-  "aiModel": "AI Model",
-  "aiModelSub": "Choose your preferred AI assistant",
   "language": "Language",
   "weeklyReport": "Weekly Report",
   "weeklyReportSub": "Get weekly portfolio summary",

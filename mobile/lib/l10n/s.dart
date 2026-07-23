@@ -169,8 +169,6 @@ class S {
 
   static String get voiceInput => _localizations?.voiceInput ?? _p('语音输入', 'Voice Input');
   static String get voiceInputSub => _localizations?.voiceInputSub ?? _p('使用语音与 AI 助手交互', 'Use voice to interact with AI assistant');
-  static String get aiModel => _localizations?.aiModel ?? _p('AI 模型', 'AI Model');
-  static String get aiModelSub => _localizations?.aiModelSub ?? _p('选择你喜欢的 AI 助手', 'Choose your preferred AI assistant');
 
   // AI data-sharing consent (App Store privacy compliance)
   static String get aiConsentTitle => _p('AI 助手数据使用说明', 'How the AI assistant uses your data');
@@ -340,7 +338,7 @@ class S {
 
   // Contact & Chat UI
   static String contactSaved(String name) =>
-      _localizations?.contactSaved(name) ?? _p('✅ 已保存联系人「$name」', '✅ Contact \"$name\" saved');
+      _localizations?.contactSaved(name) ?? _p('✅ 已保存联系人「$name」', '✅ Contact "$name" saved');
   static String get releaseToCancel => _localizations?.releaseToCancel ?? _p('松手取消', 'Release to cancel');
   static String get slideUpToSend => _localizations?.slideUpToSend ?? _p('上滑取消,松手发送', 'Slide up to cancel, release to send');
   static String get voiceListening => _localizations?.voiceListening ?? _p('正在聆听…', 'Listening…');
@@ -419,7 +417,7 @@ class S {
   static String largeTransferDesc(String amount) => _localizations?.largeTransferDesc(amount) ?? _p('单笔转账超过 $amount 需确认', 'Single transfer over $amount requires confirmation');
   static String get activePolicies => _localizations?.activePolicies ?? _p('已激活策略', 'Active Policies');
   static String get noPolicies => _localizations?.noPolicies ?? _p('暂无策略,可使用上方快速设置', 'No policies. Use quick setup above.');
-  static String deletePolicyConfirm(String name) => _localizations?.deletePolicyConfirm(name) ?? _p('删除「$name」?', 'Delete \"$name\"?');
+  static String deletePolicyConfirm(String name) => _localizations?.deletePolicyConfirm(name) ?? _p('删除「$name」?', 'Delete "$name"?');
 
   // Time
   static String get yesterday => _localizations?.yesterday ?? _p('昨天', 'Yesterday');

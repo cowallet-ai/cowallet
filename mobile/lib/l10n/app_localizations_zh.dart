@@ -329,12 +329,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get voiceInputSub => '使用语音与 AI 助手交互';
 
   @override
-  String get aiModel => 'AI 模型';
-
-  @override
-  String get aiModelSub => '选择你喜欢的 AI 助手';
-
-  @override
   String get language => '语言';
 
   @override

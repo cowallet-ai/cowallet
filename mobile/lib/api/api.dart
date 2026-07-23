@@ -34,6 +34,7 @@
 ///
 /// // MPC API
 /// await MpcApi.createSession(sessionType: "keygen", parties: [1, 2]);
+library;
 
 export 'auth_api.dart';
 export 'price_api.dart';

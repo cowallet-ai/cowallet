@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../network/dio_client.dart';
 import '../network/result.dart';
 
@@ -41,9 +42,9 @@ class ShardsApi {
       );
 
       if (result.isSuccess) {
-        print("✅ Shard 1 uploaded to server successfully");
+        debugPrint("✅ Shard 1 uploaded to server successfully");
       } else {
-        print("❌ Failed to upload shard 1: ${result.errorMessage}");
+        debugPrint("❌ Failed to upload shard 1: ${result.errorMessage}");
         throw Exception("Failed to store server shard: ${result.errorMessage}");
       }
     }
