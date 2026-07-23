@@ -8,7 +8,7 @@ use crate::middleware::rate_limit::AnyRateLimiter;
 use crate::retry::{CircuitBreaker, CircuitBreakerConfig};
 use crate::routes::price::PriceCache;
 use crate::routes::yield_::YieldCache;
-use crate::services::ai_provider::AiProvider;
+use crate::services::ai_provider::{AiProvider, ProviderKind};
 use crate::services::email::EmailService;
 use crate::services::mpc_participant::MpcParticipant;
 use crate::services::presign_manager::PresignManager;
@@ -26,6 +26,8 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub ai_bedrock: Option<Arc<dyn AiProvider>>,
     pub ai_deepseek: Option<Arc<dyn AiProvider>>,
+    /// Operator's preferred AI provider, resolved from `AI_PROVIDER` at startup.
+    pub ai_provider_pref: ProviderKind,
     pub nats: Option<async_nats::Client>,
     pub rate_limiter: AnyRateLimiter,
     pub rpc_circuit_breaker: CircuitBreaker,
@@ -126,6 +128,11 @@ impl AppState {
                     None
                 }
             };
+        let ai_provider_pref = ProviderKind::from_env();
+        tracing::info!(
+            "Preferred AI provider (AI_PROVIDER): {:?}",
+            ai_provider_pref
+        );
 
         // Decode + validate ENCRYPTION_KEY. This is the root key for every
         // server shard and presignature, so reject weak/low-entropy keys here
@@ -206,6 +213,7 @@ impl AppState {
             http: http_client,
             ai_bedrock,
             ai_deepseek,
+            ai_provider_pref,
             nats,
             rate_limiter: AnyRateLimiter::from_env()
                 .unwrap_or_else(|_| AnyRateLimiter::in_memory()),
@@ -256,13 +264,168 @@ impl AppState {
             .ok_or_else(|| crate::errors::ApiError::service_unavailable("Database unavailable"))
     }
 
-    /// Select the AI provider to serve a request. Bedrock is the default engine;
-    /// DeepSeek is the fallback when Bedrock is not configured. Returns None only
-    /// if neither provider is available.
+    /// AI providers to try, in preference order (preferred first, fallback
+    /// second), each paired with its [`ProviderKind`]. Honors the operator's
+    /// `AI_PROVIDER` preference. Unconfigured providers are omitted, so an empty
+    /// list means no provider is available.
+    ///
+    /// Route handlers iterate this list and fail over to the next provider when
+    /// one errors at request time — AI chat is a read-only/assistive path, so
+    /// selection is fail-open across both configuration and runtime failures.
+    pub fn ai_providers_ordered(&self) -> Vec<(ProviderKind, Arc<dyn AiProvider>)> {
+        order_ai_providers(
+            self.ai_provider_pref,
+            self.ai_bedrock.as_ref(),
+            self.ai_deepseek.as_ref(),
+        )
+    }
+
+    /// Select the single AI provider to serve a request: the highest-preference
+    /// one that is configured, or None when neither is. Fail-open at the
+    /// configuration level (see [`AppState::ai_providers_ordered`] for the full
+    /// ordered list used for runtime failover).
     pub fn select_ai_provider(&self) -> Option<Arc<dyn AiProvider>> {
-        self.ai_bedrock
-            .as_ref()
-            .or(self.ai_deepseek.as_ref())
-            .map(Arc::clone)
+        self.ai_providers_ordered()
+            .into_iter()
+            .next()
+            .map(|(_, provider)| provider)
+    }
+}
+
+/// Pure provider-ordering logic, factored out of [`AppState`] so it can be
+/// unit-tested without a database. Returns the configured providers in
+/// preference order (preferred first, fallback second); omits unconfigured
+/// ones, so the result is empty when neither is available.
+fn order_ai_providers(
+    pref: ProviderKind,
+    bedrock: Option<&Arc<dyn AiProvider>>,
+    deepseek: Option<&Arc<dyn AiProvider>>,
+) -> Vec<(ProviderKind, Arc<dyn AiProvider>)> {
+    let order = match pref {
+        ProviderKind::Bedrock => [ProviderKind::Bedrock, ProviderKind::DeepSeek],
+        ProviderKind::DeepSeek => [ProviderKind::DeepSeek, ProviderKind::Bedrock],
+    };
+    order
+        .into_iter()
+        .filter_map(|kind| {
+            let provider = match kind {
+                ProviderKind::Bedrock => bedrock,
+                ProviderKind::DeepSeek => deepseek,
+            };
+            provider.map(|p| (kind, Arc::clone(p)))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::ai_provider::{
+        AiResult, BoxStream, ChatMessage, ChatResponse, StreamEvent, ToolDef,
+    };
+
+    /// Minimal stub provider; selection never calls its methods.
+    struct StubProvider;
+
+    #[async_trait::async_trait]
+    impl AiProvider for StubProvider {
+        async fn chat(
+            &self,
+            _messages: &[ChatMessage],
+            _tools: &[ToolDef],
+            _temperature: Option<f32>,
+        ) -> AiResult<ChatResponse> {
+            unreachable!("selection tests never invoke chat")
+        }
+
+        async fn stream_chat(
+            &self,
+            _messages: &[ChatMessage],
+            _tools: &[ToolDef],
+            _temperature: Option<f32>,
+        ) -> AiResult<BoxStream<StreamEvent>> {
+            unreachable!("selection tests never invoke stream_chat")
+        }
+    }
+
+    fn stub() -> Arc<dyn AiProvider> {
+        Arc::new(StubProvider)
+    }
+
+    fn select(
+        pref: ProviderKind,
+        bedrock: Option<&Arc<dyn AiProvider>>,
+        deepseek: Option<&Arc<dyn AiProvider>>,
+    ) -> Option<Arc<dyn AiProvider>> {
+        order_ai_providers(pref, bedrock, deepseek)
+            .into_iter()
+            .next()
+            .map(|(_, p)| p)
+    }
+
+    // (c) Default preference (Bedrock) picks Bedrock when both are configured.
+    #[test]
+    fn default_pref_selects_bedrock() {
+        let bedrock = stub();
+        let deepseek = stub();
+        let got = select(ProviderKind::default(), Some(&bedrock), Some(&deepseek))
+            .expect("a provider is available");
+        assert!(Arc::ptr_eq(&got, &bedrock));
+    }
+
+    // (a) AI_PROVIDER=deepseek with both configured picks DeepSeek.
+    #[test]
+    fn deepseek_pref_selects_deepseek_when_both_configured() {
+        let bedrock = stub();
+        let deepseek = stub();
+        let got = select(ProviderKind::DeepSeek, Some(&bedrock), Some(&deepseek))
+            .expect("a provider is available");
+        assert!(Arc::ptr_eq(&got, &deepseek));
+    }
+
+    // (b) Preferred provider unconfigured → fail-open to the other.
+    #[test]
+    fn fails_open_to_other_provider() {
+        let deepseek = stub();
+        // Prefer Bedrock, but only DeepSeek is configured.
+        let got =
+            select(ProviderKind::Bedrock, None, Some(&deepseek)).expect("falls back to deepseek");
+        assert!(Arc::ptr_eq(&got, &deepseek));
+
+        let bedrock = stub();
+        // Prefer DeepSeek, but only Bedrock is configured.
+        let got =
+            select(ProviderKind::DeepSeek, Some(&bedrock), None).expect("falls back to bedrock");
+        assert!(Arc::ptr_eq(&got, &bedrock));
+    }
+
+    #[test]
+    fn returns_none_when_neither_configured() {
+        assert!(select(ProviderKind::Bedrock, None, None).is_none());
+        assert!(select(ProviderKind::DeepSeek, None, None).is_none());
+    }
+
+    // Runtime failover: when both are configured the ordered list is
+    // [preferred, fallback], so a handler can try index 0 then index 1.
+    #[test]
+    fn ordered_list_puts_preferred_first_then_fallback() {
+        let bedrock = stub();
+        let deepseek = stub();
+
+        let order = order_ai_providers(ProviderKind::Bedrock, Some(&bedrock), Some(&deepseek));
+        assert_eq!(order.len(), 2);
+        assert_eq!(order[0].0, ProviderKind::Bedrock);
+        assert!(Arc::ptr_eq(&order[0].1, &bedrock));
+        assert_eq!(order[1].0, ProviderKind::DeepSeek);
+        assert!(Arc::ptr_eq(&order[1].1, &deepseek));
+
+        let order = order_ai_providers(ProviderKind::DeepSeek, Some(&bedrock), Some(&deepseek));
+        assert_eq!(order[0].0, ProviderKind::DeepSeek);
+        assert_eq!(order[1].0, ProviderKind::Bedrock);
+    }
+
+    #[test]
+    fn ordered_list_is_empty_when_neither_configured() {
+        assert!(order_ai_providers(ProviderKind::Bedrock, None, None).is_empty());
     }
 }
