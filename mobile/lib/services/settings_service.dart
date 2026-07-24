@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum IntentMode { onEnter, whileTyping }
@@ -16,6 +16,7 @@ class SettingsService extends ChangeNotifier {
   // (App Store privacy requirement: disclose + obtain consent in-app, not only
   // in the privacy policy).
   static const _keyAiConsent = 'settings_ai_data_consent';
+  static const _keyThemeMode = 'settings_theme_mode';
 
   late SharedPreferences _prefs;
 
@@ -26,6 +27,7 @@ class SettingsService extends ChangeNotifier {
   bool _weeklyReportEnabled = false;
   bool _emergencyFreezeActive = false;
   bool _aiConsentGranted = false;
+  ThemeMode _themeMode = ThemeMode.system;
 
   // Getters
   bool get biometricEnabled => _biometricEnabled;
@@ -35,6 +37,7 @@ class SettingsService extends ChangeNotifier {
   bool get weeklyReportEnabled => _weeklyReportEnabled;
   bool get emergencyFreezeActive => _emergencyFreezeActive;
   bool get aiConsentGranted => _aiConsentGranted;
+  ThemeMode get themeMode => _themeMode;
 
   /// Initialize the service by loading persisted settings.
   Future<void> init() async {
@@ -48,7 +51,14 @@ class SettingsService extends ChangeNotifier {
     _weeklyReportEnabled = _prefs.getBool(_keyWeeklyReport) ?? false;
     _emergencyFreezeActive = _prefs.getBool(_keyEmergencyFreeze) ?? false;
     _aiConsentGranted = _prefs.getBool(_keyAiConsent) ?? false;
+    _themeMode = _parseThemeMode(_prefs.getString(_keyThemeMode));
   }
+
+  static ThemeMode _parseThemeMode(String? raw) => switch (raw) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
 
   // Setters that persist and notify
 
@@ -101,6 +111,13 @@ class SettingsService extends ChangeNotifier {
     if (_aiConsentGranted == value) return;
     _aiConsentGranted = value;
     await _prefs.setBool(_keyAiConsent, value);
+    notifyListeners();
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (_themeMode == mode) return;
+    _themeMode = mode;
+    await _prefs.setString(_keyThemeMode, mode.name);
     notifyListeners();
   }
 }

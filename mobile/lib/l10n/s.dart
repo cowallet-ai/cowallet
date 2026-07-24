@@ -202,6 +202,10 @@ class S {
   static String get aiConsentStatusOn => _p('已同意', 'Granted');
   static String get aiConsentStatusOff => _p('未同意', 'Not granted');
   static String get language => _localizations?.language ?? _p('语言', 'Language');
+  static String get appearance => _p('外观', 'Appearance');
+  static String get themeLight => _p('浅色', 'Light');
+  static String get themeDark => _p('深色', 'Dark');
+  static String get themeSystem => _p('跟随系统', 'System');
   static String get weeklyReport => _localizations?.weeklyReport ?? _p('周报', 'Weekly Report');
   static String get weeklyReportSub => _localizations?.weeklyReportSub ?? _p('每周获取资产摘要', 'Get weekly portfolio summary');
   static String get redoOnboarding => _localizations?.redoOnboarding ?? _p('重新引导', 'Redo Onboarding');

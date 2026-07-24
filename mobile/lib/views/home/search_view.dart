@@ -55,7 +55,7 @@ class _SearchViewState extends State<SearchView> {
   Widget _buildSearchBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: CwColors.line)),
       ),
       child: Row(
@@ -75,7 +75,7 @@ class _SearchViewState extends State<SearchView> {
                 decoration: InputDecoration(
                   hintText: S.searchHint,
                   hintStyle: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 14, color: CwColors.ink3),
-                  prefixIcon: const Icon(Icons.search, size: 20, color: CwColors.ink3),
+                  prefixIcon: Icon(Icons.search, size: 20, color: CwColors.ink3),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
@@ -126,9 +126,9 @@ class _SearchViewState extends State<SearchView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_off, size: 48, color: CwColors.ink3),
+            Icon(Icons.search_off, size: 48, color: CwColors.ink3),
             const SizedBox(height: 12),
-            Text(S.noResults, style: const TextStyle(color: CwColors.ink3)),
+            Text(S.noResults, style: TextStyle(color: CwColors.ink3)),
           ],
         ),
       );
@@ -228,7 +228,7 @@ class _SearchViewState extends State<SearchView> {
               style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 15, fontWeight: FontWeight.w500, color: CwColors.ink1),
             ),
             const Spacer(),
-            const Icon(Icons.chevron_right, size: 18, color: CwColors.ink3),
+            Icon(Icons.chevron_right, size: 18, color: CwColors.ink3),
           ],
         ),
       ),
@@ -247,7 +247,7 @@ class _SearchViewState extends State<SearchView> {
       return [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(S.noAssets, style: const TextStyle(color: CwColors.ink3, fontSize: 13)),
+          child: Text(S.noAssets, style: TextStyle(color: CwColors.ink3, fontSize: 13)),
         ),
       ];
     }
@@ -321,7 +321,7 @@ class _SearchViewState extends State<SearchView> {
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            const Icon(Icons.receipt_long, size: 18, color: CwColors.ink3),
+            Icon(Icons.receipt_long, size: 18, color: CwColors.ink3),
             const SizedBox(width: 12),
             Text(shortHash, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13, color: CwColors.ink2)),
             if (tokenSymbol.isNotEmpty) ...[

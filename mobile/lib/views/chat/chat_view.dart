@@ -1302,7 +1302,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                       child: Container(
                         width: 96,
                         height: 96,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: CwColors.accent,
                           shape: BoxShape.circle,
                         ),
@@ -1398,7 +1398,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: CwColors.bgPaper,
         border: Border(bottom: BorderSide(color: CwColors.line)),
       ),
@@ -1412,13 +1412,13 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 color: CwColors.bgSubtle,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.history_rounded, size: 20, color: CwColors.ink2),
+              child: Icon(Icons.history_rounded, size: 20, color: CwColors.ink2),
             ),
           ),
           const Spacer(),
           Text(
             S.askCowallet,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
               color: CwColors.ink1,
@@ -1433,7 +1433,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 color: CwColors.bgSubtle,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.add_rounded, size: 20, color: CwColors.ink2),
+              child: Icon(Icons.add_rounded, size: 20, color: CwColors.ink2),
             ),
           ),
         ],
@@ -1464,7 +1464,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             const SizedBox(height: 8),
             Text(
               S.chatEmptySub,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 color: CwColors.ink3,
                 height: 1.5,
@@ -1532,9 +1532,9 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
-        decoration: const BoxDecoration(
-          color: Color(0xFF141008),
-          borderRadius: BorderRadius.only(
+        decoration: BoxDecoration(
+          color: CwColors.accent,
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(18),
             topRight: Radius.circular(18),
             bottomLeft: Radius.circular(18),
@@ -1565,7 +1565,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
               children: [
                 Container(
                   width: 6, height: 6,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: CwColors.accent,
                     shape: BoxShape.circle,
                   ),
@@ -1747,7 +1747,7 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   Widget _buildComposer() {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: CwColors.bgPaper,
         border: Border(top: BorderSide(color: CwColors.line)),
       ),
@@ -1761,18 +1761,18 @@ class ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                 focusNode: _focusNode,
                 decoration: InputDecoration(
                   hintText: S.composerHint,
-                  hintStyle: const TextStyle(color: CwColors.ink4, fontSize: 14),
+                  hintStyle: TextStyle(color: CwColors.ink4, fontSize: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: CwColors.line),
+                    borderSide: BorderSide(color: CwColors.line),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: CwColors.line),
+                    borderSide: BorderSide(color: CwColors.line),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: CwColors.accent),
+                    borderSide: BorderSide(color: CwColors.accent),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 10,
@@ -1907,7 +1907,7 @@ class _ThinkingDotsState extends State<_ThinkingDots>
         return LinearGradient(
           begin: Alignment(-1.0 + 2.0 * shimmerPosition, 0),
           end: Alignment(0.0 + 2.0 * shimmerPosition, 0),
-          colors: const [
+          colors: [
             CwColors.ink4,
             CwColors.ink2,
             CwColors.ink4,

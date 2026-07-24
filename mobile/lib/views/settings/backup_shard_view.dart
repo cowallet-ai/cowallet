@@ -284,7 +284,7 @@ class _ExportTabState extends State<_ExportTab> {
               children: [
                 Text(
                   S.backupEncryptedData,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: CwColors.ink2,

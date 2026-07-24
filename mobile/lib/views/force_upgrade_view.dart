@@ -55,12 +55,12 @@ class ForceUpgradeView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.system_update, size: 72, color: CwColors.accent),
+                Icon(Icons.system_update, size: 72, color: CwColors.accent),
                 const SizedBox(height: 24),
                 Text(
                   S.upgradeTitle,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: CwColors.ink1,
@@ -70,7 +70,7 @@ class ForceUpgradeView extends StatelessWidget {
                 Text(
                   S.upgradeMessage,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     height: 1.5,
                     color: CwColors.ink3,

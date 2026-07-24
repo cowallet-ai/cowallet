@@ -62,7 +62,7 @@ class AgentsView extends StatelessWidget {
               label: Text(S.connectNew),
               style: OutlinedButton.styleFrom(
                 foregroundColor: CwColors.ink1,
-                side: const BorderSide(color: CwColors.lineStrong),
+                side: BorderSide(color: CwColors.lineStrong),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -101,10 +101,10 @@ class AgentsView extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFF9EDE0), Color(0xFFF7E3D8)],
+          colors: [CwColors.accentSoft2, CwColors.accentSoft],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: CwColors.line),

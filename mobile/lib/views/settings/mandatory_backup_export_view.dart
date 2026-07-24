@@ -93,7 +93,7 @@ class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
           elevation: 0,
           automaticallyImplyLeading: false,
           title: Text(S.mandatoryBackupTitle,
-              style: const TextStyle(color: CwColors.ink1, fontSize: 17)),
+              style: TextStyle(color: CwColors.ink1, fontSize: 17)),
         ),
         body: SafeArea(
           child: ListView(
@@ -110,7 +110,7 @@ class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.warning_amber_rounded,
+                    Icon(Icons.warning_amber_rounded,
                         color: CwColors.warn, size: 22),
                     const SizedBox(width: 10),
                     Expanded(
@@ -138,11 +138,11 @@ class _MandatoryBackupExportViewState extends State<MandatoryBackupExportView> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle,
+                      Icon(Icons.check_circle,
                           color: CwColors.success, size: 22),
                       const SizedBox(width: 10),
                       Text(S.mandatoryBackupDone,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: CwColors.ink1,
                               fontWeight: FontWeight.w600)),
                     ],
