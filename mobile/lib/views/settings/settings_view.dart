@@ -141,6 +141,57 @@ class _SettingsViewState extends State<SettingsView> {
     CowalletApp.setLocale(context, Locale(newLang));
   }
 
+  String _themeModeLabel(ThemeMode mode) => switch (mode) {
+        ThemeMode.light => S.themeLight,
+        ThemeMode.dark => S.themeDark,
+        ThemeMode.system => S.themeSystem,
+      };
+
+  Future<void> _pickThemeMode() async {
+    final picked = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      backgroundColor: CwColors.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        Widget option(ThemeMode mode, IconData icon) {
+          final selected = _settings.themeMode == mode;
+          return ListTile(
+            leading: Icon(icon, color: selected ? CwColors.accent : CwColors.ink3),
+            title: Text(
+              _themeModeLabel(mode),
+              style: TextStyle(
+                fontFamily: CwTypography.serifFamily,
+                fontSize: 14,
+                color: selected ? CwColors.accent : CwColors.ink1,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+            trailing: selected
+                ? Icon(Icons.check_rounded, size: 18, color: CwColors.accent)
+                : null,
+            onTap: () => Navigator.of(sheetCtx).pop(mode),
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              option(ThemeMode.light, Icons.light_mode_outlined),
+              option(ThemeMode.dark, Icons.dark_mode_outlined),
+              option(ThemeMode.system, Icons.brightness_auto_outlined),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked != null) await _settings.setThemeMode(picked);
+  }
+
 
   void _toggleVoiceInput() {
     _settings.setVoiceInputEnabled(!_settings.voiceInputEnabled);
@@ -410,12 +461,12 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.ac_unit, size: 18, color: CwColors.danger),
+                  Icon(Icons.ac_unit, size: 18, color: CwColors.danger),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       S.frozenBanner,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: CwColors.danger,
@@ -511,7 +562,7 @@ class _SettingsViewState extends State<SettingsView> {
                       const SizedBox(height: 2),
                       Text(
                         S.keysCheckupSub,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           color: CwColors.ink3,
                         ),
@@ -661,7 +712,7 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.infoSoft,
           title: S.riskGuard,
           subtitle: S.riskGuardSub,
-          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          trailing: Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
           onTap: () => Navigator.pushNamed(context, '/policy'),
         ),
       ],
@@ -724,6 +775,19 @@ class _SettingsViewState extends State<SettingsView> {
         const Divider(indent: 52, height: 1),
         _settingRow(
           context,
+          icon: Icons.brightness_6_outlined,
+          iconColor: CwColors.ink3,
+          iconBg: CwColors.bgSubtle,
+          title: S.appearance,
+          trailing: Text(
+            _themeModeLabel(_settings.themeMode),
+            style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 11, color: CwColors.ink3),
+          ),
+          onTap: _pickThemeMode,
+        ),
+        const Divider(indent: 52, height: 1),
+        _settingRow(
+          context,
           icon: Icons.bar_chart_rounded,
           iconColor: CwColors.ink3,
           iconBg: CwColors.bgSubtle,
@@ -743,7 +807,7 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.dangerSoft,
           title: S.deleteAccount,
           subtitle: S.deleteAccountSub,
-          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          trailing: Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
           onTap: () => _handleDeleteAccount(),
         ),
       ],
@@ -773,7 +837,7 @@ class _SettingsViewState extends State<SettingsView> {
           iconBg: CwColors.accentSoft,
           title: S.rotateKeyShares,
           subtitle: '${S.lastRotation}: ${_formatLastRotation()}',
-          trailing: const Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
+          trailing: Icon(Icons.chevron_right, size: 18, color: CwColors.ink4),
           onTap: _handleRotateKeyShares,
         ),
         const Divider(indent: 52, height: 1),
@@ -850,7 +914,7 @@ class _SettingsViewState extends State<SettingsView> {
                     const SizedBox(height: 1),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         color: CwColors.ink3,
                       ),

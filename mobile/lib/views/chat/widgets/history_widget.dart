@@ -32,7 +32,7 @@ class ChatHistoryWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.receipt_long, size: 16, color: CwColors.accent),
+              Icon(Icons.receipt_long, size: 16, color: CwColors.accent),
               const SizedBox(width: 6),
               Text(
                 S.txHistory,
@@ -108,7 +108,7 @@ class ChatHistoryWidget extends StatelessWidget {
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: CwColors.line, width: 0.5)),
         ),
         child: Row(

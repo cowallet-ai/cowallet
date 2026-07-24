@@ -3,40 +3,59 @@ import 'package:flutter/services.dart';
 import 'colors.dart';
 import 'typography.dart';
 
-ThemeData cwTheme() {
+ThemeData cwTheme() => _cwTheme(Brightness.light);
+
+ThemeData cwDarkTheme() => _cwTheme(Brightness.dark);
+
+ThemeData _cwTheme(Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  final colorScheme = isDark
+      ? ColorScheme.dark(
+          primary: CwColors.accent,
+          onPrimary: Colors.white,
+          secondary: CwColors.ink2,
+          onSecondary: CwColors.bgPaper,
+          surface: CwColors.bgCard,
+          onSurface: CwColors.ink1,
+          error: CwColors.danger,
+          outline: CwColors.line,
+          outlineVariant: CwColors.lineStrong,
+        )
+      : ColorScheme.light(
+          primary: CwColors.accent,
+          onPrimary: Colors.white,
+          secondary: CwColors.ink2,
+          onSecondary: CwColors.bgPaper,
+          surface: CwColors.bgCard,
+          onSurface: CwColors.ink1,
+          error: CwColors.danger,
+          outline: CwColors.line,
+          outlineVariant: CwColors.lineStrong,
+        );
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.light,
+    brightness: brightness,
     fontFamily: CwTypography.serifFamily,
     scaffoldBackgroundColor: CwColors.bgPaper,
-    colorScheme: const ColorScheme.light(
-      primary: CwColors.accent,
-      onPrimary: Colors.white,
-      secondary: CwColors.ink2,
-      onSecondary: CwColors.bgPaper,
-      surface: CwColors.bgCard,
-      onSurface: CwColors.ink1,
-      error: CwColors.danger,
-      outline: CwColors.line,
-      outlineVariant: CwColors.lineStrong,
-    ),
+    colorScheme: colorScheme,
     textTheme: CwTypography.textTheme,
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: CwColors.bgPaper,
       foregroundColor: CwColors.ink1,
       elevation: 0,
       scrolledUnderElevation: 0,
-      systemOverlayStyle: SystemUiOverlayStyle.dark,
+      systemOverlayStyle:
+          isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
     ),
     cardTheme: CardThemeData(
       color: CwColors.bgCard,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: CwColors.line),
+        side: BorderSide(color: CwColors.line),
       ),
     ),
-    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: CwColors.bgPaper,
       selectedItemColor: CwColors.accent,
       unselectedItemColor: CwColors.ink4,
@@ -61,10 +80,10 @@ ThemeData cwTheme() {
         foregroundColor: CwColors.ink1,
         minimumSize: const Size.fromHeight(52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        side: const BorderSide(color: CwColors.lineStrong),
+        side: BorderSide(color: CwColors.lineStrong),
       ),
     ),
-    dividerTheme: const DividerThemeData(
+    dividerTheme: DividerThemeData(
       color: CwColors.line,
       thickness: 1,
       space: 0,

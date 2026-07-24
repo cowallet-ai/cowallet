@@ -33,7 +33,7 @@ class _WalletViewState extends State<WalletView> {
     try {
       Services.balance.tokens;  // Test if initialized
     } catch (e) {
-      return const Center(child: CircularProgressIndicator(color: CwColors.accent));
+      return Center(child: CircularProgressIndicator(color: CwColors.accent));
     }
 
     return SafeArea(
@@ -165,7 +165,7 @@ class _WalletViewState extends State<WalletView> {
           child: Center(
             child: Text(
               bal.loading ? 'Loading chains...' : 'Pull to refresh',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 color: CwColors.ink3,
               ),
@@ -186,7 +186,7 @@ class _WalletViewState extends State<WalletView> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: CwColors.line),
           ),
-          child: const Center(
+          child: Center(
             child: Text(
               'No assets found',
               style: TextStyle(
@@ -356,7 +356,7 @@ class _WalletViewState extends State<WalletView> {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 16, color: CwColors.ink4),
+            Icon(Icons.chevron_right, size: 16, color: CwColors.ink4),
           ],
         ),
       ),
@@ -423,7 +423,7 @@ class _WalletViewState extends State<WalletView> {
         label: Text(label, style: TextStyle(fontFamily: CwTypography.serifFamily, fontSize: 13)),
         style: OutlinedButton.styleFrom(
           foregroundColor: CwColors.ink1,
-          side: const BorderSide(color: CwColors.lineStrong),
+          side: BorderSide(color: CwColors.lineStrong),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),

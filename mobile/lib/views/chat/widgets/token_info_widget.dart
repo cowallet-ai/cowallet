@@ -62,7 +62,7 @@ class ChatTokenInfoWidget extends StatelessWidget {
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: CwColors.ink1,
@@ -88,7 +88,7 @@ class ChatTokenInfoWidget extends StatelessWidget {
                           ),
                           child: Text(
                             tokenType,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
                               color: CwColors.ink3,
@@ -134,7 +134,7 @@ class ChatTokenInfoWidget extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               description,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 color: CwColors.ink3,
                 height: 1.5,
@@ -153,7 +153,7 @@ class ChatTokenInfoWidget extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: CwColors.ink3,
             ),

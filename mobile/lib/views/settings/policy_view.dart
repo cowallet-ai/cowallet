@@ -178,7 +178,7 @@ class _PolicyViewState extends State<PolicyView> {
                     child: Center(
                       child: Text(
                         S.noPolicies,
-                        style: const TextStyle(color: CwColors.ink3, fontSize: 13),
+                        style: TextStyle(color: CwColors.ink3, fontSize: 13),
                       ),
                     ),
                   )
@@ -248,7 +248,7 @@ class _PolicyViewState extends State<PolicyView> {
                 ),
               ),
               if (hasExisting)
-                const Icon(Icons.check_circle, size: 18, color: CwColors.success),
+                Icon(Icons.check_circle, size: 18, color: CwColors.success),
             ],
           ),
           const SizedBox(height: 12),
@@ -337,7 +337,7 @@ class _PolicyViewState extends State<PolicyView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(policy.name, style: const TextStyle(
+                Text(policy.name, style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                   color: CwColors.ink1,
@@ -354,8 +354,8 @@ class _PolicyViewState extends State<PolicyView> {
           ),
           GestureDetector(
             onTap: () => _confirmDelete(policy),
-            child: const Padding(
-              padding: EdgeInsets.only(left: 4),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4),
               child: Icon(Icons.delete_outline, size: 18, color: CwColors.ink4),
             ),
           ),

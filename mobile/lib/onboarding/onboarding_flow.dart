@@ -1127,7 +1127,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     textAlign: TextAlign.center,
                     maxLength: 6,
                     autofocus: true,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 8,
@@ -1272,7 +1272,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     minHeight: 8,
                     backgroundColor: CwColors.line,
                     valueColor:
-                        const AlwaysStoppedAnimation<Color>(CwColors.accent),
+                        AlwaysStoppedAnimation<Color>(CwColors.accent),
                   ),
                 ),
                 const SizedBox(height: 8),

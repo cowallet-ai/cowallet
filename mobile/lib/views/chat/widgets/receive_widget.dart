@@ -37,11 +37,11 @@ class ChatReceiveWidget extends StatelessWidget {
               data: address,
               version: QrVersions.auto,
               size: 160,
-              eyeStyle: const QrEyeStyle(
+              eyeStyle: QrEyeStyle(
                 eyeShape: QrEyeShape.square,
                 color: CwColors.ink1,
               ),
-              dataModuleStyle: const QrDataModuleStyle(
+              dataModuleStyle: QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.square,
                 color: CwColors.ink1,
               ),
@@ -50,7 +50,7 @@ class ChatReceiveWidget extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             shortAddr,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
               color: CwColors.ink2,
@@ -84,7 +84,7 @@ class ChatReceiveWidget extends StatelessWidget {
               label: Text(S.copyAddress),
               style: OutlinedButton.styleFrom(
                 foregroundColor: CwColors.ink2,
-                side: const BorderSide(color: CwColors.line),
+                side: BorderSide(color: CwColors.line),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),

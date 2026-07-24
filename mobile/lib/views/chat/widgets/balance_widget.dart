@@ -26,12 +26,12 @@ class ChatBalanceWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_balance_wallet_outlined,
+              Icon(Icons.account_balance_wallet_outlined,
                   size: 16, color: CwColors.accent),
               const SizedBox(width: 6),
               Text(
                 multiChain ? S.multiChainAssets : S.assetsOverview,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: CwColors.ink3,
@@ -43,7 +43,7 @@ class ChatBalanceWidget extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             '\$$totalUsd',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w700,
               color: CwColors.ink1,
@@ -94,7 +94,7 @@ class ChatBalanceWidget extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     chainName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: CwColors.ink2,
@@ -103,7 +103,7 @@ class ChatBalanceWidget extends StatelessWidget {
                   const Spacer(),
                   Text(
                     '\$$chainTotalUsd',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: CwColors.ink3,

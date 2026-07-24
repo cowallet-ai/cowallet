@@ -300,11 +300,11 @@ class _TxHistoryViewState extends State<TxHistoryView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: CwColors.danger),
+            Icon(Icons.error_outline, size: 64, color: CwColors.danger),
             const SizedBox(height: 16),
             Text(
               _error!,
-              style: const TextStyle(color: CwColors.danger),
+              style: TextStyle(color: CwColors.danger),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -322,7 +322,7 @@ class _TxHistoryViewState extends State<TxHistoryView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.receipt_long, size: 64, color: CwColors.ink3),
+            Icon(Icons.receipt_long, size: 64, color: CwColors.ink3),
             const SizedBox(height: 16),
             Text(
               S.noTxYet,
@@ -471,16 +471,16 @@ class _TransactionItem extends StatelessWidget {
                       children: [
                         Text(
                           _getTokenSymbol(tx),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             color: CwColors.ink3,
                           ),
                         ),
                         if (blockNumber != null) ...[
-                          const Text(' · ', style: TextStyle(color: CwColors.ink4)),
+                          Text(' · ', style: TextStyle(color: CwColors.ink4)),
                           Text(
                             'Block $blockNumber',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               color: CwColors.ink4,
                             ),
@@ -492,7 +492,7 @@ class _TransactionItem extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         _formatTimestamp(timestamp),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           color: CwColors.ink4,
                         ),

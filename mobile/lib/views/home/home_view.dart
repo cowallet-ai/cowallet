@@ -213,7 +213,7 @@ class _HomeViewState extends State<HomeView> {
           Container(
             width: 10,
             height: 10,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: CwColors.accent,
               shape: BoxShape.circle,
             ),
@@ -225,7 +225,7 @@ class _HomeViewState extends State<HomeView> {
           ),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.search, color: CwColors.ink3, size: 22),
+            icon: Icon(Icons.search, color: CwColors.ink3, size: 22),
             onPressed: () async {
               final result = await Navigator.push<String>(
                 context,
@@ -251,7 +251,7 @@ class _HomeViewState extends State<HomeView> {
           Container(
             width: 7,
             height: 7,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: CwColors.success,
               shape: BoxShape.circle,
             ),
@@ -496,7 +496,7 @@ class _HomeViewState extends State<HomeView> {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, color: CwColors.ink4, size: 20),
+            Icon(Icons.chevron_right, color: CwColors.ink4, size: 20),
           ],
         ),
       ),

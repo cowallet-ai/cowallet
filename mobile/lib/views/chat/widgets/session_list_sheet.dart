@@ -73,11 +73,11 @@ class _SessionListSheetState extends State<SessionListSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(S.cancel, style: const TextStyle(color: CwColors.ink3)),
+            child: Text(S.cancel, style: TextStyle(color: CwColors.ink3)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(S.confirm, style: const TextStyle(color: CwColors.danger)),
+            child: Text(S.confirm, style: TextStyle(color: CwColors.danger)),
           ),
         ],
       ),
@@ -104,7 +104,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: CwColors.bgPaper,
             borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
@@ -112,7 +112,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
             children: [
               _buildHandle(),
               _buildHeader(),
-              const Divider(height: 1, color: CwColors.line),
+              Divider(height: 1, color: CwColors.line),
               Expanded(child: _buildBody(scrollController)),
             ],
           ),
@@ -142,11 +142,11 @@ class _SessionListSheetState extends State<SessionListSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
-          const Icon(Icons.history_rounded, size: 20, color: CwColors.ink2),
+          Icon(Icons.history_rounded, size: 20, color: CwColors.ink2),
           const SizedBox(width: 8),
           Text(
             S.chatHistory,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: CwColors.ink1,
@@ -167,7 +167,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.add_rounded, size: 16, color: CwColors.accent),
+                  Icon(Icons.add_rounded, size: 16, color: CwColors.accent),
                   const SizedBox(width: 4),
                   Text(
                     S.newChat,
@@ -184,14 +184,14 @@ class _SessionListSheetState extends State<SessionListSheet> {
 
   Widget _buildBody(ScrollController scrollController) {
     if (_loading) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: CwColors.accent, strokeWidth: 2),
       );
     }
 
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: const TextStyle(color: CwColors.ink3, fontSize: 14)),
+        child: Text(_error!, style: TextStyle(color: CwColors.ink3, fontSize: 14)),
       );
     }
 
@@ -201,9 +201,9 @@ class _SessionListSheetState extends State<SessionListSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.chat_bubble_outline_rounded, size: 40, color: CwColors.ink4),
+            Icon(Icons.chat_bubble_outline_rounded, size: 40, color: CwColors.ink4),
             const SizedBox(height: 12),
-            Text(S.noSessions, style: const TextStyle(color: CwColors.ink3, fontSize: 14)),
+            Text(S.noSessions, style: TextStyle(color: CwColors.ink3, fontSize: 14)),
           ],
         ),
       );
@@ -213,7 +213,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
       controller: scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: sessions.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: CwColors.line),
+      separatorBuilder: (_, _) => Divider(height: 1, color: CwColors.line),
       itemBuilder: (_, index) => _buildSessionTile(sessions[index]),
     );
   }
@@ -231,7 +231,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         color: CwColors.dangerSoft,
-        child: const Icon(Icons.delete_outline_rounded, color: CwColors.danger),
+        child: Icon(Icons.delete_outline_rounded, color: CwColors.danger),
       ),
       confirmDismiss: (_) async {
         await _deleteSession(session);
@@ -242,11 +242,11 @@ class _SessionListSheetState extends State<SessionListSheet> {
         leading: Container(
           width: 36,
           height: 36,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: CwColors.bgSubtle,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.chat_rounded, size: 18, color: CwColors.ink3),
+          child: Icon(Icons.chat_rounded, size: 18, color: CwColors.ink3),
         ),
         title: Text(
           title,
@@ -260,7 +260,7 @@ class _SessionListSheetState extends State<SessionListSheet> {
         ),
         trailing: GestureDetector(
           onTap: () => _deleteSession(session),
-          child: const Icon(Icons.more_horiz_rounded, size: 18, color: CwColors.ink4),
+          child: Icon(Icons.more_horiz_rounded, size: 18, color: CwColors.ink4),
         ),
         onTap: () {
           Navigator.of(context).pop();
