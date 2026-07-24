@@ -179,6 +179,35 @@ impl ChainConfig {
         }
     }
 
+    pub fn polygon_mainnet() -> Self {
+        let default_rpc = "https://polygon-rpc.com".to_string();
+        let rpc_url = env::var("POLYGON_MAINNET_RPC_URL").unwrap_or(default_rpc);
+        let bundler_url = env::var("BUNDLER_URL_POLYGON").ok();
+
+        Self {
+            chain_id: 137,
+            name: "polygon".into(),
+            display_name: "Polygon".into(),
+            rpc_urls: vec![rpc_url],
+            block_explorer: "https://polygonscan.com".into(),
+            native_currency: NativeCurrency {
+                name: "POL".into(),
+                symbol: "POL".into(),
+                decimals: 18,
+            },
+            gas_model: GasModel::Eip1559,
+            erc4337_entrypoint: Some(
+                "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
+                    .parse()
+                    .expect("valid EntryPoint v0.6 address"),
+            ),
+            bundler_url,
+            paymaster_url: None,
+            is_testnet: false,
+            is_l2: false,
+        }
+    }
+
     pub fn base_sepolia() -> Self {
         let default_rpc = "https://sepolia.base.org".to_string();
         let rpc_url = env::var("BASE_SEPOLIA_RPC_URL").unwrap_or(default_rpc);
@@ -245,6 +274,7 @@ impl ChainConfig {
             Self::arbitrum_one(),
             Self::optimism_mainnet(),
             Self::bnb_chain(),
+            Self::polygon_mainnet(),
         ]
     }
 
@@ -261,6 +291,7 @@ impl ChainConfig {
             42161 => Some(Self::arbitrum_one()),
             10 => Some(Self::optimism_mainnet()),
             56 => Some(Self::bnb_chain()),
+            137 => Some(Self::polygon_mainnet()),
             84532 => Some(Self::base_sepolia()),
             11155111 => Some(Self::ethereum_sepolia()),
             _ => None,
@@ -332,14 +363,32 @@ mod tests {
 
     #[test]
     fn test_polygon_via_chain_id() {
-        // Polygon is not yet implemented, should return None
-        let chain = ChainConfig::by_chain_id(137);
-        assert!(chain.is_none());
+        let chain = ChainConfig::by_chain_id(137).expect("Polygon should be supported");
+        assert_eq!(chain.chain_id, 137);
+        assert_eq!(chain.name, "polygon");
+        assert_eq!(chain.native_currency.symbol, "POL");
+        assert_eq!(chain.gas_model, GasModel::Eip1559);
+        assert!(!chain.is_testnet);
+        assert!(!chain.is_l2);
+    }
+
+    #[test]
+    fn test_polygon_mainnet_config() {
+        let chain = ChainConfig::polygon_mainnet();
+        assert_eq!(chain.chain_id, 137);
+        assert_eq!(chain.name, "polygon");
+        assert_eq!(chain.display_name, "Polygon");
+        assert_eq!(chain.native_currency.symbol, "POL");
+        assert_eq!(chain.native_currency.decimals, 18);
+        assert_eq!(chain.gas_model, GasModel::Eip1559);
+        assert!(!chain.is_testnet);
+        assert!(!chain.is_l2);
+        assert!(chain.erc4337_entrypoint.is_some());
     }
 
     #[test]
     fn test_by_chain_id_all_supported() {
-        let supported_chains = vec![1, 8453, 42161, 10, 56, 84532, 11155111];
+        let supported_chains = vec![1, 8453, 42161, 10, 56, 137, 84532, 11155111];
 
         for chain_id in supported_chains {
             let chain = ChainConfig::by_chain_id(chain_id);
@@ -350,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_by_chain_id_unsupported() {
-        let unsupported_chains = vec![137, 43114, 250, 100];
+        let unsupported_chains = vec![43114, 250, 100];
 
         for chain_id in unsupported_chains {
             let chain = ChainConfig::by_chain_id(chain_id);
@@ -365,7 +414,7 @@ mod tests {
     #[test]
     fn test_all_mainnet_chains() {
         let mainnets = ChainConfig::all_mainnet();
-        assert_eq!(mainnets.len(), 5);
+        assert_eq!(mainnets.len(), 6);
 
         for chain in mainnets {
             assert!(!chain.is_testnet);
@@ -409,6 +458,7 @@ mod tests {
             ChainConfig::arbitrum_one(),
             ChainConfig::optimism_mainnet(),
             ChainConfig::bnb_chain(),
+            ChainConfig::polygon_mainnet(),
         ];
 
         for chain in chains {
