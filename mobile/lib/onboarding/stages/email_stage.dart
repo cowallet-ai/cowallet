@@ -302,7 +302,7 @@ class _EmailStageState extends State<EmailStage> {
       key: const ValueKey('email'),
       child: Column(
         children: [
-          obTopBar(context, showBack: false, step: 0, total: 3),
+          obTopBar(context, showBack: true, step: 0, total: 3, onBack: _c.goBack),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(

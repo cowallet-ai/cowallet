@@ -5,8 +5,20 @@ import 'package:cowallet/onboarding/controller.dart';
 import 'package:cowallet/onboarding/routes.dart';
 import 'package:cowallet/onboarding/scope.dart';
 
-// Fake stages: hero has a forward button; every other stage is plain text.
-// No stage renders a back affordance — onboarding is forward-only.
+// Mirrors OnboardingFlow's per-stage canPop logic.
+bool _canPopStep(OnboardingStep step) {
+  switch (step) {
+    case OnboardingStep.email:
+    case OnboardingStep.emailOtp:
+    case OnboardingStep.name:
+    case OnboardingStep.ready:
+    case OnboardingStep.persona:
+      return true;
+    default:
+      return false;
+  }
+}
+
 Widget _fakeStage(OnboardingController c, OnboardingStep step) {
   switch (step) {
     case OnboardingStep.hero:
@@ -24,14 +36,11 @@ Widget _fakeStage(OnboardingController c, OnboardingStep step) {
   }
 }
 
-// Mirrors OnboardingFlow's host: every route is wrapped in
-// PopScope(canPop:false) and the child Navigator is bridged to system back
-// via NavigatorPopHandler.
 Widget _host(OnboardingController c, List<OnboardingStep> stack) {
   Route<dynamic> routeFor(OnboardingStep s) => CupertinoPageRoute(
         settings: RouteSettings(name: s.name),
         builder: (_) => PopScope(
-          canPop: false,
+          canPop: _canPopStep(s),
           child: _fakeStage(c, s),
         ),
       );
@@ -65,19 +74,35 @@ void main() {
     expect(find.text('hero'), findsNothing);
   });
 
-  testWidgets('system back does not leave a non-first stage (forward-only)',
+  testWidgets('system back works on a returnable stage (email → hero)',
       (tester) async {
     final c = OnboardingController();
-    // Seed a two-deep stack so a pop *could* return to hero if unguarded.
-    await tester.pumpWidget(_host(c, [OnboardingStep.hero, OnboardingStep.email]));
+    await tester.pumpWidget(
+        _host(c, [OnboardingStep.hero, OnboardingStep.email]));
+    // Let NavigationNotification settle so NavigatorPopHandler registers.
     await tester.pumpAndSettle();
     expect(find.text('email'), findsOneWidget);
 
-    // Simulate Android system back — must be consumed by the per-route guard,
-    // never popping back to hero.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('email'), findsOneWidget);
-    expect(find.text('hero'), findsNothing);
+
+    // email is a returnable stage — back pops it and reveals hero.
+    expect(find.text('hero'), findsOneWidget);
+    expect(find.text('email'), findsNothing);
+  });
+
+  testWidgets('system back is blocked on a locked stage (bio group floor)',
+      (tester) async {
+    final c = OnboardingController();
+    // bio is canPop:false — seeded alone to simulate it as the group floor.
+    await tester.pumpWidget(_host(c, [OnboardingStep.bio]));
+    await tester.pumpAndSettle();
+    expect(find.text('bio'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    // bio is a locked stage — system back must not leave it.
+    expect(find.text('bio'), findsOneWidget);
   });
 }

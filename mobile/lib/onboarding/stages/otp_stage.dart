@@ -128,7 +128,7 @@ class _OtpStageState extends State<OtpStage> {
       key: const ValueKey('emailOtp'),
       child: Column(
         children: [
-          obTopBar(context, showBack: false, step: 0, total: 3),
+          obTopBar(context, showBack: true, step: 0, total: 3, onBack: c.goBack),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(

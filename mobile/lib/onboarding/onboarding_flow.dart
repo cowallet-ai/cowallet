@@ -65,15 +65,30 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
   }
 
+  /// Returns true for stages that support back navigation (user can correct
+  /// prior input or navigate within the post-DKG returnable group).
+  /// Returns false for locked stages: hero (stack bottom / no prior input),
+  /// creating/backup (DKG hard boundary), and bio (post-DKG group floor).
+  bool _canPopStep(OnboardingStep step) {
+    switch (step) {
+      case OnboardingStep.email:
+      case OnboardingStep.emailOtp:
+      case OnboardingStep.name:
+      case OnboardingStep.ready:
+      case OnboardingStep.persona:
+        return true;
+      default: // hero, creating, backup, bio
+        return false;
+    }
+  }
+
   Route<dynamic> _routeFor(OnboardingStep step) => CupertinoPageRoute(
         settings: RouteSettings(name: step.name),
-        // Onboarding is strictly forward-only: every stage blocks back
-        // (system back, iOS swipe, and — since no stage renders a back
-        // affordance — there is no programmatic pop path either). The
-        // NavigatorPopHandler in build() bridges system back to this
-        // PopScope so it is honored on Android too.
+        // PopScope canPop is per-stage: input-correction and the post-DKG
+        // returnable group allow back; the DKG boundary and stack floors do
+        // not. NavigatorPopHandler in build() bridges system back on Android.
         builder: (_) => PopScope(
-          canPop: false,
+          canPop: _canPopStep(step),
           child: _stageWidget(step),
         ),
       );
