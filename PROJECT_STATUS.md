@@ -69,7 +69,7 @@
 ### 1.2 区块链功能
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 多链 EVM 支持 | ✅ 已实现 | 🧪 已验证 | ETH, Base, Arbitrum, Optimism, BSC, Polygon |
+| 多链 EVM 支持 | ✅ 已实现 | 🧪 已验证 | ETH, Base, Arbitrum, Optimism, BSC 已验证;Polygon 配置已补齐,未真机验证 |
 | 原生代币转账 | 🧪 已验证 | ETH/BNB/POL/MATIC 等原生币转账（MPC签名成功，BSC提交已修复） |
 | ERC-20 代币转账 | ✅ 已实现 | 🧪 已验证 | 任意 ERC-20 代币转账，自动解析合约 |
 | Gas 估算 | ✅ 已实现 | 🧪 已验证 | eth_estimateGas + eth_gasPrice 并行查询 |
