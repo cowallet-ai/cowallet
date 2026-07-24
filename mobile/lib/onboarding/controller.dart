@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart';
-import 'package:flutter/cupertino.dart';
 import '../services/locator.dart';
 import '../services/mpc_wallet_service.dart';
 import '../services/mpc_session_manager.dart';
@@ -63,6 +62,7 @@ class OnboardingController {
 
   /// Leave onboarding for the app home via the ROOT navigator.
   Future<void> finish(BuildContext rootContext, String walletAddress) async {
+    final navigator = Navigator.of(rootContext, rootNavigator: true);
     await clearStep();
     await SecureStorage.save('onboarding_completed_at', DateTime.now().toIso8601String());
     await SecureStorage.save(
@@ -71,7 +71,6 @@ class OnboardingController {
     if (walletAddress.isNotEmpty) {
       Services.balance.refresh(walletAddress);
     }
-    // ignore: use_build_context_synchronously
-    Navigator.of(rootContext, rootNavigator: true).pushReplacementNamed('/');
+    navigator.pushReplacementNamed('/');
   }
 }
