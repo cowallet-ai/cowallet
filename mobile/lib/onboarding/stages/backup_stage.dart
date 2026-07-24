@@ -38,12 +38,10 @@ class _BackupStageState extends State<BackupStage> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: CwColors.bgPaper,
-        body: SafeArea(child: _backupStage()),
-      ),
+    // Back is blocked centrally by the host's per-route PopScope.
+    return Scaffold(
+      backgroundColor: CwColors.bgPaper,
+      body: SafeArea(child: _backupStage()),
     );
   }
 

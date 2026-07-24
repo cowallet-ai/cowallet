@@ -5,6 +5,8 @@ import 'package:cowallet/onboarding/controller.dart';
 import 'package:cowallet/onboarding/routes.dart';
 import 'package:cowallet/onboarding/scope.dart';
 
+// Fake stages: hero has a forward button; every other stage is plain text.
+// No stage renders a back affordance — onboarding is forward-only.
 Widget _fakeStage(OnboardingController c, OnboardingStep step) {
   switch (step) {
     case OnboardingStep.hero:
@@ -17,39 +19,42 @@ Widget _fakeStage(OnboardingController c, OnboardingStep step) {
           ),
         ),
       );
-    case OnboardingStep.email:
-      return Scaffold(
-        appBar: AppBar(leading: BackButton(onPressed: c.goBack)),
-        body: const Center(child: Text('email')),
-      );
     default:
       return Scaffold(body: Center(child: Text(step.name)));
   }
 }
 
+// Mirrors OnboardingFlow's host: every route is wrapped in
+// PopScope(canPop:false) and the child Navigator is bridged to system back
+// via NavigatorPopHandler.
 Widget _host(OnboardingController c, List<OnboardingStep> stack) {
   Route<dynamic> routeFor(OnboardingStep s) => CupertinoPageRoute(
         settings: RouteSettings(name: s.name),
-        builder: (_) => _fakeStage(c, s),
+        builder: (_) => PopScope(
+          canPop: false,
+          child: _fakeStage(c, s),
+        ),
       );
   return MaterialApp(
     home: OnboardingScope(
       controller: c,
-      child: Navigator(
-        key: c.navigatorKey,
-        initialRoute: stack.last.name,
-        onGenerateInitialRoutes: (_, initial) =>
-            stack.map(routeFor).toList(),
-        onGenerateRoute: (s) =>
-            routeFor(stepFromName(s.name) ?? OnboardingStep.hero),
+      child: NavigatorPopHandler(
+        onPopWithResult: (_) => c.navigatorKey.currentState?.maybePop(),
+        child: Navigator(
+          key: c.navigatorKey,
+          initialRoute: stack.last.name,
+          onGenerateInitialRoutes: (_, initial) =>
+              stack.map(routeFor).toList(),
+          onGenerateRoute: (s) =>
+              routeFor(stepFromName(s.name) ?? OnboardingStep.hero),
+        ),
       ),
     ),
   );
 }
 
 void main() {
-  testWidgets('forward push then back returns to previous stage',
-      (tester) async {
+  testWidgets('forward push advances to the next stage', (tester) async {
     final c = OnboardingController();
     await tester.pumpWidget(_host(c, [OnboardingStep.hero]));
     expect(find.text('hero'), findsOneWidget);
@@ -58,9 +63,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('email'), findsOneWidget);
     expect(find.text('hero'), findsNothing);
+  });
 
-    c.goBack();
+  testWidgets('system back does not leave a non-first stage (forward-only)',
+      (tester) async {
+    final c = OnboardingController();
+    // Seed a two-deep stack so a pop *could* return to hero if unguarded.
+    await tester.pumpWidget(_host(c, [OnboardingStep.hero, OnboardingStep.email]));
     await tester.pumpAndSettle();
-    expect(find.text('hero'), findsOneWidget);
+    expect(find.text('email'), findsOneWidget);
+
+    // Simulate Android system back — must be consumed by the per-route guard,
+    // never popping back to hero.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('email'), findsOneWidget);
+    expect(find.text('hero'), findsNothing);
   });
 }

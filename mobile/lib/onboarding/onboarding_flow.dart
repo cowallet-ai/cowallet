@@ -67,7 +67,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Route<dynamic> _routeFor(OnboardingStep step) => CupertinoPageRoute(
         settings: RouteSettings(name: step.name),
-        builder: (_) => _stageWidget(step),
+        // Onboarding is strictly forward-only: every stage blocks back
+        // (system back, iOS swipe, and — since no stage renders a back
+        // affordance — there is no programmatic pop path either). The
+        // NavigatorPopHandler in build() bridges system back to this
+        // PopScope so it is honored on Android too.
+        builder: (_) => PopScope(
+          canPop: false,
+          child: _stageWidget(step),
+        ),
       );
 
   Route<dynamic> _onGenerateRoute(RouteSettings settings) {

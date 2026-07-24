@@ -48,7 +48,7 @@ class _NameStageState extends State<NameStage> {
       key: const ValueKey('name'),
       child: Column(
         children: [
-          obTopBar(context, showBack: true, step: 2, total: 3, onBack: c.goBack),
+          obTopBar(context, showBack: false, step: 2, total: 3),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(

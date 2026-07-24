@@ -145,12 +145,10 @@ class _CreatingStageState extends State<CreatingStage> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: CwColors.bgPaper,
-        body: SafeArea(child: _creatingStage()),
-      ),
+    // Back is blocked centrally by the host's per-route PopScope.
+    return Scaffold(
+      backgroundColor: CwColors.bgPaper,
+      body: SafeArea(child: _creatingStage()),
     );
   }
 
