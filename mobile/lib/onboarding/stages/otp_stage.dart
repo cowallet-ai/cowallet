@@ -85,7 +85,10 @@ class _OtpStageState extends State<OtpStage> {
       if (!mounted) return;
 
       if (result.isSuccess) {
-        setState(() => _otpVerifying = false);
+        // Keep _otpVerifying latched (do NOT reset to false): we are navigating
+        // away, and leaving it true blocks any late onChanged re-entry from
+        // re-invoking _verifyEmailOtp and double-pushing the creating route.
+        // In the monolith this was guarded by `_stage == _Stage.creating`.
         c.goTo(OnboardingStep.creating);
       } else {
         setState(() {
