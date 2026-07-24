@@ -127,7 +127,7 @@ class _ChatTxResultWidgetState extends State<ChatTxResultWidget> {
             const SizedBox(height: 8),
             Text(
               '${widget.amount} ${widget.token}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: CwColors.ink1,
@@ -161,7 +161,7 @@ class _ChatTxResultWidgetState extends State<ChatTxResultWidget> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.copy, size: 12, color: CwColors.ink4),
+                  Icon(Icons.copy, size: 12, color: CwColors.ink4),
                 ],
               ),
             ),

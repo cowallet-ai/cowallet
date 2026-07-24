@@ -46,7 +46,7 @@ class ChainSelector extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: CwColors.ink3),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: CwColors.ink3),
           ],
         ),
       ),
@@ -246,7 +246,7 @@ class _ChainList extends StatelessWidget {
 
             // Checkmark
             if (isSelected)
-              const Icon(Icons.check_rounded, size: 18, color: CwColors.accent),
+              Icon(Icons.check_rounded, size: 18, color: CwColors.accent),
           ],
         ),
       ),

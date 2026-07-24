@@ -516,7 +516,7 @@ class _RecoveryViewState extends State<RecoveryView> {
                     controller: _otpCtrl,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 8,

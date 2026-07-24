@@ -104,10 +104,10 @@ class _YieldViewState extends State<YieldView> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFE1ECD9), Color(0xFFD9E8D0)],
+          colors: [CwColors.successSoft, CwColors.successSoft],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: CwColors.line),
@@ -162,7 +162,7 @@ class _YieldViewState extends State<YieldView> {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               color: CwColors.ink3,
             ),
@@ -308,7 +308,7 @@ class _YieldViewState extends State<YieldView> {
                       color: CwColors.success,
                     ),
                   ),
-                  const Text(
+                  Text(
                     'APY',
                     style: TextStyle(
                       fontSize: 10,
@@ -433,7 +433,7 @@ class _YieldViewState extends State<YieldView> {
               const SizedBox(height: 6),
               Text(
                 opp.strategy!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   color: CwColors.ink2,
                   height: 1.5,
@@ -540,8 +540,8 @@ class _YieldViewState extends State<YieldView> {
   }
 
   Widget _loadingState() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 60),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 60),
       child: Center(
         child: CircularProgressIndicator(
           strokeWidth: 2,
@@ -559,7 +559,7 @@ class _YieldViewState extends State<YieldView> {
           children: [
             Text(
               _error ?? S.yieldLoadFailed,
-              style: const TextStyle(color: CwColors.ink3, fontSize: 13),
+              style: TextStyle(color: CwColors.ink3, fontSize: 13),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -567,7 +567,7 @@ class _YieldViewState extends State<YieldView> {
               onTap: _loadOpportunities,
               child: Text(
                 S.retry,
-                style: const TextStyle(
+                style: TextStyle(
                   color: CwColors.accent,
                   fontWeight: FontWeight.w600,
                 ),

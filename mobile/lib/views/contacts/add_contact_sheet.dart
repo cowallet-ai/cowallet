@@ -99,15 +99,15 @@ class _AddContactSheetState extends State<AddContactSheet> {
                 hintText: S.contactsNameHint,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.accent),
+                  borderSide: BorderSide(color: CwColors.accent),
                 ),
               ),
               validator: (value) {
@@ -126,15 +126,15 @@ class _AddContactSheetState extends State<AddContactSheet> {
                 hintText: '0x...',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.accent),
+                  borderSide: BorderSide(color: CwColors.accent),
                 ),
               ),
               validator: (value) {
@@ -156,15 +156,15 @@ class _AddContactSheetState extends State<AddContactSheet> {
                 hintText: S.contactsNoteHint,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.accent),
+                  borderSide: BorderSide(color: CwColors.accent),
                 ),
               ),
               maxLines: 2,

@@ -115,7 +115,7 @@ class _ContactsViewState extends State<ContactsView> {
               ),
               const SizedBox(height: 12),
               ListTile(
-                leading: const Icon(Icons.copy, color: CwColors.ink2),
+                leading: Icon(Icons.copy, color: CwColors.ink2),
                 title: Text(S.copyAddress),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -123,7 +123,7 @@ class _ContactsViewState extends State<ContactsView> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.edit_outlined, color: CwColors.ink2),
+                leading: Icon(Icons.edit_outlined, color: CwColors.ink2),
                 title: Text(S.contactsEdit),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -131,10 +131,10 @@ class _ContactsViewState extends State<ContactsView> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: CwColors.danger),
+                leading: Icon(Icons.delete_outline, color: CwColors.danger),
                 title: Text(
                   S.contactsDelete,
-                  style: const TextStyle(color: CwColors.danger),
+                  style: TextStyle(color: CwColors.danger),
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -160,7 +160,7 @@ class _ContactsViewState extends State<ContactsView> {
         foregroundColor: CwColors.ink1,
         actions: [
           IconButton(
-            icon: const Icon(Icons.add, color: CwColors.accent),
+            icon: Icon(Icons.add, color: CwColors.accent),
             onPressed: _addContact,
           ),
         ],
@@ -175,22 +175,22 @@ class _ContactsViewState extends State<ContactsView> {
               onChanged: (v) => setState(() => _query = v),
               decoration: InputDecoration(
                 hintText: S.contactsSearch,
-                hintStyle: const TextStyle(color: CwColors.ink4),
-                prefixIcon: const Icon(Icons.search, color: CwColors.ink4, size: 20),
+                hintStyle: TextStyle(color: CwColors.ink4),
+                prefixIcon: Icon(Icons.search, color: CwColors.ink4, size: 20),
                 filled: true,
                 fillColor: CwColors.bgCard,
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.line),
+                  borderSide: BorderSide(color: CwColors.line),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CwColors.accent),
+                  borderSide: BorderSide(color: CwColors.accent),
                 ),
               ),
             ),
@@ -206,7 +206,7 @@ class _ContactsViewState extends State<ContactsView> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.people_outline,
                           size: 64,
                           color: CwColors.ink4,
@@ -235,7 +235,7 @@ class _ContactsViewState extends State<ContactsView> {
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: list.length,
-                  separatorBuilder: (_, _) => const Divider(
+                  separatorBuilder: (_, _) => Divider(
                     height: 1,
                     indent: 56,
                     color: CwColors.line,
@@ -262,7 +262,7 @@ class _ContactsViewState extends State<ContactsView> {
         backgroundColor: CwColors.accentSoft,
         child: Text(
           contact.name.isNotEmpty ? contact.name[0].toUpperCase() : '?',
-          style: const TextStyle(
+          style: TextStyle(
             color: CwColors.accent,
             fontWeight: FontWeight.w600,
           ),
@@ -270,7 +270,7 @@ class _ContactsViewState extends State<ContactsView> {
       ),
       title: Text(
         contact.name,
-        style: const TextStyle(
+        style: TextStyle(
           color: CwColors.ink1,
           fontWeight: FontWeight.w500,
           fontSize: 15,
@@ -296,7 +296,7 @@ class _ContactsViewState extends State<ContactsView> {
             ),
         ],
       ),
-      trailing: const Icon(Icons.more_vert, color: CwColors.ink4, size: 20),
+      trailing: Icon(Icons.more_vert, color: CwColors.ink4, size: 20),
       onTap: () => _copyAddress(contact),
       onLongPress: () => _showContactActions(contact),
     );

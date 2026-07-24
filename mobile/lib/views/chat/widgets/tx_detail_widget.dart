@@ -74,7 +74,7 @@ class ChatTxDetailWidget extends StatelessWidget {
                   children: [
                     Text(
                       isIncoming ? S.receive : S.transfer,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: CwColors.ink1,
@@ -110,7 +110,7 @@ class ChatTxDetailWidget extends StatelessWidget {
           ),
 
           const SizedBox(height: 14),
-          const Divider(height: 1, color: CwColors.line),
+          Divider(height: 1, color: CwColors.line),
           const SizedBox(height: 14),
 
           // Details
@@ -134,7 +134,7 @@ class ChatTxDetailWidget extends StatelessWidget {
 
           if (txHash.isNotEmpty) ...[
             const SizedBox(height: 14),
-            const Divider(height: 1, color: CwColors.line),
+            Divider(height: 1, color: CwColors.line),
             const SizedBox(height: 12),
             // Tx Hash row
             Builder(builder: (ctx) {
@@ -165,7 +165,7 @@ class ChatTxDetailWidget extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    const Icon(Icons.copy, size: 12, color: CwColors.ink4),
+                    Icon(Icons.copy, size: 12, color: CwColors.ink4),
                   ],
                 ),
               );
@@ -202,7 +202,7 @@ class ChatTxDetailWidget extends StatelessWidget {
             ),
             if (copyValue != null) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.copy, size: 10, color: CwColors.ink4),
+              Icon(Icons.copy, size: 10, color: CwColors.ink4),
             ],
           ],
         ),

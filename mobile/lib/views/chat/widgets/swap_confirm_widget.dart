@@ -107,7 +107,7 @@ class ChatSwapConfirmWidget extends StatelessWidget {
                       onPressed: loading ? null : onDeny,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: CwColors.ink3,
-                        side: const BorderSide(color: CwColors.line),
+                        side: BorderSide(color: CwColors.line),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),

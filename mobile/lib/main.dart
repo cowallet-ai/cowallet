@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:cowallet/theme/theme.dart';
+import 'package:cowallet/theme/theme_controller.dart';
 import 'package:cowallet/router/app_router.dart';
 import 'package:cowallet/state/app_state.dart';
 import 'package:cowallet/services/locator.dart';
@@ -78,7 +79,8 @@ class CowalletApp extends StatefulWidget {
   State<CowalletApp> createState() => _CowalletAppState();
 }
 
-class _CowalletAppState extends State<CowalletApp> {
+class _CowalletAppState extends State<CowalletApp>
+    with WidgetsBindingObserver {
   final appState = AppState();
   Locale? _locale;
   final String _initialRoute = AppRouter.onboarding; // Default to onboarding
@@ -89,8 +91,29 @@ class _CowalletAppState extends State<CowalletApp> {
   @override
   void initState() {
     super.initState();
+    // Path ② — OS light/dark switch (the sneaky one under themeMode.system).
+    // Path ① (settings listener) and the first sync are wired only after
+    // Services.settings is constructed in _initEssentialAndNavigate — it's a
+    // `late` field that isn't assigned yet at initState time.
+    WidgetsBinding.instance.addObserver(this);
     _initEssentialAndNavigate();
   }
+
+  /// Sole writer of [ThemeController.brightness]. All three trigger paths funnel
+  /// here so the value MaterialApp renders and the value CwColors reads stay one
+  /// and the same — no drift under themeMode.system. Writing the notifier drives
+  /// the rebuild directly (the top-level [ValueListenableBuilder] listens to it);
+  /// ValueNotifier no-ops when the value is unchanged, so no manual guard needed.
+  void _syncBrightness() {
+    final platform =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    ThemeController.brightness.value =
+        ThemeController.resolve(Services.settings.themeMode, platform);
+  }
+
+  // Path ② delivery: OS brightness changed while we're running.
+  @override
+  void didChangePlatformBrightness() => _syncBrightness();
 
   /// Initialize locale: check saved preference or auto-detect from system
   Future<void> _initLocale() async {
@@ -125,6 +148,8 @@ class _CowalletAppState extends State<CowalletApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    Services.settings.removeListener(_syncBrightness);
     Services.push.dispose();
     Services.presignPool.dispose();
     appState.dispose();
@@ -134,6 +159,10 @@ class _CowalletAppState extends State<CowalletApp> {
   Future<void> _initEssentialAndNavigate() async {
     // Wait for essential services to be ready
     await Services.initEssential();
+    // Now that Services.settings exists and has loaded persisted themeMode,
+    // wire path ① and apply the saved light/dark/system choice.
+    Services.settings.addListener(_syncBrightness);
+    _syncBrightness();
     await _initLocale();
     _setupPushNotificationHandlers();
 
@@ -257,34 +286,45 @@ class _CowalletAppState extends State<CowalletApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      title: 'CoWallet',
-      debugShowCheckedModeBanner: false,
-      theme: cwTheme(),
-      initialRoute: _initialRoute,
-      onGenerateRoute: AppRouter.onGenerateRoute,
-      locale: _locale,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('zh'), Locale('en')],
-      builder: (context, child) {
-        // Initialize S with context for backward compatibility
-        S.of(context);
-        // App-wide tap-to-dismiss: tapping any non-interactive area (outside a
-        // text field / button) drops focus and closes the soft keyboard. Screens
-        // with text inputs (backup, contacts, recovery, search, onboarding) had
-        // no other way to dismiss the keyboard once it was up.
-        return GestureDetector(
-          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-          // translucent so taps still hit widgets underneath; only "empty"
-          // taps that nothing else consumes reach this handler.
-          behavior: HitTestBehavior.translucent,
-          child: child!,
+    // Rebuild only the MaterialApp subtree when the resolved brightness flips.
+    // The notifier is the single signal both this builder and CwColors read, so
+    // the rendered theme and the token colors can never disagree.
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: ThemeController.brightness,
+      builder: (context, brightness, _) {
+        return MaterialApp(
+          navigatorKey: _navigatorKey,
+          title: 'CoWallet',
+          debugShowCheckedModeBanner: false,
+          // Option Y: we resolve brightness ourselves and hand MaterialApp the
+          // one matching theme. No darkTheme/themeMode — Flutter never
+          // independently picks a brightness that could disagree with CwColors.
+          theme: brightness == Brightness.dark ? cwDarkTheme() : cwTheme(),
+          initialRoute: _initialRoute,
+          onGenerateRoute: AppRouter.onGenerateRoute,
+          locale: _locale,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('zh'), Locale('en')],
+          builder: (context, child) {
+            // Initialize S with context for backward compatibility
+            S.of(context);
+            // App-wide tap-to-dismiss: tapping any non-interactive area (outside
+            // a text field / button) drops focus and closes the soft keyboard.
+            // Screens with text inputs (backup, contacts, recovery, search,
+            // onboarding) had no other way to dismiss the keyboard once up.
+            return GestureDetector(
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              // translucent so taps still hit widgets underneath; only "empty"
+              // taps that nothing else consumes reach this handler.
+              behavior: HitTestBehavior.translucent,
+              child: child!,
+            );
+          },
         );
       },
     );

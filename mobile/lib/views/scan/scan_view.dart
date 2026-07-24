@@ -156,7 +156,7 @@ class _ScanViewState extends State<ScanView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.camera_alt_outlined, color: CwColors.ink4, size: 48),
+              Icon(Icons.camera_alt_outlined, color: CwColors.ink4, size: 48),
               const SizedBox(height: 16),
               Text(
                 S.scanPermissionDenied,
@@ -168,7 +168,7 @@ class _ScanViewState extends State<ScanView> {
                 onPressed: () => Navigator.of(context).pop(),
                 child: Text(
                   S.back,
-                  style: const TextStyle(color: CwColors.accent, fontSize: 16),
+                  style: TextStyle(color: CwColors.accent, fontSize: 16),
                 ),
               ),
             ],

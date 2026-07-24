@@ -123,7 +123,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildTabBar() {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: CwColors.bgPaper,
         border: Border(top: BorderSide(color: CwColors.line)),
       ),

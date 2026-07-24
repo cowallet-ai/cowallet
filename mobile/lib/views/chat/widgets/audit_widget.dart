@@ -38,7 +38,7 @@ class ChatAuditWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.shield_outlined, size: 16, color: CwColors.accent),
+              Icon(Icons.shield_outlined, size: 16, color: CwColors.accent),
               const SizedBox(width: 6),
               Text(
                 S.securityAudit,
@@ -113,7 +113,7 @@ class ChatAuditWidget extends StatelessWidget {
           ],
           if (recommendations.isNotEmpty) ...[
             const SizedBox(height: 14),
-            const Divider(height: 1, color: CwColors.line),
+            Divider(height: 1, color: CwColors.line),
             const SizedBox(height: 12),
             Text(
               S.safetyAdvice,

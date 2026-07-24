@@ -60,7 +60,7 @@ class TurnstileGate {
                 children: [
                   Text(
                     S.turnstileTitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: CwColors.ink1,

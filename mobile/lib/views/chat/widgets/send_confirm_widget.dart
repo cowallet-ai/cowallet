@@ -108,19 +108,19 @@ class ChatSendConfirmWidget extends StatelessWidget {
                 children: [
                   Text(
                     policyReason ?? S.transferExceedsLimit,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CwColors.danger),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CwColors.danger),
                   ),
                   if (policyLimit != null) ...[
                     const SizedBox(height: 4),
                     Text(
                       S.limitLabel(policyLimit ?? ''),
-                      style: const TextStyle(fontSize: 11, color: CwColors.ink3),
+                      style: TextStyle(fontSize: 11, color: CwColors.ink3),
                     ),
                   ],
                   const SizedBox(height: 8),
                   Text(
                     S.adjustLimitHint,
-                    style: const TextStyle(fontSize: 11, color: CwColors.ink3),
+                    style: TextStyle(fontSize: 11, color: CwColors.ink3),
                   ),
                 ],
               ),
@@ -128,7 +128,7 @@ class ChatSendConfirmWidget extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               '$amount $token',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
                 color: CwColors.ink1,
@@ -147,9 +147,9 @@ class ChatSendConfirmWidget extends StatelessWidget {
                   ? Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: CwColors.warn)),
+                        SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: CwColors.warn)),
                         const SizedBox(width: 8),
-                        Text(S.calculatingFees, style: const TextStyle(fontSize: 12, color: CwColors.warn)),
+                        Text(S.calculatingFees, style: TextStyle(fontSize: 12, color: CwColors.warn)),
                       ],
                     )
                   : Column(
@@ -163,8 +163,8 @@ class ChatSendConfirmWidget extends StatelessWidget {
                         _breakdownRow(S.originalAmount, '$originalAmount $token'),
                         const SizedBox(height: 4),
                         _breakdownRow(S.gasFee, '- ${gasEstimate ?? "..."} $token'),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 6),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Divider(height: 1, color: CwColors.lineStrong),
                         ),
                         _breakdownRow(S.actualSend, '$amount $token', bold: true),
@@ -175,7 +175,7 @@ class ChatSendConfirmWidget extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               '$amount $token',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
                 color: CwColors.ink1,
@@ -199,10 +199,10 @@ class ChatSendConfirmWidget extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.warning_amber_rounded, size: 14, color: CwColors.warn),
+                      Icon(Icons.warning_amber_rounded, size: 14, color: CwColors.warn),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(w, style: const TextStyle(fontSize: 11, color: CwColors.warn)),
+                        child: Text(w, style: TextStyle(fontSize: 11, color: CwColors.warn)),
                       ),
                     ],
                   ),
@@ -238,7 +238,7 @@ class ChatSendConfirmWidget extends StatelessWidget {
                       onPressed: loading ? null : onDeny,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: CwColors.ink3,
-                        side: const BorderSide(color: CwColors.line),
+                        side: BorderSide(color: CwColors.line),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -303,7 +303,7 @@ class ChatSendConfirmWidget extends StatelessWidget {
   Widget _infoRow(String label, String value) {
     return Row(
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: CwColors.ink4)),
+        Text(label, style: TextStyle(fontSize: 12, color: CwColors.ink4)),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
