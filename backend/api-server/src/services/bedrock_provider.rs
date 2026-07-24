@@ -81,8 +81,6 @@ enum ContentPart {
 
 #[derive(Serialize)]
 struct ApiTool {
-    #[serde(rename = "type")]
-    tool_type: &'static str,
     name: String,
     description: String,
     input_schema: serde_json::Value,
@@ -173,7 +171,6 @@ fn convert_tools(tools: &[ToolDef]) -> Option<Vec<ApiTool>> {
         tools
             .iter()
             .map(|t| ApiTool {
-                tool_type: "custom",
                 name: t.name.clone(),
                 description: t.description.clone(),
                 input_schema: t.parameters.clone(),
