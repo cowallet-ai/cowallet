@@ -36,7 +36,7 @@ class _ReadyStageState extends State<ReadyStage> {
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
         children: [
-          obTopBar(context, showBack: true, step: 2, total: 3, onBack: c.goBack),
+          obTopBar(context, showBack: true, onBack: c.goBack),
           const SizedBox(height: 24),
           // CwOrb with checkmark badge
           SizedBox(

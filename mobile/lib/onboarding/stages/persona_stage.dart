@@ -48,7 +48,8 @@ class _PersonaStageState extends State<PersonaStage> {
       key: const ValueKey('persona'),
       child: Column(
         children: [
-          obTopBar(context, showBack: true, step: 2, total: 3, onBack: c.goBack),
+          obTopBar(context, showBack: true, onBack: c.goBack),
+          const SizedBox(height: 24),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(
