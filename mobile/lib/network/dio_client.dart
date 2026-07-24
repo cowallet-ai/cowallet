@@ -306,6 +306,10 @@ class DioClient {
           if (token != null) "Authorization": "Bearer $token",
           // Mandatory device binding (F-010).
           if (deviceId != null && deviceId.isNotEmpty) "X-Device-ID": deviceId,
+          // Version gate: this stream uses its own Dio instance, so the shared
+          // interceptor that stamps X-App-Version does NOT run here. Without it
+          // the server sees build 0 and returns 426 Upgrade Required.
+          "X-App-Version": (await _buildNumber()).toString(),
         },
         responseType: ResponseType.stream,
       ));

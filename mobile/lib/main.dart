@@ -275,7 +275,17 @@ class _CowalletAppState extends State<CowalletApp> {
       builder: (context, child) {
         // Initialize S with context for backward compatibility
         S.of(context);
-        return child!;
+        // App-wide tap-to-dismiss: tapping any non-interactive area (outside a
+        // text field / button) drops focus and closes the soft keyboard. Screens
+        // with text inputs (backup, contacts, recovery, search, onboarding) had
+        // no other way to dismiss the keyboard once it was up.
+        return GestureDetector(
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          // translucent so taps still hit widgets underneath; only "empty"
+          // taps that nothing else consumes reach this handler.
+          behavior: HitTestBehavior.translucent,
+          child: child!,
+        );
       },
     );
   }
