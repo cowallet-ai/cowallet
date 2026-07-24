@@ -177,7 +177,7 @@ class _CreatingStageState extends State<CreatingStage> {
                     minHeight: 8,
                     backgroundColor: CwColors.line,
                     valueColor:
-                        const AlwaysStoppedAnimation<Color>(CwColors.accent),
+                        AlwaysStoppedAnimation<Color>(CwColors.accent),
                   ),
                 ),
                 const SizedBox(height: 8),

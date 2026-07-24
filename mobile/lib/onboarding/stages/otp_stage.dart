@@ -156,7 +156,7 @@ class _OtpStageState extends State<OtpStage> {
                     textAlign: TextAlign.center,
                     maxLength: 6,
                     autofocus: true,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 8,

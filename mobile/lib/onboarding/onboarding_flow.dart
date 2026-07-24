@@ -107,7 +107,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (_initialStack == null) {
       // Brief hold while the persisted step resolves; native splash still covers
       // cold start, so this is only a frame or two.
-      return const Scaffold(backgroundColor: CwColors.bgPaper);
+      return Scaffold(backgroundColor: CwColors.bgPaper);
     }
     return OnboardingScope(
       controller: _controller,
