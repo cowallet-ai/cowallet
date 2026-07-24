@@ -68,16 +68,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   /// Returns true for stages that support back navigation (user can correct
   /// prior input or navigate within the post-DKG returnable group).
   /// Returns false for locked stages: hero (stack bottom / no prior input),
-  /// creating/backup (DKG hard boundary), and bio (post-DKG group floor).
+  /// creating/backup (DKG hard boundary), bio (biometric auth — must not be
+  /// re-entered), and name (post-DKG group floor; back would return to bio).
   bool _canPopStep(OnboardingStep step) {
     switch (step) {
       case OnboardingStep.email:
       case OnboardingStep.emailOtp:
-      case OnboardingStep.name:
       case OnboardingStep.ready:
       case OnboardingStep.persona:
         return true;
-      default: // hero, creating, backup, bio
+      default: // hero, creating, backup, bio, name
         return false;
     }
   }

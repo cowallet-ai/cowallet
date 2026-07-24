@@ -10,7 +10,6 @@ bool _canPopStep(OnboardingStep step) {
   switch (step) {
     case OnboardingStep.email:
     case OnboardingStep.emailOtp:
-    case OnboardingStep.name:
     case OnboardingStep.ready:
     case OnboardingStep.persona:
       return true;
@@ -91,18 +90,22 @@ void main() {
     expect(find.text('email'), findsNothing);
   });
 
-  testWidgets('system back is blocked on a locked stage (bio group floor)',
+  testWidgets('system back cannot re-enter biometric auth (name is the floor)',
       (tester) async {
     final c = OnboardingController();
-    // bio is canPop:false — seeded alone to simulate it as the group floor.
-    await tester.pumpWidget(_host(c, [OnboardingStep.bio]));
+    // name sits above bio in a normal run; it is the returnable group's floor
+    // and is canPop:false so back can never return to the bio (biometric)
+    // stage. Seed [bio, name] to prove back does not fall through to bio.
+    await tester.pumpWidget(
+        _host(c, [OnboardingStep.bio, OnboardingStep.name]));
     await tester.pumpAndSettle();
-    expect(find.text('bio'), findsOneWidget);
+    expect(find.text('name'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    // bio is a locked stage — system back must not leave it.
-    expect(find.text('bio'), findsOneWidget);
+    // name is locked — system back must not leave it, so bio stays sealed.
+    expect(find.text('name'), findsOneWidget);
+    expect(find.text('bio'), findsNothing);
   });
 }
