@@ -15,7 +15,7 @@ import '../views/force_upgrade_view.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../theme/colors.dart';
 import '../theme/typography.dart';
-import '../l10n/strings.dart';
+import '../l10n/app_localizations.dart';
 
 class AppRouter {
   static const home = '/';
@@ -122,6 +122,11 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _buildTabBar() {
+    // Read labels from AppLocalizations (the Localizations InheritedWidget)
+    // rather than the static S facade: a live locale switch must rebuild these
+    // in the same frame, without depending on MaterialApp.builder having
+    // refreshed S's static cache first.
+    final t = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         color: CwColors.bgPaper,
@@ -132,12 +137,12 @@ class _AppShellState extends State<AppShell> {
           height: 56,
           child: Row(
             children: [
-              _tabItem(0, Icons.home_outlined, Icons.home, S.tabHome),
+              _tabItem(0, Icons.home_outlined, Icons.home, t.tabHome),
               _tabItem(1, Icons.account_balance_wallet_outlined,
-                  Icons.account_balance_wallet, S.tabWallet),
+                  Icons.account_balance_wallet, t.tabWallet),
               _askPill(),
-              _disabledTabItem(3, Icons.trending_up_outlined, S.tabDefi),
-              _tabItem(4, Icons.settings_outlined, Icons.settings, S.tabSettings),
+              _disabledTabItem(3, Icons.trending_up_outlined, t.tabDefi),
+              _tabItem(4, Icons.settings_outlined, Icons.settings, t.tabSettings),
             ],
           ),
         ),
