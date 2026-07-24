@@ -126,6 +126,13 @@ class S {
   static String get conversation => _localizations?.conversation ?? _p('对话', 'Conversation');
   static String get general => _localizations?.general ?? _p('一般', 'General');
 
+  // Display-name (profile) editing from Settings.
+  static String get displayName => _p('名字', 'Name');
+  static String get displayNameSub => _p('首页问候语里显示的名字', 'Shown in the home greeting');
+  static String get displayNameNotSet => _p('未设置', 'Not set');
+  static String get editNameTitle => _p('改个名字', 'Edit name');
+  static String get nameSaved => _p('名字已更新', 'Name updated');
+
   static String get biometricAuth => _localizations?.biometricAuth ?? _p('生物识别', 'Biometric Authentication');
   static String get biometricAuthReason => _localizations?.biometricAuthReason ?? _p('请验证身份以继续', 'Authenticate to proceed');
   // Device-security setup gate (shown when the device has no biometric AND no
@@ -470,6 +477,8 @@ class S {
   static String get personaSkip => _p('先跳过,我再看看', 'Skip for now');
   static String get homeStatus => _p('一切正常 · 三份钥匙各就各位 · 今天还没可疑动作', 'All good · all three keys in place · no odd activity today');
   static String get homeGreetMorning => _p('早上好,', 'Good morning,');
+  // Neutral greeting used before the user has set a name — no name appended.
+  static String get homeGreetMorningNoName => _p('早上好', 'Good morning');
   static String get homeSlogan => _p('说句话就能转账查账，不用点来点去', 'Just say it — no buttons needed');
   static String get yourTotal => _p('你的总资产', 'Your total');
   static String actionTokenInfo(String symbol, String balance, String usd) =>

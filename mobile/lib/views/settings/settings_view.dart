@@ -135,6 +135,26 @@ class _SettingsViewState extends State<SettingsView> {
     }
   }
 
+  /// Edit the display name shown in the home greeting. The dialog owns its own
+  /// TextEditingController (see [_EditNameDialog]) so it's disposed exactly when
+  /// the field unmounts — disposing it here after `await` raced the dialog's
+  /// dismiss animation and tripped a `_dependents.isEmpty` framework assertion.
+  ///
+  /// Returns a trimmed non-empty name on Save, or null on cancel / tap-outside.
+  Future<void> _editName() async {
+    final appState = CowalletApp.of(context);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (_) => _EditNameDialog(initialName: appState.userName),
+    );
+    // Dismissed (null) or unchanged → no-op. Save is disabled while empty, so a
+    // returned value is always a trimmed, non-empty name.
+    if (newName == null || !mounted || newName == appState.userName) return;
+    appState.setUserName(newName);
+    setState(() {}); // refresh the subtitle on this row
+    showTopToast(context, S.nameSaved, backgroundColor: CwColors.success);
+  }
+
   void _toggleLanguage() {
     final locale = Localizations.localeOf(context);
     final newLang = locale.languageCode == 'zh' ? 'en' : 'zh';
@@ -707,8 +727,26 @@ class _SettingsViewState extends State<SettingsView> {
 
   // ── General settings list ──
   Widget _generalList(BuildContext context) {
+    final userName = CowalletApp.of(context).userName;
     return _settingsContainer(
       children: [
+        _settingRow(
+          context,
+          icon: Icons.person_outline,
+          iconColor: CwColors.ink3,
+          iconBg: CwColors.bgSubtle,
+          title: S.displayName,
+          subtitle: S.displayNameSub,
+          trailing: Text(
+            userName.isEmpty ? S.displayNameNotSet : userName,
+            style: TextStyle(
+                fontFamily: CwTypography.serifFamily,
+                fontSize: 11,
+                color: CwColors.ink3),
+          ),
+          onTap: _editName,
+        ),
+        const Divider(indent: 52, height: 1),
         _settingRow(
           context,
           icon: Icons.language,
@@ -864,6 +902,78 @@ class _SettingsViewState extends State<SettingsView> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Name-editing dialog that owns its [TextEditingController]. Keeping the
+/// controller in State (disposed in [dispose]) avoids the lifecycle race that
+/// happens when the caller disposes a controller right after `await showDialog`
+/// while the field's subtree is still animating out.
+class _EditNameDialog extends StatefulWidget {
+  const _EditNameDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_EditNameDialog> createState() => _EditNameDialogState();
+}
+
+class _EditNameDialogState extends State<_EditNameDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialName);
+
+  // Drives the Save button's enabled state so an empty field can't be saved.
+  bool _canSave = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _canSave = widget.initialName.trim().isNotEmpty;
+    _controller.addListener(_onChanged);
+  }
+
+  void _onChanged() {
+    final canSave = _controller.text.trim().isNotEmpty;
+    if (canSave != _canSave) setState(() => _canSave = canSave);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return; // guard: ignore Enter on an empty field
+    Navigator.pop(context, name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(S.editNameTitle),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        textInputAction: TextInputAction.done,
+        maxLength: 40,
+        decoration: InputDecoration(hintText: S.namePlaceholder),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(S.cancel),
+        ),
+        TextButton(
+          onPressed: _canSave ? _submit : null,
+          child: Text(S.save),
+        ),
+      ],
     );
   }
 }

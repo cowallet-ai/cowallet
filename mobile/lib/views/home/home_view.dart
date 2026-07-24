@@ -4,6 +4,7 @@ import '../../theme/colors.dart';
 import '../../l10n/strings.dart';
 import '../../widgets/section_label.dart';
 import '../../main.dart';
+import '../../state/app_state.dart';
 import '../../services/locator.dart';
 import '../../router/app_router.dart';
 import '../../api/tx_history_api.dart';
@@ -274,8 +275,16 @@ class _HomeViewState extends State<HomeView> {
 
   Widget _greeting(BuildContext context) {
     final appState = CowalletApp.of(context);
+    // Rebuild whenever the name changes — Home and Settings both stay mounted in
+    // the IndexedStack, so renaming from Settings must repaint this greeting.
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) => _greetingBody(context, appState),
+    );
+  }
+
+  Widget _greetingBody(BuildContext context, AppState appState) {
     final name = appState.userName;
-    final displayName = name.isEmpty ? 'Alice' : name;
     final address = appState.walletAddress;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -285,13 +294,16 @@ class _HomeViewState extends State<HomeView> {
           RichText(
             text: TextSpan(
               style: Theme.of(context).textTheme.displayLarge,
-              children: [
-                TextSpan(text: S.homeGreetMorning),
-                TextSpan(
-                  text: '$displayName。',
-                  style: const TextStyle(fontStyle: FontStyle.italic),
-                ),
-              ],
+              children: name.isEmpty
+                  // No name set yet: neutral greeting, no placeholder name.
+                  ? [TextSpan(text: '${S.homeGreetMorningNoName}。')]
+                  : [
+                      TextSpan(text: S.homeGreetMorning),
+                      TextSpan(
+                        text: '$name。',
+                        style: const TextStyle(fontStyle: FontStyle.italic),
+                      ),
+                    ],
             ),
           ),
           if (address.isNotEmpty) ...[

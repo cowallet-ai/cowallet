@@ -134,6 +134,9 @@ class _CowalletAppState extends State<CowalletApp> {
   Future<void> _initEssentialAndNavigate() async {
     // Wait for essential services to be ready
     await Services.initEssential();
+    // Read the name the user set during onboarding back into memory so the home
+    // greeting shows it on a cold start instead of an empty/placeholder name.
+    await appState.loadUserName();
     await _initLocale();
     _setupPushNotificationHandlers();
 
