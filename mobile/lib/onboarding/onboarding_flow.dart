@@ -88,11 +88,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
     return OnboardingScope(
       controller: _controller,
-      child: Navigator(
-        key: _controller.navigatorKey,
-        initialRoute: _initialStack!.last.name,
-        onGenerateInitialRoutes: _onGenerateInitialRoutes,
-        onGenerateRoute: _onGenerateRoute,
+      // Bridges the root navigator's system back (Android hardware/predictive
+      // back) into this child Navigator, so both intra-flow back and the
+      // creating/backup PopScope guards actually respond to system back.
+      // Without this, system back bypasses the child Navigator entirely.
+      child: NavigatorPopHandler(
+        onPopWithResult: (_) => _controller.navigatorKey.currentState?.maybePop(),
+        child: Navigator(
+          key: _controller.navigatorKey,
+          initialRoute: _initialStack!.last.name,
+          onGenerateInitialRoutes: _onGenerateInitialRoutes,
+          onGenerateRoute: _onGenerateRoute,
+        ),
       ),
     );
   }
